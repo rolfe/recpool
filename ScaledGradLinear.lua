@@ -1,3 +1,5 @@
+require 'debug'
+
 local ScaledGradLinear, parent = torch.class('nn.ScaledGradLinear', 'nn.Linear')
 
 function ScaledGradLinear:__init(inputSize, outputSize, learningRateScaling)
@@ -41,6 +43,7 @@ function ScaledGradLinear:reset(stdv)
    end
 end
 
+--[[
 function ScaledGradLinear:updateParameters(learningRate)
    if self.learningRateScaling then 
       learningRate = learningRate * self.learningRateScaling -- added by Jason 6/13/12
@@ -53,9 +56,11 @@ end
 
 function ScaledGradLinear:accGradParameters(input, gradOutput, scale)
    if scale and (scale ~= 1) then
-      print('Scale for Linear:accGradParameters is ')
-      print(scale)
+      --print('Scale for ScaledGradLinear:accGradParameters is ', scale)
+      --print(debug.traceback())
+      --io.read()
    end
 
    parent.accGradParameters(self, input, gradOutput, scale)
 end
+--]]

@@ -1,4 +1,4 @@
-local Hpsd, parent = torch.class('unsup.Hpsd', 'unsup.psd')
+local Hpsd, parent = torch.class('unsup.Hpsd', 'unsup.PSD')
 
 function Hpsd:setParameters(new_parameters)
    local current_parameters = self:parameters() -- this throws away the gradients of the parameters, which is the second argument returned by self:parameters(), and potentially the hessian, which may be the third parameter

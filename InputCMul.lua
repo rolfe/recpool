@@ -1,6 +1,6 @@
 local InputCMul, parent = torch.class('nn.InputCMul', 'nn.Module')
 
-function InputCMul:__init()
+function InputCMul:__init(input_size)
    parent.__init(self)
 end
 
