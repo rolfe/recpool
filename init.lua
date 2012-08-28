@@ -15,11 +15,17 @@ dofile('ParallelDistributingTable.lua')
 dofile('SelectTable.lua')
 dofile('CopyTable.lua')
 dofile('IdentityTable.lua')
+dofile('AddConstant.lua')
+dofile('PrintModule.lua')
 dofile('ParameterizedShrink.lua')
 dofile('Ignore.lua')
 dofile('ZeroModule.lua')
 dofile('L1CriterionModule.lua')
 dofile('L2Cost.lua')
+dofile('CauchyCost.lua')
+dofile('DebugSquare.lua')
+dofile('ConstrainedLinear.lua')
+
 
 require 'unsup'
 -- modifying unsup

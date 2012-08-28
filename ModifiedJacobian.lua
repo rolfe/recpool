@@ -46,7 +46,7 @@ function nn.Jacobian.backwardTable (module, input, param, dparam)
    local jacobian = {}
    local dout = {}
 
-   -- modules like CAddTable return a single tensor, rather than a table of tensors.  Wrap these outputs in a tableto allow consistent processing.
+   -- modules like CAddTable return a single tensor, rather than a table of tensors.  Wrap these outputs in a table to allow consistent processing.
    local converted_output = ((type(module.output) == 'number') and torch.Tensor(1):fill(module.output)) or module.output
    local wrapped_output = ((type(converted_output) ~= 'table') and {converted_output}) or converted_output
    if #wrapped_output == 0 then -- if the network includes its criteria and thus produces no output, create a single dummy output, which the network will ignore
@@ -327,6 +327,8 @@ end
 
 function nn.Jacobian.testJacobianParameters (module, input, param, dparam, minval, maxval)
    --print('started testJacobianParameters')
+   local original_param = param:clone()
+
    minval = minval or -2
    maxval = maxval or 2
    local inrange = maxval - minval
@@ -336,11 +338,15 @@ function nn.Jacobian.testJacobianParameters (module, input, param, dparam, minva
    local jac_fprop = nn.Jacobian.forward(module, input, param)
    local error = jac_fprop - jac_bprop
 
+   param:copy(original_param)
+
    print('Max and min of fprop and bprop are ', jac_fprop:max(), jac_bprop:max(), jac_fprop:min(), jac_bprop:min(), jac_fprop:max() / jac_bprop:max(), jac_fprop:min() /jac_bprop:min())
    return error:abs():max()
 end
 
 function nn.Jacobian.testJacobianUpdateParameters (module, input, param, other_params, minval, maxval)
+   local original_param = param:clone()
+
    other_params = other_params or {}
    minval = minval or -2
    maxval = maxval or 2
@@ -352,6 +358,7 @@ function nn.Jacobian.testJacobianUpdateParameters (module, input, param, other_p
    local params_fprop = nn.Jacobian.forwardUpdate(module, input, param)
 
    local error = params_fprop - params_bprop
+   param:copy(original_param)
 
    print('Max and min of fprop and bprop are ', params_fprop:max(), params_bprop:max(), params_fprop:min(), params_bprop:min(), params_fprop:max() / params_bprop:max(), params_fprop:min() / params_bprop:min())
    return error:abs():max()

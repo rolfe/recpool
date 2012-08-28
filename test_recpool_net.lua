@@ -11,6 +11,156 @@ local expprecision = 1e-4
 local rec_pool_test = {}
 local other_tests = {}
 
+function rec_pool_test.Square()
+   local in1 = torch.rand(10,20)
+   local module = nn.Square()
+   local out = module:forward(in1)
+   local err = out:dist(in1:cmul(in1))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.Square()
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.Square1D()
+   local in1 = torch.rand(10)
+   local module = nn.Square()
+   local out = module:forward(in1)
+   local err = out:dist(in1:cmul(in1))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local input = torch.Tensor(ini):zero()
+
+   local module = nn.Square()
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+function rec_pool_test.Sqrt()
+   local in1 = torch.rand(10,20)
+   local module = nn.Sqrt()
+   local out = module:forward(in1)
+   local err = out:dist(in1:sqrt())
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.Sqrt()
+
+   local err = jac.testJacobian(module, input, 0.1, 2)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input, 0, 2)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+function rec_pool_test.DebugSquareSquare()
+   local in1 = torch.rand(10,20)
+   local module = nn.DebugSquare('square')
+   local out = module:forward(in1)
+   local err = out:dist(in1:cmul(in1))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   --local inj = math.random(5,10)
+   --local ink = math.random(5,10)
+   local input = torch.Tensor(ini):zero()
+
+   local module = nn.DebugSquare('square')
+
+   local err = jac.testJacobian(module, input, -2, 2)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   --local ferr, berr = jac.testIO(module, input, -2, 2)
+   --mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   --mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.DebugSquareSqrt()
+   local in1 = torch.rand(10,20)
+   local module = nn.DebugSquare('sqrt')
+   local out = module:forward(in1)
+   local err = out:dist(in1:sqrt())
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   --local inj = math.random(5,10)
+   --local ink = math.random(5,10)
+   local input = torch.Tensor(ini):zero()
+
+   local module = nn.DebugSquare('sqrt')
+
+   local err = jac.testJacobian(module, input, 0.1, 2)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   --local ferr, berr = jac.testIO(module, input, 0.1, 2)
+   --mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   --mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+function rec_pool_test.LogSoftMax()
+   local ini = math.random(10,20)
+   --local inj = math.random(10,20)
+   local input = torch.Tensor(ini):zero()
+   local module = nn.LogSoftMax()
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, expprecision, 'error on state ') -- THIS REQUIRES LESS PRECISION THAN NORMAL, presumably because the exponential tends to make backpropagation unstable
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+function rec_pool_test.AddConstant()
+   local in1 = torch.rand(10,20)
+   local random_addend = math.random()
+   local module = nn.AddConstant(random_addend)
+   local out = module:forward(in1)
+   local err = out:dist(in1:add(random_addend))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.AddConstant(random_addend)
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
 function create_parameterized_shrink_test(require_nonnegative_units)
    local function this_parameterized_shrink_test()
       local size = math.random(10,20)
@@ -89,12 +239,12 @@ function rec_pool_test.PairwiseDistance()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
 end
 
-function rec_pool_test.L2Cost()
+function rec_pool_test.CMulTable()
    local ini = math.random(10,20)
    local inj = math.random(10,20)
    local ink = math.random(10,20)
    local input = {torch.Tensor(ini):zero(), torch.Tensor(ini):zero()}
-   local module = nn.L2Cost()
+   local module = nn.CMulTable()
 
    local err = jac.testJacobianTable(module,input)
    mytester:assertlt(err,precision, 'error on state ')
@@ -102,6 +252,65 @@ function rec_pool_test.L2Cost()
    local ferr,berr = jac.testIOTable(module,input)
    mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
    mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.CDivTable()
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local ink = math.random(10,20)
+   local input = {torch.Tensor(ini):zero(), torch.Tensor(ini):zero()}
+   local module = nn.CDivTable()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+function rec_pool_test.L2Cost()
+   print(' testing L2Cost!!!')
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local ink = math.random(10,20)
+   local input = {torch.Tensor(ini):zero(), torch.Tensor(ini):zero()}
+   local module = nn.L2Cost(math.random(), 2)
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (2 inputs) ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (2 inputs) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (2 inputs) - i/o backward err ')
+
+   input = torch.Tensor(ini):zero()
+   module = nn.L2Cost(math.random(), 1)
+
+   err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (1 input) ')
+
+   ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (1 input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (1 input) - i/o backward err ')
+end
+
+
+function rec_pool_test.CauchyCost()
+   print(' testing CauchyCost!!!')
+   local ini = math.random(10,20)
+   --local inj = math.random(10,20)
+   --local ink = math.random(10,20)
+   local input = torch.Tensor(ini):zero()
+   local module = nn.CauchyCost(math.random())
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (2 inputs) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (2 inputs) - i/o backward err ')
 end
 
 
@@ -232,11 +441,24 @@ end
 
 function rec_pool_test.full_network_test()
    dofile('build_recpool_net.lua')
-   local layer_size = {10, 10} --{math.random(10,20), math.random(10,20)}
+   local layer_size = {math.random(10,20), math.random(10,20), math.random(10,20), math.random(10,20)} 
+   --local layer_size = {10, 20, 10, 10}
+   local target = math.random(layer_size[4])
    local L1_lambda = math.random()
    local L2_lambda = math.random()
-   local model, criteria_list, forward_dictionary, inverse_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = build_recpool_net(layer_size, L2_lambda, L1_lambda, 5, true) -- NORMALIZATION IS DISABLED!!!
-   local parameter_list = {forward_dictionary.weight, forward_dictionary.bias, inverse_dictionary.weight, inverse_dictionary.bias, explaining_away.weight, explaining_away.bias, shrink.shrink_val, shrink.negative_shrink_val}
+   local L2_reconstruction_lambda = math.random() 
+   local L2_position_unit_lambda = math.random() 
+   local pooling_cauchy_lambda = math.random()
+   local mask_cauchy_lambda = math.random()
+   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+      build_recpool_net(layer_size, L2_lambda, L1_lambda, L2_reconstruction_lambda, L2_position_unit_lambda, pooling_cauchy_lambda, mask_cauchy_lambda, 5, true) -- NORMALIZATION IS DISABLED!!!
+--layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L2_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_cauchy_lambda, num_ista_iterations, DISABLE_NORMALIZATION)
+   local parameter_list = {decoding_dictionary.weight, decoding_dictionary.bias, encoding_dictionary.weight, encoding_dictionary.bias, explaining_away.weight, explaining_away.bias, shrink.shrink_val, shrink.negative_shrink_val, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.bias, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.bias, classification_dictionary.weight, classification_dictionary.bias}
+
+   model:set_target(target)
+   
+   print('Since the model contains a LogSoftMax, use precision ' .. expprecision .. ' rather than ' .. precision)
+   local precision = 3*expprecision
 
    local function copy_table(t)
       local t2 = {}
@@ -249,40 +471,51 @@ function rec_pool_test.full_network_test()
 
    local input = torch.Tensor(layer_size[1]):zero()
 
+
+   --[[
+   local test_input = torch.rand(layer_size[1])
+   model:updateOutput(test_input)
+   local test_gradInput = torch.rand(model.output:size())
+   model:updateGradInput(test_input, test_gradInput)
+   io.read()
+   --]]
+
+
+
    local err = jac.testJacobian(model, input)
    mytester:assertlt(err,precision, 'error on processing chain state ')
-   
-   print('forward dictionary weight')
-   local err = jac.testJacobianParameters(model, input, forward_dictionary.weight, forward_dictionary.gradWeight)
-   mytester:assertlt(err,precision, 'error on forward dictionary weight ')   
+
+   print('decoding dictionary weight')
+   local err = jac.testJacobianParameters(model, input, decoding_dictionary.weight, decoding_dictionary.gradWeight)
+   mytester:assertlt(err,precision, 'error on decoding dictionary weight ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 1)
-   local err = jac.testJacobianUpdateParameters(model, input, forward_dictionary.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on forward dictionary weight [full processing chain, direct update] ')
-   
-   print('forward dictionary bias')
-   local err = jac.testJacobianParameters(model, input, forward_dictionary.bias, forward_dictionary.gradBias)
-   mytester:assertlt(err,precision, 'error on forward dictionary bias ')   
+   local err = jac.testJacobianUpdateParameters(model, input, decoding_dictionary.weight, unused_params)
+   mytester:assertlt(err,precision, 'error on decoding dictionary weight [full processing chain, direct update] ')
+
+   print('decoding dictionary bias')
+   local err = jac.testJacobianParameters(model, input, decoding_dictionary.bias, decoding_dictionary.gradBias)
+   mytester:assertlt(err,precision, 'error on decoding dictionary bias ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 2)
-   local err = jac.testJacobianUpdateParameters(model, input, forward_dictionary.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on forward dictionary bias [full processing chain, direct update] ')
+   local err = jac.testJacobianUpdateParameters(model, input, decoding_dictionary.bias, unused_params)
+   mytester:assertlt(err,precision, 'error on decoding dictionary bias [full processing chain, direct update] ')
    
-   print('inverse dictionary weight')
-   local err = jac.testJacobianParameters(model, input, inverse_dictionary.weight, inverse_dictionary.gradWeight)
-   mytester:assertlt(err,precision, 'error on inverse dictionary weight ')   
+   print('encoding dictionary weight')
+   local err = jac.testJacobianParameters(model, input, encoding_dictionary.weight, encoding_dictionary.gradWeight)
+   mytester:assertlt(err,precision, 'error on encoding dictionary weight ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 3)
-   local err = jac.testJacobianUpdateParameters(model, input, inverse_dictionary.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on inverse dictionary weight [full processing chain, direct update] ')
+   local err = jac.testJacobianUpdateParameters(model, input, encoding_dictionary.weight, unused_params)
+   mytester:assertlt(err,precision, 'error on encoding dictionary weight [full processing chain, direct update] ')
    
-   print('inverse dictionary bias')
-   local err = jac.testJacobianParameters(model, input, inverse_dictionary.bias, inverse_dictionary.gradBias)
-   mytester:assertlt(err,precision, 'error on inverse dictionary bias ')   
+   print('encoding dictionary bias')
+   local err = jac.testJacobianParameters(model, input, encoding_dictionary.bias, encoding_dictionary.gradBias)
+   mytester:assertlt(err,precision, 'error on encoding dictionary bias ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 4)
-   local err = jac.testJacobianUpdateParameters(model, input, inverse_dictionary.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on inverse dictionary bias [full processing chain, direct update] ')
+   local err = jac.testJacobianUpdateParameters(model, input, encoding_dictionary.bias, unused_params)
+   mytester:assertlt(err,precision, 'error on encoding dictionary bias [full processing chain, direct update] ')
 
    -- explaining_away uses shared weights.  We can only test the gradient using testJacobianParameters if we sum the backwards gradient at all shared copies, since the parameter perturbation in forward affects all shared copies
    local explaining_away_gradWeight_array = {}
@@ -290,13 +523,13 @@ function rec_pool_test.full_network_test()
       explaining_away_gradWeight_array[i] = ea.gradWeight
    end
    print('explaining away weight')
-   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array)
+   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array, -1, 1) -- don't allow large weights, or the messages exhibit exponential growth
    mytester:assertlt(err,precision, 'error on explaining away weight ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 5)
-   local err = jac.testJacobianUpdateParameters(model, input, explaining_away.weight, unused_params)
+   local err = jac.testJacobianUpdateParameters(model, input, explaining_away.weight, unused_params, -1, 1) -- don't allow large weights, or the messages exhibit exponential growth
    mytester:assertlt(err,precision, 'error on explaining away weight [full processing chain, direct update] ')
-   
+
    local explaining_away_gradBias_array = {}
    for i,ea in ipairs(explaining_away_copies) do
       explaining_away_gradBias_array[i] = ea.gradBias
@@ -321,20 +554,85 @@ function rec_pool_test.full_network_test()
    local err = jac.testJacobianUpdateParameters(model, input, shrink.shrink_val, unused_params)
    mytester:assertlt(err,precision, 'error on shrink shrink_val [full processing chain, direct update] ')
 
-   layer_size[2] = 20
-   model, criteria_list, forward_dictionary, inverse_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = build_recpool_net(layer_size, L2_lambda, L1_lambda, 500) 
+   --[[
+   print(encoding_pooling_dictionary.weight)
+   print(encoding_pooling_dictionary.bias)
+   print(decoding_pooling_dictionary.weight)
+   print(decoding_pooling_dictionary.bias)
+   --]]
+
+   print('decoding pooling dictionary weight')
+   local err = jac.testJacobianParameters(model, input, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.gradWeight)
+   mytester:assertlt(err,precision, 'error on decoding pooling dictionary weight ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 9)
+   local err = jac.testJacobianUpdateParameters(model, input, decoding_pooling_dictionary.weight, unused_params)
+   mytester:assertlt(err,precision, 'error on decoding pooling dictionary weight [full processing chain, direct update] ')
+
+   print('decoding pooling dictionary bias')
+   local err = jac.testJacobianParameters(model, input, decoding_pooling_dictionary.bias, decoding_pooling_dictionary.gradBias)
+   mytester:assertlt(err,precision, 'error on decoding pooling dictionary bias ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 10)
+   local err = jac.testJacobianUpdateParameters(model, input, decoding_pooling_dictionary.bias, unused_params)
+   mytester:assertlt(err,precision, 'error on decoding pooling dictionary bias [full processing chain, direct update] ')
+
+   -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
+   print('encoding pooling dictionary weight')
+   local err = jac.testJacobianParameters(model, input, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.gradWeight, 0, 2)
+   mytester:assertlt(err,precision, 'error on encoding pooling dictionary weight ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 11)
+   local err = jac.testJacobianUpdateParameters(model, input, encoding_pooling_dictionary.weight, unused_params, 0, 2)
+   mytester:assertlt(err,precision, 'error on encoding pooling dictionary weight [full processing chain, direct update] ')
+   
+   print('encoding pooling dictionary bias')
+   local err = jac.testJacobianParameters(model, input, encoding_pooling_dictionary.bias, encoding_pooling_dictionary.gradBias, 0, 2)
+   mytester:assertlt(err,precision, 'error on encoding pooling dictionary bias ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 12)
+   local err = jac.testJacobianUpdateParameters(model, input, encoding_pooling_dictionary.bias, unused_params, 0, 2)
+   mytester:assertlt(err,precision, 'error on encoding pooling dictionary bias [full processing chain, direct update] ')
+
+   print('classification pooling dictionary weight')
+   local err = jac.testJacobianParameters(model, input, classification_dictionary.weight, classification_dictionary.gradWeight)
+   mytester:assertlt(err,precision, 'error on classification dictionary weight ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 13)
+   local err = jac.testJacobianUpdateParameters(model, input, classification_dictionary.weight, unused_params)
+   mytester:assertlt(err,precision, 'error on classification dictionary weight [full processing chain, direct update] ')
+   
+   print('classification dictionary bias')
+   local err = jac.testJacobianParameters(model, input, classification_dictionary.bias, classification_dictionary.gradBias)
+   mytester:assertlt(err,precision, 'error on encoding pooling dictionary bias ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 14)
+   local err = jac.testJacobianUpdateParameters(model, input, classification_dictionary.bias, unused_params)
+   mytester:assertlt(err,precision, 'error on classification dictionary bias [full processing chain, direct update] ')
+
+
+
+   local layer_size = {10, 20, 10, 10}
+   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+      build_recpool_net(layer_size, L2_lambda, L1_lambda, L2_reconstruction_lambda, L2_position_unit_lambda, pooling_cauchy_lambda, mask_cauchy_lambda, 50) -- normalization is not disabled
+
    local test_input = torch.rand(layer_size[1])
+   local target = math.random(layer_size[4])
+   model:set_target(target)
+
    model:updateOutput(test_input)
    print(test_input)
-   print(forward_dictionary.output)
+   print(decoding_dictionary.output)
+   print(shrink_copies[#shrink_copies].output)
 
    --[[
-   local shrink_output_tensor = torch.Tensor(forward_dictionary.output:size(1), #shrink_copies)
+   local shrink_output_tensor = torch.Tensor(decoding_dictionary.output:size(1), #shrink_copies)
    for i = 1,#shrink_copies do
-      shrink_output_tensor:select(2,i):copy(forward_dictionary:updateOutput(shrink_copies[i].output))
+      shrink_output_tensor:select(2,i):copy(decoding_dictionary:updateOutput(shrink_copies[i].output))
    end
    print(shrink_output_tensor)
    --]]
+
 end
 
 
@@ -346,6 +644,7 @@ end
 --local num_tests = 0 
 --for name in pairs(rec_pool_test) do num_tests = num_tests + 1; print('test ' .. num_tests .. ' is ' .. name) end
 --print('number of tests: ', num_tests)
+math.randomseed(os.clock())
 
 mytester:add(rec_pool_test)
 --mytester:add(other_tests)
