@@ -6,7 +6,7 @@ DEBUG_shrink = true -- don't require that the shrink value be non-negative, to f
 DEBUG_L2 = false
 DEBUG_L1 = false
 DEBUG_OUTPUT = false
-FORCE_NONNEGATIVE_SHRINK_OUTPUT = false -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
+FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
 
 -- the input is a single tensor x (not a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -267,11 +267,13 @@ end
 
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use DISABLE_NORMALIZATION when testing parameter updates
-function build_recpool_net(layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L2_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_cauchy_lambda, mask_cauchy_lambda, num_ista_iterations, DISABLE_NORMALIZATION)
+function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION) 
+   -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {} -- list of all criteria comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    DISABLE_NORMALIZATION = DISABLE_NORMALIZATION or false
 
    local model = nn.Sequential()
+   -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION) 
    local decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, DISABLE_NORMALIZATION) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION) 
@@ -286,7 +288,7 @@ function build_recpool_net(layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L
    local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), true) -- on each iteration classfication_criterion:setTarget(target) must be called
 
    local L1_loss_function = nn.L1Cost()
-   local cauchy_loss_function = nn.CauchyCost(pooling_cauchy_lambda)
+   local cauchy_loss_function = nn.CauchyCost(lambdas.pooling_output_cauchy_lambda)
 
 
    encoding_feature_extraction_dictionary.weight:copy(decoding_feature_extraction_dictionary.weight:t())
@@ -298,6 +300,7 @@ function build_recpool_net(layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
+   --base_explaining_away.weight:mul(0.01)
    base_shrink.shrink_val:fill(0.01)
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
 
@@ -314,14 +317,14 @@ function build_recpool_net(layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L
    -- reconstruct the input D*z [2] from the code z [1], leaving [1] and [3] unchanged
    model:add(linearly_reconstruct_input(decoding_feature_extraction_dictionary, 3))
    -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1]
-   model:add(build_L2_reconstruction_loss(ista_L2_lambda, criteria_list)) 
+   model:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
    -- calculate the L1 magnitude of the shrunk code z [1], returning the shrunk code z [1] unchanged
-   model:add(build_sparsifying_loss(L1_loss_function, ista_L1_lambda, layer_size[2], criteria_list))
+   model:add(build_sparsifying_loss(L1_loss_function, lambdas.ista_L1_lambda, layer_size[2], criteria_list))
 
    -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], and the preserved input z [2]
    model:add(build_pooling(encoding_pooling_dictionary, decoding_pooling_dictionary))
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1]
-   model:add(build_pooling_L2_loss(decoding_pooling_dictionary, pooling_L2_reconstruction_lambda, pooling_L2_position_unit_lambda, mask_cauchy_lambda, criteria_list))
+   model:add(build_pooling_L2_loss(decoding_pooling_dictionary, lambdas.pooling_L2_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, lambdas.pooling_mask_cauchy_lambda, criteria_list))
    -- calculate the L1 magnitude of the pooling code s [1], returning the pooling code s [1] unchanged
    model:add(build_sparsifying_loss(cauchy_loss_function, nil, layer_size[3], criteria_list)) 
    -- ALSO ADD IN AND L1 PENALTY ON THE MASK INDUCED BY THE POOLING UNITS!!!
@@ -332,7 +335,8 @@ function build_recpool_net(layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L
       --model:add(nn.ZeroModule())
       model:add(classification_criterion) 
 
-      model.set_target = function (self, new_target) 
+      --model.set_target = function (self, new_target) 
+      function model:set_target(new_target) 
 	 classification_criterion:setTarget(new_target) 
       end 
 
@@ -341,26 +345,34 @@ function build_recpool_net(layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L
       table.insert(criteria_list, classification_criterion)
       print('inserting classification negative log likelihood loss into criteria list, resulting in ' .. #criteria_list .. ' entries')
    else
-      model.set_target = function() print('WARNING: set_target does nothing when using DEBUG_OUTPUT') end
+      function model:set_target(new_target) print('WARNING: set_target does nothing when using DEBUG_OUTPUT') end
    end
 
    --model:add(nn.ParallelDistributingTable('throw away final output')) -- if no modules are added to a ParallelDistributingTable, it throws away its input; updateGradInput produces a tensor of zeros   
 
    if not(DEBUG_OUTPUT) then
       model.original_updateOutput = model.updateOutput
+      
+      -- note that this is different than the original model.output; model is a nn.Sequential, which ends in the classification_criterion, and thus consists of a single number
+      -- it is not desirable to have the model produce a tensor output, since this would imply a corresponding gradOutput, at least in the standard implementation, whereas we want all gradients to be internally generated.  
       function model:updateOutput(input)
 	 model:original_updateOutput(input)
 	 local summed_loss = 0
 	 for i = 1,#criteria_list do
 	    summed_loss = summed_loss + criteria_list[i].output
 	 end
+	 -- this is necessary to maintain compatibility with ModifiedJacobian, which directly accesses the output field of the tested module
 	 model.output = torch.Tensor(1)
 	 model.output[1] = summed_loss
-	 return model.output
+	 return model.output -- while it is tempting to return classification_dictionary.output here, it risks incompatibility with ModifiedJacobian and any other package that expects a single return value
+      end
+
+      function model:get_classifier_output()
+	 return classification_dictionary.output
       end
    end
 
-   print('criteria_list contains ' .. #criteria_list .. ' entries')
+   print('criteria_list contains ' .. #criteria_list .. ' entries')      
 
    return model, criteria_list, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
 end

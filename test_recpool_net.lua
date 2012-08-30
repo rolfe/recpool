@@ -1,6 +1,7 @@
 require 'torch'
 require 'nn'
 dofile('init.lua')
+dofile('build_recpool_net.lua')
 
 local mytester = torch.Tester()
 local jac
@@ -9,6 +10,7 @@ local precision = 1e-5
 local expprecision = 1e-4
 
 local rec_pool_test = {}
+local run_test = {}
 local other_tests = {}
 
 function rec_pool_test.Square()
@@ -76,7 +78,7 @@ function rec_pool_test.Sqrt()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
 end
 
-
+--[[
 function rec_pool_test.DebugSquareSquare()
    local in1 = torch.rand(10,20)
    local module = nn.DebugSquare('square')
@@ -120,7 +122,7 @@ function rec_pool_test.DebugSquareSqrt()
    --mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
    --mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
 end
-
+--]]
 
 function rec_pool_test.LogSoftMax()
    local ini = math.random(10,20)
@@ -440,19 +442,20 @@ end
 
 
 function rec_pool_test.full_network_test()
-   dofile('build_recpool_net.lua')
+   --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
+
    local layer_size = {math.random(10,20), math.random(10,20), math.random(10,20), math.random(10,20)} 
    --local layer_size = {10, 20, 10, 10}
    local target = math.random(layer_size[4])
-   local L1_lambda = math.random()
-   local L2_lambda = math.random()
-   local L2_reconstruction_lambda = math.random() 
-   local L2_position_unit_lambda = math.random() 
-   local pooling_cauchy_lambda = math.random()
-   local mask_cauchy_lambda = math.random()
+   local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
+		    ista_L1_lambda = math.random(), 
+		    pooling_L2_reconstruction_lambda = math.random(), 
+		    pooling_L2_position_unit_lambda = math.random(), 
+		    pooling_output_cauchy_lambda = math.random(), 
+		    pooling_mask_cauchy_lambda = math.random()}
    local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-      build_recpool_net(layer_size, L2_lambda, L1_lambda, L2_reconstruction_lambda, L2_position_unit_lambda, pooling_cauchy_lambda, mask_cauchy_lambda, 5, true) -- NORMALIZATION IS DISABLED!!!
---layer_size, ista_L2_lambda, ista_L1_lambda, pooling_L2_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_cauchy_lambda, num_ista_iterations, DISABLE_NORMALIZATION)
+      build_recpool_net(layer_size, lambdas, 5, true) -- NORMALIZATION IS DISABLED!!!
+
    local parameter_list = {decoding_dictionary.weight, decoding_dictionary.bias, encoding_dictionary.weight, encoding_dictionary.bias, explaining_away.weight, explaining_away.bias, shrink.shrink_val, shrink.negative_shrink_val, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.bias, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.bias, classification_dictionary.weight, classification_dictionary.bias}
 
    model:set_target(target)
@@ -470,16 +473,6 @@ function rec_pool_test.full_network_test()
    local unused_params
 
    local input = torch.Tensor(layer_size[1]):zero()
-
-
-   --[[
-   local test_input = torch.rand(layer_size[1])
-   model:updateOutput(test_input)
-   local test_gradInput = torch.rand(model.output:size())
-   model:updateGradInput(test_input, test_gradInput)
-   io.read()
-   --]]
-
 
 
    local err = jac.testJacobian(model, input)
@@ -523,11 +516,11 @@ function rec_pool_test.full_network_test()
       explaining_away_gradWeight_array[i] = ea.gradWeight
    end
    print('explaining away weight')
-   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array, -1, 1) -- don't allow large weights, or the messages exhibit exponential growth
+   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
    mytester:assertlt(err,precision, 'error on explaining away weight ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 5)
-   local err = jac.testJacobianUpdateParameters(model, input, explaining_away.weight, unused_params, -1, 1) -- don't allow large weights, or the messages exhibit exponential growth
+   local err = jac.testJacobianUpdateParameters(model, input, explaining_away.weight, unused_params, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
    mytester:assertlt(err,precision, 'error on explaining away weight [full processing chain, direct update] ')
 
    local explaining_away_gradBias_array = {}
@@ -609,12 +602,20 @@ function rec_pool_test.full_network_test()
    table.remove(unused_params, 14)
    local err = jac.testJacobianUpdateParameters(model, input, classification_dictionary.bias, unused_params)
    mytester:assertlt(err,precision, 'error on classification dictionary bias [full processing chain, direct update] ')
+end
 
-
-
+function rec_pool_test.ISTA_reconstruction()
+   -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
    local layer_size = {10, 20, 10, 10}
+   local target = math.random(layer_size[4])
+   local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
+		    ista_L1_lambda = math.random(), 
+		    pooling_L2_reconstruction_lambda = math.random(), 
+		    pooling_L2_position_unit_lambda = math.random(), 
+		    pooling_output_cauchy_lambda = math.random(), 
+		    pooling_mask_cauchy_lambda = math.random()}
    local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-      build_recpool_net(layer_size, L2_lambda, L1_lambda, L2_reconstruction_lambda, L2_position_unit_lambda, pooling_cauchy_lambda, mask_cauchy_lambda, 50) -- normalization is not disabled
+      build_recpool_net(layer_size, lambdas, 50) -- normalization is not disabled
 
    local test_input = torch.rand(layer_size[1])
    local target = math.random(layer_size[4])
@@ -624,6 +625,31 @@ function rec_pool_test.full_network_test()
    print(test_input)
    print(decoding_dictionary.output)
    print(shrink_copies[#shrink_copies].output)
+
+   local test_gradInput = torch.zeros(model.output:size())
+   model:updateGradInput(test_input, test_gradInput)
+
+
+
+   -- confirm that parameter sharing is working properly
+   for i = 1,#shrink_copies do
+      if shrink_copies[i].shrink_val:storage() ~= shrink.shrink_val:storage() then
+	 print('ERROR!!!  shrink_copies[' .. i .. '] does not share parameters with base shrink!!!')
+	 io.read()
+      end
+      --print('shrink_copies[' .. i .. '] gradInput', shrink_copies[i].gradInput)
+      --print('shrink_copies[' .. i .. '] output', shrink_copies[i].output)
+   end
+
+   for i = 1,#explaining_away_copies do
+      if (explaining_away_copies[i].weight:storage() ~= explaining_away.weight:storage()) or (explaining_away_copies[i].bias:storage() ~= explaining_away.bias:storage()) then
+	 print('ERROR!!!  explaining_away_copies[' .. i .. '] does not share parameters with base explaining_away!!!')
+	 io.read()
+      end
+      --print('explaining_away_copies[' .. i .. '] gradInput', explaining_away_copies[i].gradInput)
+      --print('explaining_away_copies[' .. i .. '] output', explaining_away_copies[i].output)
+   end
+
 
    --[[
    local shrink_output_tensor = torch.Tensor(decoding_dictionary.output:size(1), #shrink_copies)
@@ -647,6 +673,7 @@ end
 math.randomseed(os.clock())
 
 mytester:add(rec_pool_test)
+--mytester:add(run_test)
 --mytester:add(other_tests)
 
 jac = nn.Jacobian

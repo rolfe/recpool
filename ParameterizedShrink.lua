@@ -1,3 +1,7 @@
+-- A module that performs a "soft"-shrink operation (reduce the magnitude of each output by a constant, with the change bounded at zero), where the magnitude of the shrink is parameterized separately for each input index.
+-- if nonnegative_units is true, the outputs are bounded below at zero
+-- if ignore_nonnegative_constraint_on_shrink is true, the shrink parameters can go below zero.  This is not computationally sensible, but ensures that estimations of the Jacobian based upon parameter perturbations match those calculated by backpropagation
+
 local ParameterizedShrink, parent = torch.class('nn.ParameterizedShrink', 'nn.Module')
 
 -- EFFICIENCY NOTE: when using non-negative units this could be accomplished more efficiently using an unparameterized, one-sided rectification, just like Glorot, Bordes, and Bengio, along with a non-positive bias in the inverse_dictionary.  However, both nn.SoftShrink and the shrinkage utility method implemented in kex are two-sided.

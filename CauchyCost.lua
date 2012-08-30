@@ -1,3 +1,5 @@
+-- A sparsifying regularizer L(x) = 0.5 * \sum_i log(1 + x_i^2), similar to L1, which exactly induces pooling when used in a bilinear reconstruction, where the other set of variables is subject to an L2 regularizer, and the weight matrix consists of disjoint collections of all-ones.  
+
 local CauchyCost, parent = torch.class('nn.CauchyCost', 'nn.Module')
 
 function CauchyCost:__init(cauchy_lambda)

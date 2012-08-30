@@ -1,3 +1,5 @@
+-- Wrap a criterion, for which only a single input comes from the network, into a module.  The criterion can also take a fixed target, specified by setTarget.  DEBUG_MODE, presently disable, potentially outputs diagnostic messages during each operation.
+
 local L1CriterionModule, parent = torch.class('nn.L1CriterionModule', 'nn.Module')
 
 function L1CriterionModule:__init(criterion, DEBUG_MODE)
@@ -20,7 +22,7 @@ function L1CriterionModule:updateOutput(input)
    return self.output
 end
     
-function L1CriterionModule:updateGradInput(input, gradOutput)
+function L1CriterionModule:updateGradInput(input) -- we leave out the standard gradOutput argument here to make it clear that L1CriterionModule's gradInput is sui generis
   self.gradInput = self.criterion:updateGradInput(input, self.target)
    --[[
    if self.DEBUG_MODE then

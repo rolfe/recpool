@@ -1,3 +1,6 @@
+-- A module implementing the L2 distance between the (first two) elements of a table of tensors.  
+-- The output is a single number (the desired L2 cost).  A single gradOutput, if provided, is used to scale gradInput.
+
 local L2Cost, parent = torch.class('nn.L2Cost', 'nn.Module')
 
 function L2Cost:__init(L2_lambda, num_inputs)

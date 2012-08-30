@@ -1,3 +1,7 @@
+-- Module that passes on a sub-array of an array of tensors.
+-- SelectTable should only be used in conjunction with ParallelDistributingTable.  SelectTable returns gradInputs of nil rather than all zeros to save time when an input has been selected out
+-- ParallelDistributingTable expects each component module to produce a single tensor, despite taking a table of tensors as input.  SelectTable, in contrast, allows its output to take as input and return as gradOutput a table of tensors.  In general, the modules added to a ParallelDistributingTable will be Sequences, beginning with a SelectTable.  Some module in the sequence will take in the table of tensors produced by SelectTable and return a single tensor as output.  
+
 local SelectTable, parent = torch.class('nn.SelectTable', 'nn.Module')
 
 -- selected_indices is an array of indices to be output (in the desired order)
@@ -34,8 +38,6 @@ function SelectTable:updateOutput(input)
 end
 
 
--- SelectTable should only be used in conjunction with ParallelDistributingTable.  SelectTable returns gradInputs of nil rather than all zeros to save time when an input has been selected out
--- ParallelDistributingTable expects each component module to produce a single tensor, despite taking a table of tensors as input.  SelectTable, in contrast, allows its output to take as input and return as gradOutput a table of tensors.  In general, the modules added to a ParallelDistributingTable will be Sequences, beginning with a SelectTable.  Some module in the sequence will take in the table of tensors produced by SelectTable and return a single tensor as output.  
 function SelectTable:updateGradInput(input, gradOutput)
    self.gradInput = {}
    if (#self.selected_indices > 1) or (self.force_table_output == true) then

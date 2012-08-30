@@ -1,3 +1,7 @@
+-- Specialize the nn.Linear module to have zero bias, non-negative weight matrix, and/or a weight matrix with columns normalized to have L2 norm of one.  We build this on top of nn.Linear rather than defining a potentially more efficient class from scratch so that any changes to nn.Linear automatically propagate to nn.ConstrainedLinear.  
+
+-- desired_constraints is an array of strings specifying the constraints to be imposed.  If disable_normalized_updates is true, then the constraints are only imposed during initialization
+
 local ConstrainedLinear, parent = torch.class('nn.ConstrainedLinear', 'nn.Linear')
 
 function ConstrainedLinear:__init(input_size, output_size, desired_constraints, disable_normalized_updates)

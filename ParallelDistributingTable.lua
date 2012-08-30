@@ -1,7 +1,8 @@
-local ParallelDistributingTable, parent = torch.class('nn.ParallelDistributingTable', 'nn.ParallelTable')
-
--- It's not possible to split the output of a module within a ParallelTable, since the gradOutputs don't align with the modules, and cannot be routed one-to-one
+-- A module that takes in an array of tensors, allows each component module to potentially receive all inputs, and dynamically composes an output array of tensors by concatenating a single tensor output from each component module.
 -- Each module added to a PDT takes in the table of all inputs and returns a single tensor as output.  Each module is thus expected to produce a table of gradInputs matching the table of inputs.  However, the entries of this table are allowed to be nil, in which case they are treated like a tensor of all zeros.  In general, PDT should only be used in conjunction with SelectTables, which route both the inputs and gradInputs appropriately.  We'd like to avoid allocating new memory each time updateGradInput is called, so gradInputs will maintain its own gradInput tensors when necessary, and add from the component modules.  If a given input only feeds into a single module, the modules gradOutput is passed through directly, rather than copied to local storage, for efficiency.  
+-- It's not possible to split the output of a module within a ParallelTable, since the gradOutputs don't align with the modules, and cannot be routed one-to-one
+
+local ParallelDistributingTable, parent = torch.class('nn.ParallelDistributingTable', 'nn.ParallelTable')
 
 function ParallelDistributingTable:__init(name)
    parent.__init(self)
