@@ -26,6 +26,12 @@ function ParameterizedShrink:__init(size, nonnegative_units, ignore_nonnegative_
    self.ignore_nonnegative_constraint_on_shrink = ignore_nonnegative_constraint_on_shrink
 end
 
+function ParameterizedShrink:repair()
+   if not(self.ignore_nonnegative_constraint_on_shrink) then
+      self.shrink_val[torch.le(self.shrink_val, 0)] = 0 -- This causes errors to be reported by Jacobian, since the parameter update is not linear in the gradient
+   end
+   self.negative_shrink_val:mul(self.shrink_val, -1)
+end
 
 function ParameterizedShrink:reset(new_shrink_val)
    if type(new_shrink_val) == 'number' then
@@ -99,17 +105,10 @@ function ParameterizedShrink:accUpdateGradParameters(input, gradOutput, lr)
    self:accGradParameters(input, gradOutput, -lr)
    self.grad_shrink_val = this_grad_shrink_val
 
-   if not(self.ignore_nonnegative_constraint_on_shrink) then
-      self.shrink_val[torch.le(self.shrink_val, 0)] = 0 -- This causes errors to be reported by Jacobian, since the parameter update is not linear in the gradient
-   end
-   self.negative_shrink_val:mul(self.shrink_val, -1)
+   self:repair()
 end
 
 function ParameterizedShrink:updateParameters(learningRate)
    parent.updateParameters(self, learningRate)
-
-   if not(self.ignore_nonnegative_constraint_on_shrink) then
-      self.shrink_val[torch.le(self.shrink_val, 0)] = 0 -- This causes errors to be reported by Jacobian, since the parameter update is not linear in the gradient
-   end
-   self.negative_shrink_val:mul(self.shrink_val, -1)
+   self:repair()
 end

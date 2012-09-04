@@ -140,11 +140,11 @@ end
 
 
 function rec_pool_test.AddConstant()
-   local in1 = torch.rand(10,20)
+   local input = torch.rand(10,20)
    local random_addend = math.random()
-   local module = nn.AddConstant(random_addend)
-   local out = module:forward(in1)
-   local err = out:dist(in1:add(random_addend))
+   local module = nn.AddConstant(input:size(), random_addend)
+   local out = module:forward(input)
+   local err = out:dist(input:add(random_addend))
    mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
 
    local ini = math.random(5,10)
@@ -152,7 +152,30 @@ function rec_pool_test.AddConstant()
    local ink = math.random(5,10)
    local input = torch.Tensor(ink, inj, ini):zero()
 
-   local module = nn.AddConstant(random_addend)
+   local module = nn.AddConstant(input:size(), random_addend)
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.MulConstant()
+   local input = torch.rand(10,20)
+   local random_addend = math.random()
+   local module = nn.MulConstant(input:size(), random_addend)
+   local out = module:forward(input)
+   local err = out:dist(input:mul(random_addend))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.MulConstant(input:size(), random_addend)
 
    local err = jac.testJacobian(module, input)
    mytester:assertlt(err, precision, 'error on state ')
@@ -516,7 +539,8 @@ function rec_pool_test.full_network_test()
       explaining_away_gradWeight_array[i] = ea.gradWeight
    end
    print('explaining away weight')
-   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
+   --local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
+   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away.gradWeight, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
    mytester:assertlt(err,precision, 'error on explaining away weight ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 5)
@@ -528,7 +552,8 @@ function rec_pool_test.full_network_test()
       explaining_away_gradBias_array[i] = ea.gradBias
    end
    print('explaining away bias')
-   local err = jac.testJacobianParameters(model, input, explaining_away.bias, explaining_away_gradBias_array)
+   --local err = jac.testJacobianParameters(model, input, explaining_away.bias, explaining_away_gradBias_array)
+   local err = jac.testJacobianParameters(model, input, explaining_away.bias, explaining_away.gradBias)
    mytester:assertlt(err,precision, 'error on explaining away bias ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 6)
@@ -540,7 +565,8 @@ function rec_pool_test.full_network_test()
       shrink_grad_shrink_val_array[i] = sh.grad_shrink_val
    end
    print('shrink shrink_val')
-   local err = jac.testJacobianParameters(model, input, shrink.shrink_val, shrink_grad_shrink_val_array)
+   --local err = jac.testJacobianParameters(model, input, shrink.shrink_val, shrink_grad_shrink_val_array)
+   local err = jac.testJacobianParameters(model, input, shrink.shrink_val, shrink.grad_shrink_val)
    mytester:assertlt(err,precision, 'error on shrink shrink_val ')   
    unused_params = copy_table(parameter_list)
    table.remove(unused_params, 7)
@@ -606,7 +632,7 @@ end
 
 function rec_pool_test.ISTA_reconstruction()
    -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
-   local layer_size = {10, 20, 10, 10}
+   local layer_size = {10, 60, 10, 10}
    local target = math.random(layer_size[4])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 

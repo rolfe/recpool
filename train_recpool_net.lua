@@ -26,7 +26,7 @@ function RecPoolTrainer:__init(model, opt)
    end
    self.opt = {}
 
-   self.opt.save = opt.save or 'results' -- subdirectory in which to save/log experiments
+   self.opt.log_directory = opt.log_directory or 'recpool_results' -- subdirectory in which to save/log experiments
    self.opt.visualize = opt.visualize or false -- visualize input data and weights during training
    self.opt.plot = opt.plot or false -- live plot
    self.opt.optimization = opt.optimization or 'SGD' -- optimization method: SGD | ASGD | CG | LBFGS
@@ -41,11 +41,18 @@ function RecPoolTrainer:__init(model, opt)
    self.classes = {'1','2','3','4','5','6','7','8','9','0'}
    
    -- This matrix records the current confusion across classes
-   self.confusion = optim.ConfusionMatrix(classes)
+   self.confusion = optim.ConfusionMatrix(self.classes)
+   self.loss_hist = {}   
+   self.grad_loss_hist = {}
+   for i = 1,#model.criteria_list.criteria do
+      self.loss_hist[i] = 0
+      self.grad_loss_hist[i] = 0
+   end
+   self.num_zero_hist = {}
    
    -- Log results to files
-   self.train_logger = optim.Logger(paths.concat(self.opt.save, 'train.log'))
-   --self.test_logger = optim.Logger(paths.concat(self.opt.save, 'test.log'))
+   self.train_logger = optim.Logger(paths.concat(self.opt.log_directory, 'train.log'))
+   --self.test_logger = optim.Logger(paths.concat(self.opt.log_directory, 'test.log'))
 
    -- Flatten the parameters (and gradParameters) into a single giant storage.  Each parameter and gradParameter tensor then views an offset into the common storage.  Shared parameters are only stored once, since Module:share() already sets the associated tensors to point to a common storage.
    if model then
@@ -68,7 +75,21 @@ end
 -- create closure to evaluate f(X) and df/dX; the closure is necessary so minibatch_inputs and self.minibatch_targets are correct.  
 -- self is provided by the column notation.  Thereafter, feval can be called without self as an argument, and the closure provides access to the (implicit) self argument of make_feval
 function RecPoolTrainer:make_feval()
+   --[[
+   local internal_counter = 1
+   local found_a_nan = false
+
+   local function find_nans(x)
+      if x ~= x then
+	 found_a_nan = true
+      end
+   end
+   --]]
+      
    local feval = function(current_params)
+      -- enforce all constraints on parameters, since the parameters are updated manually, rather than through updateParameters as generally expected
+      self.model:repair() -- THIS DOUBLES THE TIME REQUIRED PER ITERATION!  THE COMPONENT OPERATIONS SHOULD BE IMPLEMENTED IN C!!!
+
       -- get new parameters
       if current_params ~= self.parameters then 
 	 self.parameters:copy(current_params)
@@ -87,7 +108,7 @@ function RecPoolTrainer:make_feval()
 	 self.model:set_target(self.minibatch_targets[i])
 	 local err = self.model:updateOutput(self.minibatch_inputs[i])
 	 local output = self.model:get_classifier_output() -- while the model is a nn.Sequential, it terminates in a set of criteria
-	 total_err = total_err + err
+	 total_err = total_err + err[1] -- the err returned by updateOutput is a tensor with one element, to maintain compatibility with ModfifiedJacobian
 	 
 	 -- estimate the gradient of the error with respect to the parameters: d total_err / dW
 	 self.model:updateGradInput(self.minibatch_inputs[i]) -- gradOutput is not required, since all computation streams terminate in a criterion; implicitly pass nil
@@ -95,6 +116,19 @@ function RecPoolTrainer:make_feval()
 	 
 	 -- update the confusion matrix.  This keeps track of the predicted output (maximum output conditional posterior probability) for each true output class
 	 self.confusion:add(output, self.minibatch_targets[i])
+
+	 -- track the evolution of sparsity and reconstruction errors
+	 for j = 1,#(self.model.criteria_list.criteria) do
+	    self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
+	    --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
+	    if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
+	       for k = 1,#self.model.criteria_list.criteria[j].gradInput do
+		  self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
+	       end
+	    else
+	       self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
+	    end
+	 end
       end
       
       -- normalize gradients and f(X)
@@ -116,7 +150,7 @@ function RecPoolTrainer:train(train_data)
    local time = sys.clock()
    
    -- shuffle at each epoch
-   shuffle = torch.randperm(data:size) --was trsize
+   local shuffle = torch.randperm(data:size()) --was trsize
 
    -- do one epoch
    print('==> doing epoch on training data:')
@@ -139,25 +173,25 @@ function RecPoolTrainer:train(train_data)
       -- optimize on current mini-batch
       if self.opt.optimization == 'CG' then
          self.config = self.config or {maxIter = self.opt.max_iter}
-         optim.cg(feval, self.parameters, self.config)
+         optim.cg(self.feval, self.parameters, self.config)
 	 
       elseif self.opt.optimization == 'LBFGS' then
          self.config = self.config or {learningRate = self.opt.learning_rate,
                              maxIter = self.opt.max_iter,
                              nCorrection = 10}
-         optim.lbfgs(feval, self.parameters, self.config)
+         optim.lbfgs(self.feval, self.parameters, self.config)
 	 
       elseif self.opt.optimization == 'SGD' then
          self.config = self.config or {learningRate = self.opt.learning_rate,
                              weightDecay = self.opt.weight_decay,
                              momentum = self.opt.momentum,
                              learningRateDecay = 5e-7}
-         optim.sgd(feval, self.parameters, self.config)
+         optim.sgd(self.feval, self.parameters, self.config)
 	 
       elseif self.opt.optimization == 'ASGD' then
          self.config = self.config or {eta0 = self.opt.learning_rate,
                              t0 = trsize * self.opt.t0}
-         _,_,average = optim.asgd(feval, self.parameters, self.config)
+         _,_,average = optim.asgd(self.feval, self.parameters, self.config)
 	 
       else
          error('unknown optimization method')
@@ -179,13 +213,64 @@ function RecPoolTrainer:train(train_data)
    end
 
    self.confusion:zero()
+   for i = 1,#self.model.criteria_list.criteria do
+      print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:size() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:size())
+      self.loss_hist[i] = 0
+      self.grad_loss_hist[i] = 0
+   end
    
+   print('final shrink output', self.model.shrink_copies[#self.model.shrink_copies].output:unfold(1,10,10))
+   print('pooling reconstruction', self.model.decoding_pooling_dictionary.output:unfold(1,10,10))
+   print('pooling position units', self.model.L2_pooling_units.output:unfold(1,10,10))
+   print('pooling output', self.model.pooling_seq.output[1]:unfold(1,10,10))
+   -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!
+   -- check that without regularization, filters are meaningless.  Confirm that trainable pooling has an effect on the pooled filters.
+   plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.decoding_feature_extraction_dictionary.output)
+
+
    --[[
    -- save/log current net
-   local filename = paths.concat(self.opt.save, 'model.net')
+   local filename = paths.concat(self.opt.log_directory, 'model.net')
    os.execute('mkdir -p ' .. sys.dirname(filename))
    print('==> saving model to '..filename)
    torch.save(filename, self.model)
    --]]
 
 end
+
+
+
+	 --[[
+	 if internal_counter % 100 == 1 then
+	    print(output:unfold(1,10,10))
+	    print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	    print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
+	    print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
+	    print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	    print(self.model.classification_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	 end
+	 internal_counter = internal_counter + 1
+
+	 found_a_nan = false
+	 output:apply(find_nans)
+	 if found_a_nan then
+	    print('outputs')
+	    print(output:unfold(1,10,10))
+	    print(self.model.encoding_feature_extraction_dictionary.output:unfold(1,10,10))
+	    print(self.model.encoding_pooling_dictionary.output:unfold(1,10,10))
+	    print(self.model.ista_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+	    print(self.model.pooling_seq.output[1]:unfold(1,10,10)) -- one nan is present
+	    print(self.model.pooling_L2_loss_seq.output[1]:unfold(1,10,10))
+	    print(self.model.pooling_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+	    print(self.model.classification_dictionary.output:unfold(1,10,10))
+	    
+	    print('weights')
+	    print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	    print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
+	    print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
+	    print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	    print(self.model.classification_dictionary.weight)
+	    io.read()
+	 end
+	 --]]
+	    
