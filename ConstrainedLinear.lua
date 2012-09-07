@@ -4,9 +4,13 @@
 
 local ConstrainedLinear, parent = torch.class('nn.ConstrainedLinear', 'nn.Linear')
 
-function ConstrainedLinear:__init(input_size, output_size, desired_constraints, disable_normalized_updates)
+local check_for_nans
+
+function ConstrainedLinear:__init(input_size, output_size, desired_constraints, disable_normalized_updates, learning_scale_factor)
    parent.__init(self, input_size, output_size)
 
+   self.learning_scale_factor = learning_scale_factor or 1
+   
    local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'threshold_normalized_rows'}
    for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
       self[defined_constraints[i]] = false
@@ -40,6 +44,21 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
    end
 end
 
+function ConstrainedLinear:percentage_zeros_per_column(percentage)
+   for i = 1,self.weight:size(2) do
+      local current_column = self.weight:select(2,i)
+      for j = 1,current_column:size(1) do
+	 if math.random() < percentage then
+	    current_column[j] = 0
+	 end
+      end
+   end
+end
+
+function ConstrainedLinear:accGradParameters(input, gradOutput, scale)
+   parent.accGradParameters(self, input, gradOutput, self.learning_scale_factor * scale)
+end
+
 function ConstrainedLinear:updateParameters(learningRate) 
    parent.updateParameters(self, learningRate)
    self:repair()
@@ -50,11 +69,12 @@ function ConstrainedLinear:accUpdateGradParameters(input, gradOutput, lr)
    self:repair()
 end
 
--- ensure that the dictionary matrix has normalized columns
+-- ensure that the dictionary matrix has normalized columns (enforce a maximum norm, but not a minimum)
 local function do_normalize_columns(m, desired_norm_value)
    desired_norm_value = desired_norm_value or 1
    for i=1,m:size(2) do
-      m:select(2,i):div(m:select(2,i):norm()/desired_norm_value + 1e-12)
+      m:select(2,i):div(math.min(m:select(2,i):norm()/desired_norm_value, 1) + 1e-12)
+      --m:select(2,i):div(m:select(2,i):norm()/desired_norm_value + 1e-12)
    end
 end
 
@@ -70,6 +90,10 @@ local function do_threshold_normalize_rows(m)
 end
 
 function ConstrainedLinear:repair() -- after any sort of update or initialization, enforce the desired constraints
+   if self.non_negative then
+      self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
+   end
+
    if self.normalized_columns then
       do_normalize_columns(self.weight)
    elseif self.normalized_columns_pooling then
@@ -86,8 +110,22 @@ function ConstrainedLinear:repair() -- after any sort of update or initializatio
    elseif self.non_negative then -- we only need to enforce non-negativity on the bias if it is not already set to zero
       self.bias[torch.lt(self.bias,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
    end
-
-   if self.non_negative then
-      self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
-   end
+   
+   -- DEBUG ONLY!!!
+   -- check_for_nans(self)
 end 
+
+local function check_for_nans(self)
+   local found_a_nan
+   local function find_nans(x)
+      if x ~= x then
+	 found_a_nan = true
+      end
+   end
+   self.weight:apply(find_nans)
+   if found_a_nan then
+      print('Found a nan in ConstrainedLinear!!!')
+      print(self.weight)
+      io.read()
+   end
+end

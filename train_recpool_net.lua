@@ -19,6 +19,9 @@ require 'optim'   -- an optimization package, for online and batch methods
 
 local RecPoolTrainer = torch.class('nn.RecPoolTrainer')
 
+local check_for_nans
+local output_gradient_magnitudes
+
 function RecPoolTrainer:__init(model, opt)
    -- set default options
    if not opt then
@@ -77,18 +80,14 @@ end
 function RecPoolTrainer:make_feval()
    --[[
    local internal_counter = 1
-   local found_a_nan = false
-
-   local function find_nans(x)
-      if x ~= x then
-	 found_a_nan = true
-      end
-   end
    --]]
       
    local feval = function(current_params)
       -- enforce all constraints on parameters, since the parameters are updated manually, rather than through updateParameters as generally expected
-      self.model:repair() -- THIS DOUBLES THE TIME REQUIRED PER ITERATION!  THE COMPONENT OPERATIONS SHOULD BE IMPLEMENTED IN C!!!
+      if self.opt.optimization ~= 'SGD' then -- if we only do one feval call per parameter update, then it is safe to repair once after the update
+	 print('consider the need to repair on each iteration')
+	 self.model:repair() -- THIS IS INEFFICIENT!  THIS DOUBLES THE TIME REQUIRED PER ITERATION!  THE COMPONENT OPERATIONS SHOULD BE IMPLEMENTED IN C!!!
+      end
 
       -- get new parameters
       if current_params ~= self.parameters then 
@@ -110,6 +109,8 @@ function RecPoolTrainer:make_feval()
 	 local output = self.model:get_classifier_output() -- while the model is a nn.Sequential, it terminates in a set of criteria
 	 total_err = total_err + err[1] -- the err returned by updateOutput is a tensor with one element, to maintain compatibility with ModfifiedJacobian
 	 
+	 --check_for_nans(self, output, 'outputs')
+
 	 -- estimate the gradient of the error with respect to the parameters: d total_err / dW
 	 self.model:updateGradInput(self.minibatch_inputs[i]) -- gradOutput is not required, since all computation streams terminate in a criterion; implicitly pass nil
 	 self.model:accGradParameters(self.minibatch_inputs[i])
@@ -135,6 +136,8 @@ function RecPoolTrainer:make_feval()
       self.gradParameters:div(#self.minibatch_inputs)
       total_err = total_err / #self.minibatch_inputs
       
+
+      --check_for_nans(self, self.gradParameters, 'gradParameters')
       -- return f and df/dX
       return total_err, self.gradParameters
    end
@@ -196,6 +199,9 @@ function RecPoolTrainer:train(train_data)
       else
          error('unknown optimization method')
       end
+
+      -- repair the parameters one final time
+      self.model:repair() -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
    end
    
    -- time taken for the current epoch (each call to train() only runs one epoch)
@@ -223,10 +229,13 @@ function RecPoolTrainer:train(train_data)
    print('pooling reconstruction', self.model.decoding_pooling_dictionary.output:unfold(1,10,10))
    print('pooling position units', self.model.L2_pooling_units.output:unfold(1,10,10))
    print('pooling output', self.model.pooling_seq.output[1]:unfold(1,10,10))
+   --print('shrink values', torch.add(self.model.shrink.shrink_val, -1e-5):unfold(1,10,10))
+   --print('negative_shrink values', torch.add(self.model.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
    -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!
    -- check that without regularization, filters are meaningless.  Confirm that trainable pooling has an effect on the pooled filters.
-   plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.decoding_feature_extraction_dictionary.output)
+   --plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.decoding_feature_extraction_dictionary.output)
 
+   output_gradient_magnitudes(self)
 
    --[[
    -- save/log current net
@@ -239,38 +248,109 @@ function RecPoolTrainer:train(train_data)
 end
 
 
+function output_gradient_magnitudes(self)
+   print('encoding FE dict', self.model.encoding_feature_extraction_dictionary.gradWeight:norm(), 'decoding FE dict', self.model.decoding_feature_extraction_dictionary.gradWeight:norm(),
+	 'shrink', self.model.shrink.grad_shrink_val:norm(), 'explaining away', self.model.explaining_away.gradWeight:norm(),
+	 'encoding P dict', self.model.encoding_pooling_dictionary.gradWeight:norm(), 'decoding P dict', self.model.decoding_pooling_dictionary.gradWeight:norm(), 
+	 'class dict', self.model.classification_dictionary.gradWeight:norm())
+end
 
-	 --[[
-	 if internal_counter % 100 == 1 then
-	    print(output:unfold(1,10,10))
-	    print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-	    print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
-	    print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
-	    print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-	    print(self.model.classification_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-	 end
-	 internal_counter = internal_counter + 1
+function check_for_nans(self, output, name)
+   local found_a_nan = false
+   
+   local function find_nans(x)
+      if x ~= x then
+	 found_a_nan = true
+      end
+   end
 
+   local function find_nans_in_table(x)
+      for k,v in pairs(x) do
 	 found_a_nan = false
-	 output:apply(find_nans)
+	 v:apply(find_nans)
 	 if found_a_nan then
-	    print('outputs')
-	    print(output:unfold(1,10,10))
-	    print(self.model.encoding_feature_extraction_dictionary.output:unfold(1,10,10))
-	    print(self.model.encoding_pooling_dictionary.output:unfold(1,10,10))
-	    print(self.model.ista_sparsifying_loss_seq.output[1]:unfold(1,10,10))
-	    print(self.model.pooling_seq.output[1]:unfold(1,10,10)) -- one nan is present
-	    print(self.model.pooling_L2_loss_seq.output[1]:unfold(1,10,10))
-	    print(self.model.pooling_sparsifying_loss_seq.output[1]:unfold(1,10,10))
-	    print(self.model.classification_dictionary.output:unfold(1,10,10))
-	    
-	    print('weights')
-	    print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-	    print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
-	    print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
-	    print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-	    print(self.model.classification_dictionary.weight)
-	    io.read()
+	    print('found a nan in entry ' .. k)
+	    print(v:unfold(1,10,10))
 	 end
-	 --]]
+      end
+   end
+
+   --[[
+      if internal_counter % 100 == 1 then
+      print(output:unfold(1,10,10))
+      print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+      print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
+      print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
+      print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+      print(self.model.classification_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+      end
+      internal_counter = internal_counter + 1
+   --]]
+      
+   output:apply(find_nans)
+   if found_a_nan then
+      print('checking for nans in ' .. name)
+      io.read()
+      print('outputs')
+      --print(output:unfold(1,10,10))
+      print(self.model.encoding_feature_extraction_dictionary.output:unfold(1,10,10))
+      print(self.model.encoding_pooling_dictionary.output:unfold(1,10,10))
+      print(self.model.ista_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+      print(self.model.pooling_seq.output[1]:unfold(1,10,10)) -- one nan is present
+      print(self.model.pooling_L2_loss_seq.output[1]:unfold(1,10,10))
+      print(self.model.pooling_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+      print(self.model.classification_dictionary.output:unfold(1,10,10))
+      print(self.model.decoding_pooling_dictionary.output:unfold(1,10,10))
+      io.read()
+
+      print('gradInputs test')
+      print('shrink_reconstruction')
+      find_nans_in_table(self.model.compute_shrink_reconstruction_loss_seq.gradInput)
+      print('orig_reconstruction')
+      find_nans_in_table(self.model.compute_orig_reconstruction_loss_seq.gradInput)
+      print('position_loss')
+      find_nans_in_table(self.model.compute_position_loss_seq.gradInput)
+      io.read()
+
+      print('gradInputs second test')
+      print('shrink_rec_numerator')
+      find_nans_in_table(self.model.construct_shrink_rec_numerator_seq.gradInput)
+      print(self.model.construct_shrink_rec_numerator_seq.output:unfold(1,10,10))
+      print('pos_numerator_seq')
+      find_nans_in_table(self.model.construct_pos_numerator_seq.gradInput)
+      print(self.model.construct_pos_numerator_seq.output:unfold(1,10,10))
+      print('orig_rec_numerator_seq')
+      find_nans_in_table(self.model.construct_orig_rec_numerator_seq.gradInput)
+      print(self.model.construct_orig_rec_numerator_seq.output:unfold(1,10,10))
+      print('denominator_seq')
+      find_nans_in_table(self.model.construct_denominator_seq.gradInput)
+      print(self.model.construct_denominator_seq.output:unfold(1,10,10))
+      io.read()
+
+
+      print('gradInputs')
+      print(self.model.encoding_feature_extraction_dictionary.gradInput:unfold(1,10,10)) -- all nans
+      print(self.model.encoding_pooling_dictionary.gradInput:unfold(1,10,10)) -- all nans
+      print(self.model.ista_sparsifying_loss_seq.gradInput[1]:unfold(1,10,10)) -- all nans
+      print(self.model.pooling_seq.gradInput[1]:unfold(1,10,10)) -- all nans
+      print('pooling L2 loss input 1')
+      print(self.model.pooling_L2_loss_seq.gradInput[1]:unfold(1,10,10)) -- all nans
+      print('pooling L2 loss input 2')
+      print(self.model.pooling_L2_loss_seq.gradInput[2]:unfold(1,10,10)) -- all nans
+      print('pooling L2 loss input 3')
+      print(self.model.pooling_L2_loss_seq.gradInput[3]:unfold(1,10,10)) -- all nans
+      print(self.model.pooling_sparsifying_loss_seq.gradInput[1]:unfold(1,10,10))
+      print(self.model.pooling_sparsifying_loss_seq.gradInput[2]:unfold(1,10,10))
+      print(self.model.classification_dictionary.gradInput:unfold(1,10,10))
+      io.read()
+
+      print('weights')
+      print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+      print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
+      print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
+      print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+      print(self.model.classification_dictionary.weight)
+      io.read()
+   end
+end
 	    

@@ -2,17 +2,16 @@ require 'torch'
 require 'nn'
 require 'kex'
 
-DEBUG_shrink = true -- don't require that the shrink value be non-negative, to facilitate the comparison of backpropagated gradients to forward-propagated parameter perturbations
+DEBUG_shrink = false -- don't require that the shrink value be non-negative, to facilitate the comparison of backpropagated gradients to forward-propagated parameter perturbations
 DEBUG_L2 = false
 DEBUG_L1 = false
 DEBUG_OUTPUT = false
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
 
--- the input is a single tensor x (not a table)
+-- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
 local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink, layer_size)
    local first_ista_seq = nn.Sequential()
-   first_ista_seq:add(nn.IdentityTable()) -- wrap the tensor in a table
    first_ista_seq:add(nn.CopyTable(1,2)) -- split into the transformed input W*x [1], and the untransformed input x [2]
 
    local first_WX = nn.ParallelTable()
@@ -23,25 +22,43 @@ local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary
    first_ista_seq:add(nn.CopyTable(1,2)) -- split into the subject of the shrink operation z (initially just W*x) [1], the transformed input W*x [2], and the untransformed input x [3]
 
    local first_shrink_parallel = nn.ParallelTable() -- shrink z; stream is now z = h(W*x) [1], the transformed input W*x [2], and the untransformed input x [3]
-   local first_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink) 
-   first_shrink:share(base_shrink, 'shrink_val', 'grad_shrink_val')
-   first_shrink_parallel:add(first_shrink)
+   
+   --[[
+      local first_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink) 
+      first_shrink:share(base_shrink, 'shrink_val', 'grad_shrink_val', 'negative_shrink_val')
+      if (first_shrink.shrink_val:storage() ~= base_shrink.shrink_val:storage()) or (first_shrink.grad_shrink_val:storage() ~= base_shrink.grad_shrink_val:storage()) then
+      print('in build_ISTA_first_iteration, shrink parameters are not shared properly')
+      io.read()
+      end
+      current_shrink = first_shrink
+   --]]
+   
+   first_shrink_parallel:add(base_shrink)
    first_shrink_parallel:add(nn.Identity())
    first_shrink_parallel:add(nn.Identity())
    first_ista_seq:add(first_shrink_parallel)
 
-   return first_ista_seq, first_shrink
+   return first_ista_seq, current_shrink
 end
 
 -- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
-local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_size, DISABLE_NORMALIZATION)
-   local explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION)
+local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_size, use_base_explaining_away, DISABLE_NORMALIZATION)
+   local explaining_away
+   if use_base_explaining_away then
+      explaining_away = base_explaining_away
+   else
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION)
+      explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
+   end
+
    local shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink) -- EFFICIENCY NOTE: when using non-negative units this could be accomplished more efficiently using an unparameterized, one-sided rectification, just like Glorot, Bordes, and Bengio, along with a non-positive bias in the encoding_feature_extraction_dictionary.  However, both nn.SoftShrink and the shrinkage utility method implemented in kex are two-sided.
-   
-   explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
-   shrink:share(base_shrink, 'shrink_val', 'grad_shrink_val')
-   
+   shrink:share(base_shrink, 'shrink_val', 'grad_shrink_val', 'negative_shrink_val') -- SHOULD negative_shrink_val BE SHARED AS WELL!?!?!  FOR THE LOVE OF GOD!!!  FIX THIS!!!
+   if (shrink.shrink_val:storage() ~= base_shrink.shrink_val:storage()) or (shrink.grad_shrink_val:storage() ~= base_shrink.grad_shrink_val:storage()) then
+      print('in build_ISTA_iteration, shrink parameters are not shared properly')
+      io.read()
+   end
+
    local ista_seq = nn.Sequential()
    local explaining_away_parallel = nn.ParallelTable() 
    explaining_away_parallel:add(explaining_away) --subtract out the explained input: S*z [1]
@@ -78,7 +95,7 @@ local function linearly_reconstruct_input(decoding_dictionary, untransformed_inp
 end
 
 -- the input is a table of three elments: the layer n code z [1], the reconstructed layer n-1 code r [2], and untransformed layer n-1 input x [3]
--- the output is a table of one element: the layer n code z [1]
+-- the output is a table of two elements: the layer n code z [1], and the untransformed layer n-1 input x[2]
 local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
    local combined_loss = nn.ParallelDistributingTable() -- calculate the MSE between the reconstructed layer n-1 code r [2] and untransformed layer n-1 input x [3]; only pass on the layer n code z [1]
    
@@ -104,7 +121,8 @@ local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
       print('inserting L2 loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
    end
 
-   combined_loss:add(nn.SelectTable{1}) -- throw away all streams but the shrunk code z [1]; the result is a table with a single entry
+   combined_loss:add(nn.SelectTable{1}) -- throw away all streams but the shrunk code z [1] and the original input x [3]; the result is a table with two entries
+   combined_loss:add(nn.SelectTable{3})
    combined_loss:add(L2_loss_seq)
 
    -- rather than using nn.Ignore on the output of the criterion, we could use a SelectTable{1} without a ParallelDistributingTable, which would output a tensor in the forward direction, and send a nil as gradOutput to the criterion in the backwards direction
@@ -113,47 +131,46 @@ local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
 end
 
 
--- the input is a table of one element: the subject of the shrink operation z [1]
--- the output is a table of one element: the subject of the shrink operation z [1]
+-- the input is a table of two elements: the subject of the shrink operation z [1], and the original input x [2]
+-- the output is a table of two elements: the subject of the shrink operation z [1], and the original input x [2]
 local function build_sparsifying_loss(sparsifying_loss_function, sparsifying_lambda, layer_size, criteria_list)
-   local L1_seq = nn.Sequential()
-   L1_seq:add(nn.CopyTable(1, 2)) -- split into the output to the rest of the chain [1] and the output to the L1 norm [2]
+   --local L1_seq = nn.Sequential()
+   --L1_seq:add(nn.CopyTable(1, 2)) -- split into the output to the rest of the chain [1] and the output to the L1 norm [2]; original input x is now [3]
    
    local apply_L1_norm = nn.ParallelDistributingTable()
-   local scaled_L1_norm = nn.Sequential() -- scale the code copy [2], calculate its L1 norm, and throw away the output
-   scaled_L1_norm:add(nn.SelectTable{2})
-   if (sparsifying_lambda ~= nil) and (sparsifying_lambda ~= 1) then -- nn.L1Cost, defined in kex, does not include a scaling factor lambda; CauchyCost which I define does include a scaling factor
-      scaled_L1_norm:add(nn.MulConstant(layer_size, sparsifying_lambda))
-   end
+   local scaled_L1_norm = nn.Sequential() -- scale the code [1], calculate its L1 norm, and throw away the output
+   scaled_L1_norm:add(nn.SelectTable{1}) -- WAS 2!!!
    if DEBUG_L1 or DEBUG_OUTPUT then
       scaled_L1_norm:add(nn.ZeroModule())
    else
-      scaled_L1_norm:add(nn.L1CriterionModule(sparsifying_loss_function)) -- also compute the L1 norm on the code
+      local sparsifying_criterion_module = nn.L1CriterionModule(sparsifying_loss_function, sparsifying_lambda) -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
+      scaled_L1_norm:add(sparsifying_criterion_module) -- also compute the L1 norm on the code
       scaled_L1_norm:add(nn.Ignore()) -- don't pass the L1 loss value onto the rest of the network
-      table.insert(criteria_list.criteria, sparsifying_loss_function) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
+      table.insert(criteria_list.criteria, sparsifying_criterion_module) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
       table.insert(criteria_list.names, 'sparsifying loss')
       print('inserting sparsifying loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
    end
    apply_L1_norm:add(nn.SelectTable{1}) -- pass the code [1] through unchanged for further processing   
+   apply_L1_norm:add(nn.SelectTable{2}) -- pass the original input x [2] through unchanged for further processing   
    apply_L1_norm:add(scaled_L1_norm) -- since we add scaled_L1_norm without a SelectTable, it receives 
-   L1_seq:add(apply_L1_norm)
+   --L1_seq:add(apply_L1_norm)
 
    -- FOR THE LOVE OF GOD!!! TRY REMOVING THIS!!!
    --L1_seq:add(nn.SelectTable({1}, true)) -- when running updateGradInput, this passes a nil back to the L1Cost, which ignores it away; make sure that the output is a table, rather than a tensor
       
-   return L1_seq
+   return apply_L1_norm --L1_seq
 end
 
--- the input is a table of one element: the output of the shrink operation z [1]
--- the output is a table of two elements: the subject of the pooling operation s [1], and the preserved input z [2]
+-- the input is a table of two elements: the output of the shrink operation z [1], and the original input x [2]
+-- the output is a table of three elements: the subject of the pooling operation s [1], the preserved input z [2], and the original input x [3]
 local function build_pooling(encoding_pooling_dictionary)
    local pool_seq = nn.Sequential()
-   pool_seq:add(nn.CopyTable(1, 2)) -- split into split into the output to the rest of the chain z [1] and the preserved input z [2], used to calculate the reconstruction error
+   pool_seq:add(nn.CopyTable(1, 2)) -- split into the output to the rest of the chain z [1] and the preserved input z [2], used to calculate the reconstruction error, and the original input x [3]
 
    local pool_features_parallel = nn.ParallelTable() -- compute s = sqrt(Q*z^2)
    local pooling_transformation_seq = nn.Sequential()
    --pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
-   pooling_transformation_seq:add(nn.Power(2))
+   pooling_transformation_seq:add(nn.SafePower(2))
    pooling_transformation_seq:add(encoding_pooling_dictionary)
    pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), 1e-5)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias
 
@@ -162,93 +179,178 @@ local function build_pooling(encoding_pooling_dictionary)
 
    pool_features_parallel:add(pooling_transformation_seq) -- s = sqrt(Q*z^2) [1]
    pool_features_parallel:add(nn.Identity()) -- preserve z [2]
+   pool_features_parallel:add(nn.Identity()) -- preserve x [3]
    pool_seq:add(pool_features_parallel) 
 
    return pool_seq
 end
 
 
--- the input is a table of two elements: the subject of the pooling operation s [1], and the preserved input z [2]
--- the output is a table of one element: the subject of the pooling operation s [1]
-local function build_pooling_L2_loss(decoding_pooling_dictionary, L2_reconstruction_lambda, L2_position_unit_lambda, mask_cauchy_lambda, criteria_list)
+local function build_loss_tester(num_inputs, tested_inputs, criteria_list)
+   local test_pdt = nn.ParallelDistributingTable()
+   
+   for i = 1,num_inputs do
+      test_pdt:add(nn.SelectTable{i})
+   end
+
+   if tested_inputs then 
+      for k,v in ipairs(tested_inputs) do
+	 local test_L2_loss = nn.L2Cost(math.random(), 1)
+	 table.insert(criteria_list.criteria, test_L2_loss) -- make sure that we consider the L2_position_loss when evaluating the total loss
+	 table.insert(criteria_list.names, 'test L2 loss ' .. v)
+	 print('inserting test L2 loss ' .. v .. ' into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
+	 
+	 local test_seq = nn.Sequential()
+	 test_seq:add(nn.SelectTable{v})
+	 test_seq:add(test_L2_loss)
+	 test_seq:add(nn.Ignore())
+	 test_pdt:add(test_seq)
+      end
+   end
+
+   return test_pdt
+end
+
+
+
+
+-- the input is a table of three elements: the subject of the pooling operation s [1], the preserved shrink output z [2], and the original input x [3]
+-- the output is a table of two elements: the subject of the pooling operation s [1] and the original input x [2]
+local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary_original, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, mask_cauchy_lambda, criteria_list, layer_size)
    -- the L2 reconstruction error and the L2 position unit magnitude both depend upon the denominator 1 + (P*s)^2, so calculate them together in a single function
 
-   local pool_L2_loss_seq = nn.Sequential()
-   pool_L2_loss_seq:add(nn.CopyTable(1, 2)) -- split into the output from the module s = sqrt(Q*z^2) [1], the basis of the denominator of the losses s [2], and the preserved input z [3]
+   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, DISABLE_NORMALIZATION) 
+   decoding_feature_extraction_dictionary_copy:share(decoding_feature_extraction_dictionary_original, 'weight', 'bias', 'gradWeight', 'gradBias')
 
-   -- split into s [1], P*s [2], and z [3]
+   local pool_L2_loss_seq = nn.Sequential()
+   -- split into the output from the module s = sqrt(Q*z^2) [1], the basis of the denominator of the losses s [2], the preserved shrink output z [3], and the original input x [4]
+   pool_L2_loss_seq:add(nn.CopyTable(1, 2)) 
+
+   -- split into s [1], P*s [2], z [3], and the original input x [4]
    local reconstruction_parallel = nn.ParallelTable() -- compute the reconstruction of the input P*s
    reconstruction_parallel:add(nn.Identity()) -- preserve the output s = sqrt(Q*z^2) [1]
    reconstruction_parallel:add(decoding_pooling_dictionary) -- compute the reconstruction P*s [2]
-   reconstruction_parallel:add(nn.Identity()) -- preserve the original input z [3]
+   reconstruction_parallel:add(nn.Identity()) -- preserve the shrink output z [3]
+   reconstruction_parallel:add(nn.Identity()) -- preserve the original input x [4]
    pool_L2_loss_seq:add(reconstruction_parallel)
 
-   -- compute the sparsifying regularizer on the pooling mask P*s [2]; output is still s [1], P*s [2], and z [3]
-   local sparsifying_loss_parallel = nn.ParallelDistributingTable()
+   -- compute the sparsifying regularizer on the pooling mask P*s [2]; output is still s [1], P*s [2], z [3], and the original input x [4]
    local sparsifying_loss_seq = nn.Sequential()
    sparsifying_loss_seq:add(nn.SelectTable{2})
-   if DEBUG_OUTPUT then
+   if DEBUG_OUTPUT then 
       sparsifying_loss_seq:add(nn.ZeroModule())
    else
-      local sparsifying_mask_loss_function = nn.CauchyCost(mask_cauchy_lambda)
-      sparsifying_loss_seq:add(nn.L1CriterionModule(sparsifying_mask_loss_function)) -- also compute the caucy norm on the code
-      table.insert(criteria_list.criteria, sparsifying_mask_loss_function) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
+      --local sparsifying_mask_loss_function = nn.CauchyCost(mask_cauchy_lambda)
+      
+      local sparsifying_mask_loss_function = nn.L1Cost()
+      local sparsifying_mask_criterion_module = nn.L1CriterionModule(sparsifying_mask_loss_function, mask_cauchy_lambda) -- the L1CriterionModule rather than the wrapped criterion computes the correct scaled error
+      sparsifying_loss_seq:add(sparsifying_mask_criterion_module) -- also compute the caucy norm on the code
+      table.insert(criteria_list.criteria, sparsifying_mask_criterion_module) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
       table.insert(criteria_list.names, 'sparsifying mask loss')
       print('inserting sparsifying cauchy mask loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
    end
    sparsifying_loss_seq:add(nn.Ignore()) -- don't pass the cauchy loss value onto the rest of the network
-   sparsifying_loss_parallel:add(nn.SelectTable{1})
-   sparsifying_loss_parallel:add(nn.SelectTable{2})
-   sparsifying_loss_parallel:add(nn.SelectTable{3})
-   sparsifying_loss_parallel:add(sparsifying_loss_seq)
+   local sparsifying_loss_parallel = nn.ParallelDistributingTable()
+   sparsifying_loss_parallel:add(nn.SelectTable{1}) -- s [1]
+   sparsifying_loss_parallel:add(nn.SelectTable{2}) -- P*s [2]
+   sparsifying_loss_parallel:add(nn.SelectTable{3}) -- z [3]
+   sparsifying_loss_parallel:add(nn.SelectTable{4}) -- x [4]
+   sparsifying_loss_parallel:add(sparsifying_loss_seq) -- produces no output
    pool_L2_loss_seq:add(sparsifying_loss_parallel)
 
-   -- the output from the module s [1], the numerator of the reconstruction loss lambda_ratio* z [2], the numerator of the position loss z*(P*s) [3], and the denominator of the loss lambda_ratio + (P*s)^2 [4] 
-   local lambda_ratio = math.min(L2_position_unit_lambda / L2_reconstruction_lambda, 1e5) -- bound the lambda_ratio, so signals and gradients remain finite even if L2_reconstruction_lambda = 0
-   if lambda_ratio ~= lambda_ratio then lambda_ratio = 1 end-- if lambda_ratio = nan
-   local construct_num_denom_parallel = nn.ParallelDistributingTable('construct_num_denom_parallel') -- compute the numerator of the position loss z*(P*s) and the denominator of the losses 1 + (P*s)^2
-   local construct_rec_numerator_seq = nn.Sequential()
-   construct_rec_numerator_seq:add(nn.SelectTable{3})
-   construct_rec_numerator_seq:add(nn.MulConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio))
-   local construct_denominator_seq = nn.Sequential()
-   construct_denominator_seq:add(nn.SelectTable{2})
+
+   -- the output from the module s [1], the original input x [2], the numerator of the shrink reconstruction loss lambda_ratio*z [3], the numerator of the position loss z*(P*s) [4], the numerator of the original reconstruction loss z*(P*s)^2 [5], and the denominator of the loss lambda_ratio + (P*s)^2 [6] 
+   -- lambda_ratio arises from minimizing the sum of the shrink reconstruction and the L2 position unit error with respect to the position units, in order to find the feedforward value of the position units
+   local lambda_ratio = math.min(L2_position_unit_lambda / (L2_shrink_reconstruction_lambda + L2_orig_reconstruction_lambda), 1e5) -- bound the lambda_ratio, so signals and gradients remain finite even if L2_reconstruction_lambda = 0
+   if lambda_ratio ~= lambda_ratio then lambda_ratio = 1 end-- if lambda_ratio == nan, set it to 1
+   local construct_shrink_rec_numerator_seq = nn.Sequential() -- lambda_ratio * z
+   construct_shrink_rec_numerator_seq:add(nn.SelectTable{3})
+   construct_shrink_rec_numerator_seq:add(nn.MulConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio))  -- first argument just sets the size of the output, rather than the constant
+   local construct_pos_numerator_seq = nn.Sequential() -- z*(P*s)
+   construct_pos_numerator_seq:add(nn.SelectTable{2,3}) -- nans in both!
+   construct_pos_numerator_seq:add(nn.SafeCMulTable())
+   local construct_orig_rec_numerator_seq = nn.Sequential()
+   construct_orig_rec_numerator_seq:add(nn.SelectTable{2,3}) -- z*(P*s)^2 -- nans in both!
+   local square_Ps_for_orig_rec_numerator = nn.ParallelTable()
+   square_Ps_for_orig_rec_numerator:add(nn.SafePower(2)) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
+   square_Ps_for_orig_rec_numerator:add(nn.Identity())
+   construct_orig_rec_numerator_seq:add(square_Ps_for_orig_rec_numerator)
+   construct_orig_rec_numerator_seq:add(nn.SafeCMulTable())
+   local construct_denominator_seq = nn.Sequential() -- lambda_ratio + (P*s)^2
+   construct_denominator_seq:add(nn.SelectTable{2}) -- nan here too!
    --construct_denominator_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, if fails to multiply the gradInput by two
-   construct_denominator_seq:add(nn.Power(2))
-   construct_denominator_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio))
-   local construct_pos_numerator_seq = nn.Sequential()
-   construct_pos_numerator_seq:add(nn.SelectTable{2,3})
-   construct_pos_numerator_seq:add(nn.CMulTable())
+   construct_denominator_seq:add(nn.SafePower(2))
+   construct_denominator_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio)) 
+
+   local construct_num_denom_parallel = nn.ParallelDistributingTable('construct_num_denom_parallel') -- put it all together
    construct_num_denom_parallel:add(nn.SelectTable{1}) -- preserve the output s = sqrt(Q*z^2) [1]
-   construct_num_denom_parallel:add(construct_rec_numerator_seq) -- compute the reconstruction numerator lambda_L2_pos/lambda_reconstruction * z [2]
-   construct_num_denom_parallel:add(construct_pos_numerator_seq) -- compute the position numerator z*(P*s) [3]
-   construct_num_denom_parallel:add(construct_denominator_seq) -- compute the denominator 1 + (P*s)^2 [4]
-   --construct_num_denom_parallel:add(nn.Identity()) 
+   construct_num_denom_parallel:add(nn.SelectTable{4}) -- preserve the original input x [2]
+   construct_num_denom_parallel:add(construct_shrink_rec_numerator_seq) -- compute the reconstruction numerator lambda_ratio * z [3]
+   construct_num_denom_parallel:add(construct_pos_numerator_seq) -- compute the position numerator z*(P*s) [4]
+   construct_num_denom_parallel:add(construct_orig_rec_numerator_seq) -- compute the original input reconstruction numerator z*(P*s)^2 [5]
+   construct_num_denom_parallel:add(construct_denominator_seq) -- compute the denominator lambda_ratio + (P*s)^2 [6]
    pool_L2_loss_seq:add(construct_num_denom_parallel)
    
-   local compute_loss_parallel = nn.ParallelDistributingTable('compute_loss_parallel') -- compute the loss functions z / (1 + (P*s)^2) and z*(P*s) / (1 + (P*s)^2)
-   local compute_reconstruction_loss_seq = nn.Sequential()
-   compute_reconstruction_loss_seq:add(nn.SelectTable{2,4})
-   compute_reconstruction_loss_seq:add(nn.CDivTable())
-   if DEBUG_OUTPUT then
-      compute_reconstruction_loss_seq:add(nn.ZeroModule())
-   else
-      local L2_reconstruction_loss = nn.L2Cost(L2_reconstruction_lambda, 1)
-      table.insert(criteria_list.criteria, L2_reconstruction_loss) -- make sure that we consider the L2_reconstruction_loss when evaluating the total loss
-      table.insert(criteria_list.names, 'pooling L2 reconstruction loss')
-      print('inserting L2 pooling reconstruction loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
 
-      compute_reconstruction_loss_seq:add(L2_reconstruction_loss)
+   -- Build the three loss functions.  They will all be plugged into a parallel distributing table, and so can begin with a SelectTable
+
+   -- compute the shrink reconstruction loss ||z - (z*(P*s)^2)/(lambda_ratio + (P*s)^2)||^2 = ||lambda_ratio * z / (lambda_ratio + (P*s)^2)||^2
+   local compute_shrink_reconstruction_loss_seq = nn.Sequential()
+   compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,6})
+   compute_shrink_reconstruction_loss_seq:add(nn.CDivTable())
+   if DEBUG_OUTPUT then 
+      compute_shrink_reconstruction_loss_seq:add(nn.ZeroModule())
+   else
+      local L2_shrink_reconstruction_loss = nn.L2Cost(L2_shrink_reconstruction_lambda, 1)
+      table.insert(criteria_list.criteria, L2_shrink_reconstruction_loss) -- make sure that we consider the L2_shrink_reconstruction_loss when evaluating the total loss
+      table.insert(criteria_list.names, 'pooling L2 shrink reconstruction loss')
+      print('inserting L2 pooling shrink reconstruction loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
+
+      compute_shrink_reconstruction_loss_seq:add(L2_shrink_reconstruction_loss)
    end
-   compute_reconstruction_loss_seq:add(nn.Ignore)
+   compute_shrink_reconstruction_loss_seq:add(nn.Ignore)
+   
+
+   -- compute the original reconstruction loss ||x - D* (z*(P*s)^2 / (lambda_ratio + (P*s)^2))||^2 
+   local compute_orig_reconstruction_loss_seq = nn.Sequential()
+   compute_orig_reconstruction_loss_seq:add(nn.SelectTable{2,5,6})
+   local divide_input_rec_seq = nn.Sequential()
+   divide_input_rec_seq:add(nn.SelectTable{2,3})
+   divide_input_rec_seq:add(nn.CDivTable())
+   divide_input_rec_seq:add(decoding_feature_extraction_dictionary_copy)
+   local divide_input_rec_parallel = nn.ParallelDistributingTable('divide_input_rec')
+   divide_input_rec_parallel:add(nn.SelectTable{1})
+   divide_input_rec_parallel:add(divide_input_rec_seq)
+   compute_orig_reconstruction_loss_seq:add(divide_input_rec_parallel)
+   if DEBUG_OUTPUT then 
+      local parallel_zero = nn.ParallelTable() 
+      parallel_zero:add(nn.ZeroModule())
+      parallel_zero:add(nn.ZeroModule())
+      compute_orig_reconstruction_loss_seq:add(parallel_zero)
+      compute_orig_reconstruction_loss_seq:add(nn.SelectTable{1}) -- a SelectTable is necessary to ensure that the module outputs a single nil, which is ignored by the ParallelDistributingTable, rather than an empty 
+
+      --compute_orig_reconstruction_loss_seq:add(nn.ZeroModule())
+   else
+      local L2_orig_reconstruction_loss = nn.L2Cost(L2_orig_reconstruction_lambda, 2)
+      table.insert(criteria_list.criteria, L2_orig_reconstruction_loss) -- make sure that we consider the L2_orig_reconstruction_loss when evaluating the total loss
+      table.insert(criteria_list.names, 'pooling L2 orig reconstruction loss')
+      print('inserting L2 pooling orig reconstruction loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
+      
+      compute_orig_reconstruction_loss_seq:add(L2_orig_reconstruction_loss)
+   end
+   compute_orig_reconstruction_loss_seq:add(nn.Ignore)
+
+
+   -- compute the position loss ||z*(P*s) / (lambda_ratio + (P*s)^2)||^2
    local compute_position_loss_seq = nn.Sequential()
-   compute_position_loss_seq:add(nn.SelectTable{3,4})
+   compute_position_loss_seq:add(nn.SelectTable{4,6})
    local compute_position_units = nn.CDivTable()
    compute_position_loss_seq:add(compute_position_units)
-   if DEBUG_OUTPUT then
+   if DEBUG_OUTPUT then 
       compute_position_loss_seq:add(nn.ZeroModule())
    else
       local L2_position_loss = nn.L2Cost(L2_position_unit_lambda, 1)
-      table.insert(criteria_list.criteria, L2_position_loss) -- make sure that we consider the L2_reconstruction_loss when evaluating the total loss
+      table.insert(criteria_list.criteria, L2_position_loss) -- make sure that we consider the L2_position_loss when evaluating the total loss
       table.insert(criteria_list.names, 'pooling L2 position loss')
       print('inserting L2 pooling position loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
       
@@ -256,30 +358,35 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, L2_reconstruct
    end
    compute_position_loss_seq:add(nn.Ignore)
 
+
+   -- put everything together
+   local compute_loss_parallel = nn.ParallelDistributingTable('compute_loss_parallel') 
    compute_loss_parallel:add(nn.SelectTable{1}) -- preserve the output s = sqrt(Q*z^2) [1]
-   compute_loss_parallel:add(compute_reconstruction_loss_seq) -- compute the reconstruction loss ||z / (1 + (P*s)^2)||^2 [-]
-   compute_loss_parallel:add(compute_position_loss_seq) -- compute the position loss ||z*(Q*s) / (1 + (P*s)^2) [-]
+   compute_loss_parallel:add(nn.SelectTable{2}) -- preserve the original input x [2]
+   compute_loss_parallel:add(compute_shrink_reconstruction_loss_seq) -- compute the shrink reconstruction loss ||lambda_ratio * z / (lambda_ratio + (P*s)^2)||^2 [-]
+   compute_loss_parallel:add(compute_orig_reconstruction_loss_seq) -- compute the original reconstruction loss ||x - z*(P*s)^2 / (lambda_ratio + (P*s)^2)||^2 [-]
+   compute_loss_parallel:add(compute_position_loss_seq) -- compute the position loss ||z*(P*s) / (lambda_ratio + (P*s)^2)||^2 [-]
    pool_L2_loss_seq:add(compute_loss_parallel)
 
-   -- IS THIS NECESSARY!?!?!
-   --pool_L2_loss_seq:add(nn.SelectTable({1}, true)) -- when running updateGradInput, this passes a nil back to the L1Cost, which ignores it away; make sure that the output is a table, rather than a tensor
+   return pool_L2_loss_seq, compute_position_units, compute_shrink_reconstruction_loss_seq, compute_orig_reconstruction_loss_seq, compute_position_loss_seq, 
+   construct_shrink_rec_numerator_seq, construct_pos_numerator_seq, construct_orig_rec_numerator_seq, construct_denominator_seq
 
-   return pool_L2_loss_seq, compute_position_units
 end
 
 -- this renders the component modules and their parameters easily accessible for debugging purposes; otherwise, it's buried deep in the nn.Sequential of model
 local function set_debug_fields(model, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, explaining_away, shrink, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away_copies, shrink_copies, criteria_list, L2_pooling_units)
    
-   --[[
-   model.encoding_feature_extraction_dictionary = encoding_feature_extraction_dictionary
+   model.encoding_feature_extraction_dictionary = encoding_feature_extraction_dictionary -- used when checking for nans in train_recpool_net
    model.explaining_away = explaining_away
-   model.shrink = shrink
    model.encoding_pooling_dictionary = encoding_pooling_dictionary
    model.classification_dictionary = classification_dictionary 
+
+   --[[
    model.explaining_away_copies = explaining_away_copies
    --]]
 
    model.decoding_feature_extraction_dictionary = decoding_feature_extraction_dictionary
+   model.shrink = shrink
    model.decoding_pooling_dictionary = decoding_pooling_dictionary
    model.L2_pooling_units = L2_pooling_units
 
@@ -292,14 +399,34 @@ local function set_debug_fields(model, encoding_feature_extraction_dictionary, d
    -- model.pooling_seq = pooling_seq -- this is already done manually in build_recpool_net()
 end
 
+
+function build_full_recpool_layer(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION)
+end
+
+-- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
+function build_multilayer_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION)
+   -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
+   local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
+   DISABLE_NORMALIZATION = DISABLE_NORMALIZATION or false
+   
+   local model = nn.Sequential()
+   local layers_per_recpool = 2
+   local lambdas_per_layer = 6
+
+   for current_layer = 1,#lambdas do
+      local current_layer_size
+      model:add(build_full_recpool_layer(current_layer_size, lambdas[current_layer], num_ista_iterations, DISABLE_NORMALIZATION))
+   end
+end
+
+
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use DISABLE_NORMALIZATION when testing parameter updates
 function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION) 
-   -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
+   -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    DISABLE_NORMALIZATION = DISABLE_NORMALIZATION or false
 
-   local model = nn.Sequential()
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
    local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION) 
@@ -310,25 +437,24 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    local shrink_copies = {}
    
    local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true}, DISABLE_NORMALIZATION) -- this should have zero bias
-   local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true}, DISABLE_NORMALIZATION) -- this should have zero bias, and columns normalized to unit magnitude
+   -- DECODING_POOLING_DICTIONARY IS TRAINED TWICE AS FAST AS ANY OTHER MODULE!!!
+   local dpd_training_scale_factor = 5
+   if (dpd_training_scale_factor ~= 1) and (DEBUG_shrink or DEBUG_L2 or DEBUG_L1 or DEBUG_OUTPUT) then
+      print('SET decoding_pooling_dictionary training scale factor to 1 before testing!!!')
+      io.read()
+   end
+   local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true}, DISABLE_NORMALIZATION, dpd_training_scale_factor) -- this should have zero bias, and columns normalized to unit magnitude
 
    local classification_dictionary = nn.Linear(layer_size[3], layer_size[4])
-   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), true) -- on each iteration classfication_criterion:setTarget(target) must be called
+   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), 1) -- on each iteration classfication_criterion:setTarget(target) must be called
 
-   local L1_loss_function = nn.L1Cost()
-   local cauchy_loss_function = nn.CauchyCost(lambdas.pooling_output_cauchy_lambda)
+   local feature_extraction_sparsifying_loss_function = nn.L1Cost()
+   local pooling_sparsifying_loss_function = nn.L1Cost() --nn.CauchyCost(lambdas.pooling_output_cauchy_lambda) -- remove lambda from build function if we ever switch back to a cauchy cost!
 
+   -- initialize the parameters to consistent values
+   --decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
+   --decoding_feature_extraction_dictionary:repair()
    encoding_feature_extraction_dictionary.weight:copy(decoding_feature_extraction_dictionary.weight:t())
-   
-   decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
-   for i = 1,layer_size[2] do
-      --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
-      decoding_pooling_dictionary.weight[{i, math.ceil(i * layer_size[3] / layer_size[2])}] = 1
-   end
-
-   decoding_pooling_dictionary:repair()
-   encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   encoding_pooling_dictionary:repair()
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
    encoding_feature_extraction_dictionary.weight:mul(0.2)
@@ -336,43 +462,85 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
-   --base_explaining_away.weight:mul(0.01)
+   --encoding_feature_extraction_dictionary.weight:mul(0.75)
+   --encoding_pooling_dictionary.weight:mul(0.75)
+   --base_explaining_away.weight:mul(0.75)
+   
    base_shrink.shrink_val:fill(1e-5) -- this should probably be very small, and learn to be the appropriate size!!!
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
+      
+   --[[
+   decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
+   for i = 1,layer_size[2] do
+      --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
+      for j = 0,0 do
+	 decoding_pooling_dictionary.weight[{i, math.min(layer_size[3], j + math.ceil(i * layer_size[3] / layer_size[2]))}] = 1
+      end
+   end
+   --]]
+   -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
+   decoding_pooling_dictionary:percentage_zeros_per_column(0.9) -- keep in mind that half of the values are negative, and will be set to zero when repaired
+   decoding_pooling_dictionary:repair()
+   encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
+   encoding_pooling_dictionary:repair()
 
-   -- take the initial input x and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
+   classification_dictionary.bias:zero()
+
+
+   -- Build the reconstruction pooling network
+   local model = nn.Sequential()
+   
+   -- take the initial input x and wrap it in a table x [1]
+   model:add(nn.IdentityTable()) -- wrap the tensor in a table
+
+   -- THE REST OF THIS SHOULD BE PUT IN A FUNCTION THAT EASILY ALLOWS LAYERS TO BE STACKED
+   -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
    local ista_seq
    ista_seq, shrink_copies[#shrink_copies + 1] = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink, {layer_size[1], layer_size[2]})
    model:add(ista_seq)
 
    for i = 1,num_ista_iterations do
       --calculate the sparse code z [1]; preserve the transformed input W*x [2], and the untransformed input x [3]
-      ista_seq, explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = build_ISTA_iteration(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, DISABLE_NORMALIZATION)
+      local use_base_explaining_away = (i == 1) -- the base_explaining_away must be used once directly for parameter flattening in nn.Module to work properly; base_shrink is already used by build_ISTA_first_iteration
+      ista_seq, explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = build_ISTA_iteration(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, DISABLE_NORMALIZATION)
       model:add(ista_seq)
    end
-   -- reconstruct the input D*z [2] from the code z [1], leaving [1] and [3] unchanged
+   -- reconstruct the input D*z [2] from the code z [1], leaving z [1] and x [3] unchanged
    model:add(linearly_reconstruct_input(decoding_feature_extraction_dictionary, 3))
-   -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1]
+   -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1] and the original input x [2]
    model:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
-   -- calculate the L1 magnitude of the shrunk code z [1], returning the shrunk code z [1] unchanged
-   local ista_sparsifying_loss_seq = build_sparsifying_loss(L1_loss_function, lambdas.ista_L1_lambda, layer_size[2], criteria_list)
+   -- calculate the L1 magnitude of the shrunk code z [1] (input also contains the original input x [2]), returning the shrunk code z [1] and original input x[2] unchanged
+   local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_loss_function, lambdas.ista_L1_lambda, layer_size[2], criteria_list)
    model:add(ista_sparsifying_loss_seq)
-   model.ista_sparsifying_loss_seq = ista_sparsifying_loss_seq
+   model.ista_sparsifying_loss_seq = ista_sparsifying_loss_seq -- used when checking for nans in train_recpool_net
 
-   -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], and the preserved input z [2]
-   local pooling_seq = build_pooling(encoding_pooling_dictionary, decoding_pooling_dictionary)
+   -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved input z [2], and the original input x[3]
+   local pooling_seq = build_pooling(encoding_pooling_dictionary)
    model:add(pooling_seq)
-   model.pooling_seq = pooling_seq
-   -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1]
-   local pooling_L2_loss_seq, L2_pooling_units = build_pooling_L2_loss(decoding_pooling_dictionary, lambdas.pooling_L2_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, lambdas.pooling_mask_cauchy_lambda, criteria_list)
+   model.pooling_seq = pooling_seq -- used when checking for nans in train_recpool_net
+   -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
+   local pooling_L2_loss_seq, L2_pooling_units, compute_shrink_reconstruction_loss_seq, compute_orig_reconstruction_loss_seq, compute_position_loss_seq, construct_shrink_rec_numerator_seq, construct_pos_numerator_seq, construct_orig_rec_numerator_seq, construct_denominator_seq =
+      build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary, lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, lambdas.pooling_mask_cauchy_lambda, criteria_list, {layer_size[1], layer_size[2]})
    model:add(pooling_L2_loss_seq)
-   model.pooling_L2_loss_seq = pooling_L2_loss_seq
-   -- calculate the L1 magnitude of the pooling code s [1], returning the pooling code s [1] unchanged
-   local pooling_sparsifying_loss_seq = build_sparsifying_loss(cauchy_loss_function, nil, layer_size[3], criteria_list)
+
+   model.pooling_L2_loss_seq = pooling_L2_loss_seq -- used when checking for nans in train_recpool_net
+   model.compute_shrink_reconstruction_loss_seq = compute_shrink_reconstruction_loss_seq
+   model.compute_orig_reconstruction_loss_seq = compute_orig_reconstruction_loss_seq 
+   model.compute_position_loss_seq = compute_position_loss_seq
+   model.construct_shrink_rec_numerator_seq = construct_shrink_rec_numerator_seq
+   model.construct_pos_numerator_seq = construct_pos_numerator_seq
+   model.construct_orig_rec_numerator_seq = construct_orig_rec_numerator_seq
+   model.construct_denominator_seq = construct_denominator_seq
+
+   -- calculate the L1 magnitude of the pooling code s [1] (also contains the original input x[2]), returning the pooling code s [1] and the original input x [2] unchanged
+   local pooling_sparsifying_loss_seq = build_sparsifying_loss(pooling_sparsifying_loss_function, lambdas.pooling_output_cauchy_lambda, layer_size[3], criteria_list)
    model:add(pooling_sparsifying_loss_seq)
-   model.pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq
-   -- ALSO ADD IN AND L1 PENALTY ON THE MASK INDUCED BY THE POOLING UNITS!!!
-   model:add(nn.SelectTable{1})
+   model.pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq -- used when checking for nans in train_recpool_net
+
+   local extract_pooled_output = nn.ParallelDistributingTable('remove unneeded original input x') -- ensure that the original input x [2] receives a gradOutput of zero
+   extract_pooled_output:add(nn.SelectTable{1})
+   model:add(extract_pooled_output)
+   model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
    model:add(classification_dictionary)
    model:add(nn.LogSoftMax())
    if not(DEBUG_OUTPUT) then
@@ -420,7 +588,7 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
 	 encoding_feature_extraction_dictionary:repair()
 	 decoding_feature_extraction_dictionary:repair()
 	 base_explaining_away:repair()
-	 base_shrink:repair()
+	 base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
 	 encoding_pooling_dictionary:repair()
 	 decoding_pooling_dictionary:repair()
 	 --classification_dictionary:repair()

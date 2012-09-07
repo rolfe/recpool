@@ -295,6 +295,46 @@ function rec_pool_test.CDivTable()
 end
 
 
+function rec_pool_test.SafePower()
+   local in1 = torch.rand(10,20)
+   local module = nn.SafePower(2)
+   local out = module:forward(in1)
+   local err = out:dist(in1:cmul(in1))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local pw = torch.uniform()*math.random(1,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.SafePower(pw)
+
+   local err = nn.Jacobian.testJacobian(module, input, 0.1, 2)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = nn.Jacobian.testIO(module,input, 0.1, 2)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.SafeCMulTable()
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local ink = math.random(10,20)
+   local input = {torch.Tensor(ini):zero(), torch.Tensor(ini):zero()}
+   local module = nn.SafeCMulTable()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+
 function rec_pool_test.L2Cost()
    print(' testing L2Cost!!!')
    local ini = math.random(10,20)
@@ -463,16 +503,35 @@ function rec_pool_test.SelectTable()
 end
 
 
+function rec_pool_test.L1CriterionModule()
+   local ini = math.random(10,20)
+   local lambda = math.random()
+   local input = torch.Tensor(ini):zero()
+   local module = nn.L1CriterionModule(nn.L1Cost(), lambda)
+
+   print('L1CriterionModule test')
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+
 
 function rec_pool_test.full_network_test()
    --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
 
-   local layer_size = {math.random(10,20), math.random(10,20), math.random(10,20), math.random(10,20)} 
+   local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {10, 20, 10, 10}
    local target = math.random(layer_size[4])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 
-		    pooling_L2_reconstruction_lambda = math.random(), 
+		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
+		    pooling_L2_orig_reconstruction_lambda = math.random(), 
 		    pooling_L2_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
@@ -630,13 +689,14 @@ function rec_pool_test.full_network_test()
    mytester:assertlt(err,precision, 'error on classification dictionary bias [full processing chain, direct update] ')
 end
 
-function rec_pool_test.ISTA_reconstruction()
+function other_tests.ISTA_reconstruction()
    -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
    local layer_size = {10, 60, 10, 10}
    local target = math.random(layer_size[4])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 
-		    pooling_L2_reconstruction_lambda = math.random(), 
+		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
+		    pooling_L2_orig_reconstruction_lambda = math.random(), 
 		    pooling_L2_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
@@ -659,7 +719,7 @@ function rec_pool_test.ISTA_reconstruction()
 
    -- confirm that parameter sharing is working properly
    for i = 1,#shrink_copies do
-      if shrink_copies[i].shrink_val:storage() ~= shrink.shrink_val:storage() then
+      if (shrink_copies[i].shrink_val:storage() ~= shrink.shrink_val:storage()) or (shrink_copies[i].grad_shrink_val:storage() ~= shrink.grad_shrink_val:storage()) then
 	 print('ERROR!!!  shrink_copies[' .. i .. '] does not share parameters with base shrink!!!')
 	 io.read()
       end

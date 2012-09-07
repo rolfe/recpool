@@ -60,7 +60,7 @@ function ParameterizedShrink:updateOutput(input)
    self.output:copy(input)
    self.shrunk_indices:resize(input_size)
 
-   self.negative_shrink_val:mul(self.shrink_val, -1) -- ONLY NECESSARY FOR JACOBIAN TESTING, since parameters are perturbed directly
+   self.negative_shrink_val:mul(self.shrink_val, -1) -- ONLY NECESSARY FOR JACOBIAN TESTING, since parameters are perturbed directly - EFFICIENCY NOTE - REMOVE THIS!!! THIS IS INEFFICIENT!!!
 
    if self.nonnegative_units then
       self.shrunk_indices = torch.le(input, self.shrink_val)
@@ -76,6 +76,15 @@ function ParameterizedShrink:updateOutput(input)
    end
    
    self.output[self.shrunk_indices] = 0
+
+   --[[
+   local found_nan = false
+   self.output:apply(function(x) found_nan = found_nan or (x ~= x) end)
+   if found_nan then
+      print(self.output:unfold(1,10,10))
+      io.read()
+   end
+   --]]
    return self.output
 end
 
