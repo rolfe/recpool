@@ -1,0 +1,56 @@
+require 'image'
+
+local function plot_training_error(t)
+   gnuplot.pngfigure(params.rundir .. '/error.png')
+   gnuplot.plot(avTrainingError:narrow(1,1,math.max(t/params.textstatinterval,2)))
+   gnuplot.title('Training Error')
+   gnuplot.xlabel('# iterations / ' .. params.textstatinterval)
+   gnuplot.ylabel('Cost')
+   
+   -- clean up plots
+   gnuplot.plotflush()
+   gnuplot.closeall()
+end
+
+function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)
+   for i = 1,#filter_list do
+      local current_image, current_filter
+      if filter_enc_dec_list[i] == 'encoder' then
+	 current_filter = filter_list[i]:transpose(1,2)
+	 --print('processing ' .. filter_name_list[i] .. ' as a encoder', current_filter:size())
+      elseif filter_enc_dec_list[i] == 'decoder' then
+	 current_filter = filter_list[i]
+	 --print('processing ' .. filter_name_list[i] .. ' as a decoder', current_filter:size())
+      else
+	 error('filter_enc_dec_list[' .. i .. '] was incorrectly set to ' .. filter_enc_dec_list[i])
+      end
+      local current_filter_side_length = math.sqrt(current_filter:size(1))
+      current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
+      local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=10,symmetric=true}
+      
+      --gnuplot.figure(i)
+      --gnuplot.imagesc(current_image)
+      --gnuplot.title(filter_name_list[i])
+      
+      -- ideally, the pdf viewer should refresh automatically.  This 
+      image.savePNG(paths.concat(opt.log_directory, filter_name_list[i] .. '.png'), current_image)
+      if time_index % 1 == 0 then
+	 --image.savePNG(paths.concat(opt.log_directory, filter_name_list[i] .. '_' .. time_index .. '.png'), current_image)
+      end
+   end
+   --gnuplot.plotflush()
+end
+
+function plot_reconstructions(opt, input, output)
+   local image_list = {input, output}
+   local current_image
+
+   for i = 1,#image_list do
+      local current_image_side_length = math.sqrt(image_list[i]:size(1))
+      current_image = image_list[i]:unfold(1,current_image_side_length, current_image_side_length)
+      gnuplot.figure(i)
+      gnuplot.imagesc(current_image)
+   end
+   
+   gnuplot.plotflush()
+end
