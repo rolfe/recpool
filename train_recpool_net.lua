@@ -229,6 +229,11 @@ function RecPoolTrainer:train(train_data)
    print('pooling reconstruction', self.model.decoding_pooling_dictionary.output:unfold(1,10,10))
    print('pooling position units', self.model.L2_pooling_units.output:unfold(1,10,10))
    print('pooling output', self.model.pooling_seq.output[1]:unfold(1,10,10))
+   print('feature extraction L1', self.model.feature_extraction_sparsifying_module.weight:unfold(1,10,10))
+   print('pooling L1', self.model.pooling_sparsifying_module.weight:unfold(1,10,10))
+   print('mask L1', self.model.mask_sparsifying_module.weight:unfold(1,10,10))
+
+
    --print('shrink values', torch.add(self.model.shrink.shrink_val, -1e-5):unfold(1,10,10))
    --print('negative_shrink values', torch.add(self.model.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
    -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!

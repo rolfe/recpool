@@ -218,6 +218,31 @@ end
 rec_pool_test.ParameterizedShrinkNonnegative = create_parameterized_shrink_test(true)
 rec_pool_test.ParameterizedShrinkUnconstrained = create_parameterized_shrink_test(false)
 
+function rec_pool_test.ParameterizedL1Cost()
+   local size = math.random(10,20)
+   local initial_lambda = math.random()
+   local desired_criterion_value = math.random()
+   local learning_rate_scaling_factor = -1 -- necessary since normally the error is maximized with respect to the lagrange multipliers
+   local module = nn.ParameterizedL1Cost(size, initial_lambda, desired_criterion_value, learning_rate_scaling_factor, 'full test')
+   
+   local input = torch.Tensor(size):zero()
+   
+   local err = jac.testJacobian(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+   local err = jac.testJacobianParameters(module, input, module.weight, module.gradWeight)
+   mytester:assertlt(err,precision, 'error on weight ')
+   
+   local err = jac.testJacobianUpdateParameters(module, input, module.weight)
+   mytester:assertlt(err,precision, 'error on weight [direct update]')
+   
+   for t,err in pairs(jac.testAllUpdate(module, input, 'weight', 'gradWeight')) do
+      mytester:assertlt(err, precision, string.format('error on weight (testAllUpdate) [%s]', t))
+   end
+   
+   local ferr,berr = jac.testIO(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
 
 function rec_pool_test.CAddTable()
    local ini = math.random(10,20)
@@ -520,6 +545,24 @@ function rec_pool_test.L1CriterionModule()
 end
 
 
+local function test_module(name, module, param, grad_param, param_number, parameter_list, model, input, jac, precision)
+   local function copy_table(t)
+      local t2 = {}
+      for k,v in pairs(t) do
+	 t2[k] = v
+      end
+      return t2
+   end
+   local unused_params
+
+   print(name .. ' ' .. param)
+   local err = jac.testJacobianParameters(model, input, module[param], module[grad_param])
+   mytester:assertlt(err,precision, 'error on ' .. name .. ' ' .. param)
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, param_number)
+   local err = jac.testJacobianUpdateParameters(model, input, module[param], unused_params)
+   mytester:assertlt(err,precision, 'error on ' .. name .. ' ' .. param .. ' [full processing chain, direct update] ')
+end
 
 
 function rec_pool_test.full_network_test()
@@ -535,16 +578,21 @@ function rec_pool_test.full_network_test()
 		    pooling_L2_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
-   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-      build_recpool_net(layer_size, lambdas, 5, true) -- NORMALIZATION IS DISABLED!!!
 
-   local parameter_list = {decoding_dictionary.weight, decoding_dictionary.bias, encoding_dictionary.weight, encoding_dictionary.bias, explaining_away.weight, explaining_away.bias, shrink.shrink_val, shrink.negative_shrink_val, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.bias, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.bias, classification_dictionary.weight, classification_dictionary.bias}
+   local lagrange_multiplier_targets = {feature_extraction_lambda = math.random(), pooling_lambda = math.random(), mask_lambda = math.random()}
+   local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = -1, pooling_scaling_factor = -1, mask_scaling_factor = -1}
+
+   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+      build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 5, true) -- final true -> NORMALIZATION IS DISABLED!!!
+
+   local parameter_list = {decoding_dictionary.weight, decoding_dictionary.bias, encoding_dictionary.weight, encoding_dictionary.bias, explaining_away.weight, explaining_away.bias, shrink.shrink_val, shrink.negative_shrink_val, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.bias, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.bias, classification_dictionary.weight, classification_dictionary.bias, feature_extraction_sparsifying_module.weight, pooling_sparsifying_module.weight, mask_sparsifying_module.weight}
 
    model:set_target(target)
    
    print('Since the model contains a LogSoftMax, use precision ' .. expprecision .. ' rather than ' .. precision)
    local precision = 3*expprecision
 
+   -- REMOVE THIS
    local function copy_table(t)
       local t2 = {}
       for k,v in pairs(t) do
@@ -553,7 +601,7 @@ function rec_pool_test.full_network_test()
       return t2
    end
    local unused_params
-
+   
    local input = torch.Tensor(layer_size[1]):zero()
 
 
@@ -687,9 +735,23 @@ function rec_pool_test.full_network_test()
    table.remove(unused_params, 14)
    local err = jac.testJacobianUpdateParameters(model, input, classification_dictionary.bias, unused_params)
    mytester:assertlt(err,precision, 'error on classification dictionary bias [full processing chain, direct update] ')
+
+   print('feature extraction sparsifying module weight')
+   local err = jac.testJacobianParameters(model, input, feature_extraction_sparsifying_module.weight, feature_extraction_sparsifying_module.gradWeight)
+   mytester:assertlt(err,precision, 'error on feature extraction sparsifying module weight ')   
+   unused_params = copy_table(parameter_list)
+   table.remove(unused_params, 15)
+   local err = jac.testJacobianUpdateParameters(model, input, feature_extraction_sparsifying_module.weight, unused_params)
+   mytester:assertlt(err,precision, 'error on feature extraction sparsifying module weight [full processing chain, direct update] ')
+
+   test_module('feature extraction sparsifying module', feature_extraction_sparsifying_module, 'weight', 'gradWeight', 15, parameter_list, model, input, jac, precision)
+   test_module('pooling sparsifying module', pooling_sparsifying_module, 'weight', 'gradWeight', 16, parameter_list, model, input, jac, precision)
+   test_module('mask sparsifying module', mask_sparsifying_module, 'weight', 'gradWeight', 17, parameter_list, model, input, jac, precision)
+   --test_module(name, module, param, grad_param, param_number, parameter_list, model, input, jac, precision)
+
 end
 
-function other_tests.ISTA_reconstruction()
+function rec_pool_test.ISTA_reconstruction()
    -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
    local layer_size = {10, 60, 10, 10}
    local target = math.random(layer_size[4])
@@ -700,8 +762,12 @@ function other_tests.ISTA_reconstruction()
 		    pooling_L2_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
-   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-      build_recpool_net(layer_size, lambdas, 50) -- normalization is not disabled
+   local lagrange_multiplier_targets = {feature_extraction_lambda = math.random(), pooling_lambda = math.random(), mask_lambda = math.random()}
+   local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = -1, pooling_scaling_factor = -1, mask_scaling_factor = -1}
+
+
+   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+      build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 50) -- normalization is not disabled
 
    local test_input = torch.rand(layer_size[1])
    local target = math.random(layer_size[4])

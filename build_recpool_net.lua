@@ -43,12 +43,12 @@ end
 
 -- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
-local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_size, use_base_explaining_away, DISABLE_NORMALIZATION)
+local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
    local explaining_away
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION)
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
@@ -133,17 +133,18 @@ end
 
 -- the input is a table of two elements: the subject of the shrink operation z [1], and the original input x [2]
 -- the output is a table of two elements: the subject of the shrink operation z [1], and the original input x [2]
-local function build_sparsifying_loss(sparsifying_loss_function, sparsifying_lambda, layer_size, criteria_list)
+local function build_sparsifying_loss(sparsifying_criterion_module, criteria_list)
    --local L1_seq = nn.Sequential()
    --L1_seq:add(nn.CopyTable(1, 2)) -- split into the output to the rest of the chain [1] and the output to the L1 norm [2]; original input x is now [3]
    
    local apply_L1_norm = nn.ParallelDistributingTable()
    local scaled_L1_norm = nn.Sequential() -- scale the code [1], calculate its L1 norm, and throw away the output
-   scaled_L1_norm:add(nn.SelectTable{1}) -- WAS 2!!!
+   scaled_L1_norm:add(nn.SelectTable{1}) 
    if DEBUG_L1 or DEBUG_OUTPUT then
       scaled_L1_norm:add(nn.ZeroModule())
    else
-      local sparsifying_criterion_module = nn.L1CriterionModule(sparsifying_loss_function, sparsifying_lambda) -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
+      --local sparsifying_criterion_module = nn.L1CriterionModule(sparsifying_loss_function, sparsifying_lambda) -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
+      --local sparsifying_criterion_module = ParameterizedL1Cost(layer_size, sparsifying_lambda, desired_criterion_value, lagrange_multiplier_learning_rate_scaling_factor)
       scaled_L1_norm:add(sparsifying_criterion_module) -- also compute the L1 norm on the code
       scaled_L1_norm:add(nn.Ignore()) -- don't pass the L1 loss value onto the rest of the network
       table.insert(criteria_list.criteria, sparsifying_criterion_module) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
@@ -187,6 +188,7 @@ end
 
 
 local function build_loss_tester(num_inputs, tested_inputs, criteria_list)
+   print('ADDING LOSS TESTER!')
    local test_pdt = nn.ParallelDistributingTable()
    
    for i = 1,num_inputs do
@@ -216,10 +218,10 @@ end
 
 -- the input is a table of three elements: the subject of the pooling operation s [1], the preserved shrink output z [2], and the original input x [3]
 -- the output is a table of two elements: the subject of the pooling operation s [1] and the original input x [2]
-local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary_original, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, mask_cauchy_lambda, criteria_list, layer_size)
+local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary_original, mask_sparsifying_module, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, criteria_list, layer_size)
    -- the L2 reconstruction error and the L2 position unit magnitude both depend upon the denominator 1 + (P*s)^2, so calculate them together in a single function
 
-   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, DISABLE_NORMALIZATION) 
+   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
    decoding_feature_extraction_dictionary_copy:share(decoding_feature_extraction_dictionary_original, 'weight', 'bias', 'gradWeight', 'gradBias')
 
    local pool_L2_loss_seq = nn.Sequential()
@@ -242,10 +244,12 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    else
       --local sparsifying_mask_loss_function = nn.CauchyCost(mask_cauchy_lambda)
       
-      local sparsifying_mask_loss_function = nn.L1Cost()
-      local sparsifying_mask_criterion_module = nn.L1CriterionModule(sparsifying_mask_loss_function, mask_cauchy_lambda) -- the L1CriterionModule rather than the wrapped criterion computes the correct scaled error
-      sparsifying_loss_seq:add(sparsifying_mask_criterion_module) -- also compute the caucy norm on the code
-      table.insert(criteria_list.criteria, sparsifying_mask_criterion_module) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
+      --local sparsifying_mask_loss_function = nn.L1Cost()
+      --local sparsifying_mask_criterion_module = nn.L1CriterionModule(sparsifying_mask_loss_function, mask_cauchy_lambda) -- the L1CriterionModule rather than the wrapped criterion computes the correct scaled error
+      --sparsifying_loss_seq:add(sparsifying_mask_criterion_module) -- also compute the caucy norm on the code
+      --table.insert(criteria_list.criteria, sparsifying_mask_criterion_module) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
+      sparsifying_loss_seq:add(mask_sparsifying_module) -- also compute the caucy norm on the code
+      table.insert(criteria_list.criteria, mask_sparsifying_module) -- make sure that we consider the sparsifying_loss_function when evaluating the total loss
       table.insert(criteria_list.names, 'sparsifying mask loss')
       print('inserting sparsifying cauchy mask loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
    end
@@ -400,14 +404,14 @@ local function set_debug_fields(model, encoding_feature_extraction_dictionary, d
 end
 
 
-function build_full_recpool_layer(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION)
+function build_full_recpool_layer(layer_size, lambdas, num_ista_iterations, RUN_JACOBIAN_TEST)
 end
 
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
-function build_multilayer_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION)
+function build_multilayer_recpool_net(layer_size, lambdas, num_ista_iterations, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
-   DISABLE_NORMALIZATION = DISABLE_NORMALIZATION or false
+   RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    
    local model = nn.Sequential()
    local layers_per_recpool = 2
@@ -415,41 +419,67 @@ function build_multilayer_recpool_net(layer_size, lambdas, num_ista_iterations, 
 
    for current_layer = 1,#lambdas do
       local current_layer_size
-      model:add(build_full_recpool_layer(current_layer_size, lambdas[current_layer], num_ista_iterations, DISABLE_NORMALIZATION))
+      model:add(build_full_recpool_layer(current_layer_size, lambdas[current_layer], num_ista_iterations, RUN_JACOBIAN_TEST))
    end
 end
 
 
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
--- use DISABLE_NORMALIZATION when testing parameter updates
-function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NORMALIZATION) 
+-- use RUN_JACOBIAN_TEST when testing parameter updates
+function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, RUN_JACOBIAN_TEST) 
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
-   DISABLE_NORMALIZATION = DISABLE_NORMALIZATION or false
+   RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION) 
-   local decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, DISABLE_NORMALIZATION) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, DISABLE_NORMALIZATION) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
+   local decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
    local shrink_copies = {}
    
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true}, DISABLE_NORMALIZATION) -- this should have zero bias
-   -- DECODING_POOLING_DICTIONARY IS TRAINED TWICE AS FAST AS ANY OTHER MODULE!!!
-   local dpd_training_scale_factor = 5
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true}, RUN_JACOBIAN_TEST) -- this should have zero bias
+
+   local dpd_training_scale_factor = 1
+   if not(RUN_JACOBIAN_TEST) then 
+      dpd_training_scale_factor = 5 -- decoding_pooling_dictionary is trained faster than any other module
+   else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
+      for k,v in pairs(lagrange_multiplier_learning_rate_scaling_factors) do
+	 if v ~= -1 then
+	    error('When doing jacobian test, lagrange_multiplier_scaling_factor ' .. k .. ' was ' .. v .. ' rather than -1')
+	 end
+      end
+   end
+      
+
    if (dpd_training_scale_factor ~= 1) and (DEBUG_shrink or DEBUG_L2 or DEBUG_L1 or DEBUG_OUTPUT) then
       print('SET decoding_pooling_dictionary training scale factor to 1 before testing!!!')
       io.read()
    end
-   local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true}, DISABLE_NORMALIZATION, dpd_training_scale_factor) -- this should have zero bias, and columns normalized to unit magnitude
+   local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true}, RUN_JACOBIAN_TEST, dpd_training_scale_factor) -- this should have zero bias, and columns normalized to unit magnitude
 
    local classification_dictionary = nn.Linear(layer_size[3], layer_size[4])
    local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), 1) -- on each iteration classfication_criterion:setTarget(target) must be called
 
-   local feature_extraction_sparsifying_loss_function = nn.L1Cost()
-   local pooling_sparsifying_loss_function = nn.L1Cost() --nn.CauchyCost(lambdas.pooling_output_cauchy_lambda) -- remove lambda from build function if we ever switch back to a cauchy cost!
+   -- there's really no reason to define these here rather than where they're used
+   local use_lagrange_multiplier_for_L1_regularizer = true
+   local feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module
+   if use_lagrange_multiplier_for_L1_regularizer then
+      feature_extraction_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.ista_L1_lambda, lagrange_multiplier_targets.feature_extraction_lambda, lagrange_multiplier_learning_rate_scaling_factors.feature_extraction_scaling_factor, RUN_JACOBIAN_TEST)
+
+      pooling_sparsifying_module = nn.ParameterizedL1Cost(layer_size[3], lambdas.pooling_output_cauchy_lambda, lagrange_multiplier_targets.pooling_lambda, lagrange_multiplier_learning_rate_scaling_factors.pooling_scaling_factor, RUN_JACOBIAN_TEST) 
+
+      mask_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.pooling_mask_cauchy_lambda, lagrange_multiplier_targets.mask_lambda, lagrange_multiplier_learning_rate_scaling_factors.mask_scaling_factor, RUN_JACOBIAN_TEST) 
+      --mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
+   else
+      -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
+      feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) 
+      pooling_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_output_cauchy_lambda) 
+      --local pooling_sparsifying_loss_function = nn.L1Cost() --nn.CauchyCost(lambdas.pooling_output_cauchy_lambda) -- remove lambda from build function if we ever switch back to a cauchy cost!
+      mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
+   end
 
    -- initialize the parameters to consistent values
    --decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
@@ -482,6 +512,7 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    decoding_pooling_dictionary:percentage_zeros_per_column(0.9) -- keep in mind that half of the values are negative, and will be set to zero when repaired
    decoding_pooling_dictionary:repair()
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
+   encoding_pooling_dictionary.weight:mul(0.5)
    encoding_pooling_dictionary:repair()
 
    classification_dictionary.bias:zero()
@@ -490,6 +521,11 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    -- Build the reconstruction pooling network
    local model = nn.Sequential()
    
+   -- for debug purposes - used for output in train_recpool_net
+   model.feature_extraction_sparsifying_module = feature_extraction_sparsifying_module
+   model.pooling_sparsifying_module = pooling_sparsifying_module
+   model.mask_sparsifying_module = mask_sparsifying_module
+
    -- take the initial input x and wrap it in a table x [1]
    model:add(nn.IdentityTable()) -- wrap the tensor in a table
 
@@ -502,7 +538,7 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    for i = 1,num_ista_iterations do
       --calculate the sparse code z [1]; preserve the transformed input W*x [2], and the untransformed input x [3]
       local use_base_explaining_away = (i == 1) -- the base_explaining_away must be used once directly for parameter flattening in nn.Module to work properly; base_shrink is already used by build_ISTA_first_iteration
-      ista_seq, explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = build_ISTA_iteration(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, DISABLE_NORMALIZATION)
+      ista_seq, explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = build_ISTA_iteration(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
       model:add(ista_seq)
    end
    -- reconstruct the input D*z [2] from the code z [1], leaving z [1] and x [3] unchanged
@@ -510,7 +546,9 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1] and the original input x [2]
    model:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
    -- calculate the L1 magnitude of the shrunk code z [1] (input also contains the original input x [2]), returning the shrunk code z [1] and original input x[2] unchanged
-   local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_loss_function, lambdas.ista_L1_lambda, layer_size[2], criteria_list)
+
+
+   local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_module, criteria_list)
    model:add(ista_sparsifying_loss_seq)
    model.ista_sparsifying_loss_seq = ista_sparsifying_loss_seq -- used when checking for nans in train_recpool_net
 
@@ -520,7 +558,7 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    model.pooling_seq = pooling_seq -- used when checking for nans in train_recpool_net
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
    local pooling_L2_loss_seq, L2_pooling_units, compute_shrink_reconstruction_loss_seq, compute_orig_reconstruction_loss_seq, compute_position_loss_seq, construct_shrink_rec_numerator_seq, construct_pos_numerator_seq, construct_orig_rec_numerator_seq, construct_denominator_seq =
-      build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary, lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, lambdas.pooling_mask_cauchy_lambda, criteria_list, {layer_size[1], layer_size[2]})
+      build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary, mask_sparsifying_module, lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, criteria_list, {layer_size[1], layer_size[2]})
    model:add(pooling_L2_loss_seq)
 
    model.pooling_L2_loss_seq = pooling_L2_loss_seq -- used when checking for nans in train_recpool_net
@@ -533,7 +571,8 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    model.construct_denominator_seq = construct_denominator_seq
 
    -- calculate the L1 magnitude of the pooling code s [1] (also contains the original input x[2]), returning the pooling code s [1] and the original input x [2] unchanged
-   local pooling_sparsifying_loss_seq = build_sparsifying_loss(pooling_sparsifying_loss_function, lambdas.pooling_output_cauchy_lambda, layer_size[3], criteria_list)
+   local pooling_sparsifying_loss_seq = build_sparsifying_loss(pooling_sparsifying_module, criteria_list)
+
    model:add(pooling_sparsifying_loss_seq)
    model.pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq -- used when checking for nans in train_recpool_net
 
@@ -600,7 +639,7 @@ function build_recpool_net(layer_size, lambdas, num_ista_iterations, DISABLE_NOR
    set_debug_fields(model, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, base_explaining_away, base_shrink, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away_copies, shrink_copies, criteria_list, L2_pooling_units)
 
    
-   return model, criteria_list, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
+   return model, criteria_list, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
 end
 
 -- Test full reconstructing-pooling model with Jacobian.  Maintain a list of all Criteria.  When running forward, sum over all Criteria to determine the gradient of a single unified energy (should be able to just run updateOutput on the Criteria).  When running backward, just call updateGradInput on the network.  No gradOutput needs to be provided, since all modules terminate in an output-free Criterion.
