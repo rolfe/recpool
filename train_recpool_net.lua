@@ -225,20 +225,29 @@ function RecPoolTrainer:train(train_data)
       self.grad_loss_hist[i] = 0
    end
    
-   print('final shrink output', self.model.shrink_copies[#self.model.shrink_copies].output:unfold(1,10,10))
-   print('pooling reconstruction', self.model.decoding_pooling_dictionary.output:unfold(1,10,10))
-   print('pooling position units', self.model.L2_pooling_units.output:unfold(1,10,10))
-   print('pooling output', self.model.pooling_seq.output[1]:unfold(1,10,10))
-   print('feature extraction L1', self.model.feature_extraction_sparsifying_module.weight:unfold(1,10,10))
-   print('pooling L1', self.model.pooling_sparsifying_module.weight:unfold(1,10,10))
-   print('mask L1', self.model.mask_sparsifying_module.weight:unfold(1,10,10))
-
-
-   --print('shrink values', torch.add(self.model.shrink.shrink_val, -1e-5):unfold(1,10,10))
-   --print('negative_shrink values', torch.add(self.model.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
-   -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!
-   -- check that without regularization, filters are meaningless.  Confirm that trainable pooling has an effect on the pooled filters.
-   --plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.decoding_feature_extraction_dictionary.output)
+   for i = 1,#self.model.layers do
+      print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
+      print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
+      -- these two outputs are from the middle of the processing chain, rather than the parameterized modules
+      print('pooling position units', self.model.layers[i].debug_module_list.L2_pooling_units.output:unfold(1,10,10))
+      print('pooling output', self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10))
+      -- since the sparsifying modules can be parameterized by lagrange multipliers, they are in the main module list
+      if self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
+	 print('feature extraction L1', self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight:unfold(1,10,10))
+      end
+      if self.model.layers[i].module_list.pooling_sparsifying_module.weight then
+	 print('pooling L1', self.model.layers[i].module_list.pooling_sparsifying_module.weight:unfold(1,10,10))
+      end
+      if self.model.layers[i].module_list.mask_sparsifying_module.weight then
+	 print('mask L1', self.model.layers[i].module_list.mask_sparsifying_module.weight:unfold(1,10,10))
+      end
+      
+      --print('shrink values', torch.add(self.model.layers[i].module_list.shrink.shrink_val, -1e-5):unfold(1,10,10))
+      --print('negative_shrink values', torch.add(self.model.layers[i].module_list.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
+      -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!
+      -- check that without regularization, filters are meaningless.  Confirm that trainable pooling has an effect on the pooled filters.
+      --plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+   end
 
    output_gradient_magnitudes(self)
 
@@ -254,10 +263,14 @@ end
 
 
 function output_gradient_magnitudes(self)
-   print('encoding FE dict', self.model.encoding_feature_extraction_dictionary.gradWeight:norm(), 'decoding FE dict', self.model.decoding_feature_extraction_dictionary.gradWeight:norm(),
-	 'shrink', self.model.shrink.grad_shrink_val:norm(), 'explaining away', self.model.explaining_away.gradWeight:norm(),
-	 'encoding P dict', self.model.encoding_pooling_dictionary.gradWeight:norm(), 'decoding P dict', self.model.decoding_pooling_dictionary.gradWeight:norm(), 
-	 'class dict', self.model.classification_dictionary.gradWeight:norm())
+   for i = 1,#self.model.layers do
+      print('layer ' .. i, 'encoding FE dict', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:norm(), 
+	    'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(),
+	    'shrink', self.model.layers[i].module_list.shrink.grad_shrink_val:norm(), 'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(),
+	    'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(), 
+	    'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
+   end
+   print('classification layer', 'class dict', self.model.module_list.classification_dictionary.gradWeight:norm())
 end
 
 function check_for_nans(self, output, name)

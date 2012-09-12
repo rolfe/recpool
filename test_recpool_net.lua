@@ -545,7 +545,7 @@ function rec_pool_test.L1CriterionModule()
 end
 
 
-local function test_module(name, module, param, grad_param, param_number, parameter_list, model, input, jac, precision)
+local function test_module(name, module, param, grad_param, parameter_list, model, input, jac, precision, min_param, max_param)
    local function copy_table(t)
       local t2 = {}
       for k,v in pairs(t) do
@@ -556,11 +556,17 @@ local function test_module(name, module, param, grad_param, param_number, parame
    local unused_params
 
    print(name .. ' ' .. param)
-   local err = jac.testJacobianParameters(model, input, module[param], module[grad_param])
+   local err = jac.testJacobianParameters(model, input, module[param], module[grad_param], min_param, max_param)
    mytester:assertlt(err,precision, 'error on ' .. name .. ' ' .. param)
    unused_params = copy_table(parameter_list)
-   table.remove(unused_params, param_number)
-   local err = jac.testJacobianUpdateParameters(model, input, module[param], unused_params)
+   for k,v in pairs(parameter_list) do
+      if module[param] == v then
+	 --print('removing key ' .. k .. ' for ' .. name .. '.' .. param)
+	 table.remove(unused_params, k)
+      end
+   end
+   --table.remove(unused_params, param_number)
+   local err = jac.testJacobianUpdateParameters(model, input, module[param], unused_params, min_param, max_param)
    mytester:assertlt(err,precision, 'error on ' .. name .. ' ' .. param .. ' [full processing chain, direct update] ')
 end
 
@@ -568,7 +574,8 @@ end
 function rec_pool_test.full_network_test()
    --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
 
-   local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
+   --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
+   local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {10, 20, 10, 10}
    local target = math.random(layer_size[4])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
@@ -582,25 +589,66 @@ function rec_pool_test.full_network_test()
    local lagrange_multiplier_targets = {feature_extraction_lambda = math.random(), pooling_lambda = math.random(), mask_lambda = math.random()}
    local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = -1, pooling_scaling_factor = -1, mask_scaling_factor = -1}
 
-   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-      build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 5, true) -- final true -> NORMALIZATION IS DISABLED!!!
+   --[[
+   local layered_lambdas = {lambdas} --{lambdas, lambdas}
+   local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets} --{lagrange_multiplier_targets, lagrange_multiplier_targets}
+   local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors} --{lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
+   --]]
 
-   local parameter_list = {decoding_dictionary.weight, decoding_dictionary.bias, encoding_dictionary.weight, encoding_dictionary.bias, explaining_away.weight, explaining_away.bias, shrink.shrink_val, shrink.negative_shrink_val, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.bias, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.bias, classification_dictionary.weight, classification_dictionary.bias, feature_extraction_sparsifying_module.weight, pooling_sparsifying_module.weight, mask_sparsifying_module.weight}
+   local layered_lambdas = {lambdas, lambdas}
+   local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets, lagrange_multiplier_targets}
+   local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
+
+
+   --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+   local model =
+      build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, true) -- final true -> NORMALIZATION IS DISABLED!!!
+
+   -- THERE'S NO REASON TO REMOVE THE PARAMETERS FROM THIS LIST BY INDEX; INSTEAD, JUST SEARCH FOR THE ENTRY IN THE LIST THAT MATCHES THE PARAMETER TO BE TESTED
+   --[[
+   local parameter_list = {model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+			   model.layers[1].module_list.decoding_feature_extraction_dictionary.bias, 
+			   model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+			   model.layers[1].module_list.encoding_feature_extraction_dictionary.bias, 
+			   model.layers[1].module_list.explaining_away.weight, 
+			   model.layers[1].module_list.explaining_away.bias, 
+			   model.layers[1].module_list.shrink.shrink_val, 
+			   model.layers[1].module_list.shrink.negative_shrink_val, 
+			   model.layers[1].module_list.decoding_pooling_dictionary.weight, 
+			   model.layers[1].module_list.decoding_pooling_dictionary.bias, 
+			   model.layers[1].module_list.encoding_pooling_dictionary.weight, 
+			   model.layers[1].module_list.encoding_pooling_dictionary.bias, 
+			   model.module_list.classification_dictionary.weight, 
+			   model.module_list.classification_dictionary.bias, 
+			   model.layers[1].module_list.feature_extraction_sparsifying_module.weight, 
+			   model.layers[1].module_list.pooling_sparsifying_module.weight, 
+			   model.layers[1].module_list.mask_sparsifying_module.weight}
+   --]]
+
+   local parameter_list = {}
+   for i = 1,#model.layers do
+      for k,v in pairs(model.layers[i].module_list) do
+	 if v.parameters and v:parameters() then -- if a parameters function is defined
+	    local params = v:parameters()
+	    for j = 1,#params do
+	       table.insert(parameter_list, params[j])
+	    end
+	 end
+      end
+   end
+   
+   for k,v in pairs(model.module_list) do
+      local params = v:parameters()
+      for j = 1,#params do
+	    table.insert(parameter_list, params[j])
+      end
+   end
+
 
    model:set_target(target)
    
    print('Since the model contains a LogSoftMax, use precision ' .. expprecision .. ' rather than ' .. precision)
    local precision = 3*expprecision
-
-   -- REMOVE THIS
-   local function copy_table(t)
-      local t2 = {}
-      for k,v in pairs(t) do
-	 t2[k] = v
-      end
-      return t2
-   end
-   local unused_params
    
    local input = torch.Tensor(layer_size[1]):zero()
 
@@ -608,146 +656,38 @@ function rec_pool_test.full_network_test()
    local err = jac.testJacobian(model, input)
    mytester:assertlt(err,precision, 'error on processing chain state ')
 
-   print('decoding dictionary weight')
-   local err = jac.testJacobianParameters(model, input, decoding_dictionary.weight, decoding_dictionary.gradWeight)
-   mytester:assertlt(err,precision, 'error on decoding dictionary weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 1)
-   local err = jac.testJacobianUpdateParameters(model, input, decoding_dictionary.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on decoding dictionary weight [full processing chain, direct update] ')
-
-   print('decoding dictionary bias')
-   local err = jac.testJacobianParameters(model, input, decoding_dictionary.bias, decoding_dictionary.gradBias)
-   mytester:assertlt(err,precision, 'error on decoding dictionary bias ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 2)
-   local err = jac.testJacobianUpdateParameters(model, input, decoding_dictionary.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on decoding dictionary bias [full processing chain, direct update] ')
-   
-   print('encoding dictionary weight')
-   local err = jac.testJacobianParameters(model, input, encoding_dictionary.weight, encoding_dictionary.gradWeight)
-   mytester:assertlt(err,precision, 'error on encoding dictionary weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 3)
-   local err = jac.testJacobianUpdateParameters(model, input, encoding_dictionary.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on encoding dictionary weight [full processing chain, direct update] ')
-   
-   print('encoding dictionary bias')
-   local err = jac.testJacobianParameters(model, input, encoding_dictionary.bias, encoding_dictionary.gradBias)
-   mytester:assertlt(err,precision, 'error on encoding dictionary bias ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 4)
-   local err = jac.testJacobianUpdateParameters(model, input, encoding_dictionary.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on encoding dictionary bias [full processing chain, direct update] ')
-
-   -- explaining_away uses shared weights.  We can only test the gradient using testJacobianParameters if we sum the backwards gradient at all shared copies, since the parameter perturbation in forward affects all shared copies
-   local explaining_away_gradWeight_array = {}
-   for i,ea in ipairs(explaining_away_copies) do
-      explaining_away_gradWeight_array[i] = ea.gradWeight
+   for i = 1,#model.layers do
+      test_module('decoding dictionary weight', model.layers[i].module_list.decoding_feature_extraction_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      test_module('decoding dictionary bias', model.layers[i].module_list.decoding_feature_extraction_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      test_module('encoding dictionary weight', model.layers[i].module_list.encoding_feature_extraction_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      test_module('encoding dictionary bias', model.layers[i].module_list.encoding_feature_extraction_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      
+      -- don't allow large weights, or the messages exhibit exponential growth
+      test_module('explaining away weight', model.layers[i].module_list.explaining_away, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, -0.6, 0.6)
+      test_module('explaining away bias', model.layers[i].module_list.explaining_away, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      test_module('shrink shrink_val', model.layers[i].module_list.shrink, 'shrink_val', 'grad_shrink_val', parameter_list, model, input, jac, precision)
+      -- element 8 of the parameter_list is negative_shrink_val
+      test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      
+      -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
+      test_module('encoding pooling dictionary weight', model.layers[i].module_list.encoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
+      test_module('encoding pooling dictionary bias', model.layers[i].module_list.encoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
+      
+      if model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
+	 test_module('feature extraction sparsifying module', model.layers[i].module_list.feature_extraction_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      end
+      if model.layers[i].module_list.pooling_sparsifying_module.weight then
+	 test_module('pooling sparsifying module', model.layers[i].module_list.pooling_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      end
+      if model.layers[i].module_list.mask_sparsifying_module.weight then
+	 test_module('mask sparsifying module', model.layers[i].module_list.mask_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      end
    end
-   print('explaining away weight')
-   --local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away_gradWeight_array, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
-   local err = jac.testJacobianParameters(model, input, explaining_away.weight, explaining_away.gradWeight, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
-   mytester:assertlt(err,precision, 'error on explaining away weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 5)
-   local err = jac.testJacobianUpdateParameters(model, input, explaining_away.weight, unused_params, -0.6, 0.6) -- don't allow large weights, or the messages exhibit exponential growth
-   mytester:assertlt(err,precision, 'error on explaining away weight [full processing chain, direct update] ')
-
-   local explaining_away_gradBias_array = {}
-   for i,ea in ipairs(explaining_away_copies) do
-      explaining_away_gradBias_array[i] = ea.gradBias
-   end
-   print('explaining away bias')
-   --local err = jac.testJacobianParameters(model, input, explaining_away.bias, explaining_away_gradBias_array)
-   local err = jac.testJacobianParameters(model, input, explaining_away.bias, explaining_away.gradBias)
-   mytester:assertlt(err,precision, 'error on explaining away bias ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 6)
-   local err = jac.testJacobianUpdateParameters(model, input, explaining_away.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on explaining away bias [full processing chain, direct update] ')
-
-   local shrink_grad_shrink_val_array = {}
-   for i,sh in ipairs(shrink_copies) do
-      shrink_grad_shrink_val_array[i] = sh.grad_shrink_val
-   end
-   print('shrink shrink_val')
-   --local err = jac.testJacobianParameters(model, input, shrink.shrink_val, shrink_grad_shrink_val_array)
-   local err = jac.testJacobianParameters(model, input, shrink.shrink_val, shrink.grad_shrink_val)
-   mytester:assertlt(err,precision, 'error on shrink shrink_val ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 7)
-   local err = jac.testJacobianUpdateParameters(model, input, shrink.shrink_val, unused_params)
-   mytester:assertlt(err,precision, 'error on shrink shrink_val [full processing chain, direct update] ')
-
-   --[[
-   print(encoding_pooling_dictionary.weight)
-   print(encoding_pooling_dictionary.bias)
-   print(decoding_pooling_dictionary.weight)
-   print(decoding_pooling_dictionary.bias)
-   --]]
-
-   print('decoding pooling dictionary weight')
-   local err = jac.testJacobianParameters(model, input, decoding_pooling_dictionary.weight, decoding_pooling_dictionary.gradWeight)
-   mytester:assertlt(err,precision, 'error on decoding pooling dictionary weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 9)
-   local err = jac.testJacobianUpdateParameters(model, input, decoding_pooling_dictionary.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on decoding pooling dictionary weight [full processing chain, direct update] ')
-
-   print('decoding pooling dictionary bias')
-   local err = jac.testJacobianParameters(model, input, decoding_pooling_dictionary.bias, decoding_pooling_dictionary.gradBias)
-   mytester:assertlt(err,precision, 'error on decoding pooling dictionary bias ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 10)
-   local err = jac.testJacobianUpdateParameters(model, input, decoding_pooling_dictionary.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on decoding pooling dictionary bias [full processing chain, direct update] ')
-
-   -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
-   print('encoding pooling dictionary weight')
-   local err = jac.testJacobianParameters(model, input, encoding_pooling_dictionary.weight, encoding_pooling_dictionary.gradWeight, 0, 2)
-   mytester:assertlt(err,precision, 'error on encoding pooling dictionary weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 11)
-   local err = jac.testJacobianUpdateParameters(model, input, encoding_pooling_dictionary.weight, unused_params, 0, 2)
-   mytester:assertlt(err,precision, 'error on encoding pooling dictionary weight [full processing chain, direct update] ')
    
-   print('encoding pooling dictionary bias')
-   local err = jac.testJacobianParameters(model, input, encoding_pooling_dictionary.bias, encoding_pooling_dictionary.gradBias, 0, 2)
-   mytester:assertlt(err,precision, 'error on encoding pooling dictionary bias ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 12)
-   local err = jac.testJacobianUpdateParameters(model, input, encoding_pooling_dictionary.bias, unused_params, 0, 2)
-   mytester:assertlt(err,precision, 'error on encoding pooling dictionary bias [full processing chain, direct update] ')
+   test_module('classification dictionary weight', model.module_list.classification_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+   test_module('classification dictionary bias', model.module_list.classification_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
 
-   print('classification pooling dictionary weight')
-   local err = jac.testJacobianParameters(model, input, classification_dictionary.weight, classification_dictionary.gradWeight)
-   mytester:assertlt(err,precision, 'error on classification dictionary weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 13)
-   local err = jac.testJacobianUpdateParameters(model, input, classification_dictionary.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on classification dictionary weight [full processing chain, direct update] ')
-   
-   print('classification dictionary bias')
-   local err = jac.testJacobianParameters(model, input, classification_dictionary.bias, classification_dictionary.gradBias)
-   mytester:assertlt(err,precision, 'error on encoding pooling dictionary bias ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 14)
-   local err = jac.testJacobianUpdateParameters(model, input, classification_dictionary.bias, unused_params)
-   mytester:assertlt(err,precision, 'error on classification dictionary bias [full processing chain, direct update] ')
-
-   print('feature extraction sparsifying module weight')
-   local err = jac.testJacobianParameters(model, input, feature_extraction_sparsifying_module.weight, feature_extraction_sparsifying_module.gradWeight)
-   mytester:assertlt(err,precision, 'error on feature extraction sparsifying module weight ')   
-   unused_params = copy_table(parameter_list)
-   table.remove(unused_params, 15)
-   local err = jac.testJacobianUpdateParameters(model, input, feature_extraction_sparsifying_module.weight, unused_params)
-   mytester:assertlt(err,precision, 'error on feature extraction sparsifying module weight [full processing chain, direct update] ')
-
-   test_module('feature extraction sparsifying module', feature_extraction_sparsifying_module, 'weight', 'gradWeight', 15, parameter_list, model, input, jac, precision)
-   test_module('pooling sparsifying module', pooling_sparsifying_module, 'weight', 'gradWeight', 16, parameter_list, model, input, jac, precision)
-   test_module('mask sparsifying module', mask_sparsifying_module, 'weight', 'gradWeight', 17, parameter_list, model, input, jac, precision)
-   --test_module(name, module, param, grad_param, param_number, parameter_list, model, input, jac, precision)
 
 end
 
@@ -765,9 +705,23 @@ function rec_pool_test.ISTA_reconstruction()
    local lagrange_multiplier_targets = {feature_extraction_lambda = math.random(), pooling_lambda = math.random(), mask_lambda = math.random()}
    local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = -1, pooling_scaling_factor = -1, mask_scaling_factor = -1}
 
+   local layered_lambdas = {lambdas}
+   local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
+   local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
 
-   local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-      build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 50) -- normalization is not disabled
+   local model =
+      build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50) -- final true -> NORMALIZATION IS DISABLED!!!
+
+
+   --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+   --   build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 50) -- normalization is not disabled
+
+
+   -- convenience names for easy access
+   local shrink_copies = model.layers[1].module_list.shrink_copies
+   local shrink = model.layers[1].module_list.shrink
+   local explaining_away_copies = model.layers[1].module_list.explaining_away_copies
+   local explaining_away = model.layers[1].module_list.explaining_away
 
    local test_input = torch.rand(layer_size[1])
    local target = math.random(layer_size[4])
@@ -775,7 +729,7 @@ function rec_pool_test.ISTA_reconstruction()
 
    model:updateOutput(test_input)
    print(test_input)
-   print(decoding_dictionary.output)
+   print(model.layers[1].module_list.decoding_feature_extraction_dictionary.output)
    print(shrink_copies[#shrink_copies].output)
 
    local test_gradInput = torch.zeros(model.output:size())

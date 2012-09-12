@@ -385,18 +385,12 @@ local function set_debug_fields(model, encoding_feature_extraction_dictionary, d
    model.encoding_pooling_dictionary = encoding_pooling_dictionary
    model.classification_dictionary = classification_dictionary 
 
-   --[[
-   model.explaining_away_copies = explaining_away_copies
-   --]]
+   --model.explaining_away_copies = explaining_away_copies
 
    model.decoding_feature_extraction_dictionary = decoding_feature_extraction_dictionary
    model.shrink = shrink
    model.decoding_pooling_dictionary = decoding_pooling_dictionary
    model.L2_pooling_units = L2_pooling_units
-
-   model.filter_list = {encoding_feature_extraction_dictionary.weight, decoding_feature_extraction_dictionary.weight, explaining_away.weight, encoding_pooling_dictionary.weight, decoding_pooling_dictionary.weight, classification_dictionary.weight}
-   model.filter_enc_dec_list = {'encoder', 'decoder', 'encoder', 'encoder', 'decoder', 'encoder'}
-   model.filter_name_list = {'encoding feature extraction dictionary', 'decoding feature extraction dictionary', 'explaining away', 'encoding pooling dictionary', 'decoding pooling dictionary', 'classification dictionary'}
 
    model.shrink_copies = shrink_copies
    model.criteria_list = criteria_list
@@ -404,31 +398,126 @@ local function set_debug_fields(model, encoding_feature_extraction_dictionary, d
 end
 
 
-function build_full_recpool_layer(layer_size, lambdas, num_ista_iterations, RUN_JACOBIAN_TEST)
-end
 
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
-function build_multilayer_recpool_net(layer_size, lambdas, num_ista_iterations, RUN_JACOBIAN_TEST)
+-- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
+function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    
    local model = nn.Sequential()
-   local layers_per_recpool = 2
-   local lambdas_per_layer = 6
+   local layer_list = {} -- an array of the component layers for easy access
+   local classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
+   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), 1) -- on each iteration classfication_criterion:setTarget(target) must be called
 
-   for current_layer = 1,#lambdas do
-      local current_layer_size
-      model:add(build_full_recpool_layer(current_layer_size, lambdas[current_layer], num_ista_iterations, RUN_JACOBIAN_TEST))
+   classification_dictionary.bias:zero()
+
+   -- make the criteria_list and filters accessibel from the nn.Sequential module for ease of debugging and reporting
+   model.criteria_list = criteria_list
+   -- each recpool layer generates a separate filter list, which we combine into a common list so we can easily generate collective diagnostics
+   model.filter_list = {}
+   model.filter_enc_dec_list = {}
+   model.filter_name_list = {}
+   
+   model.layers = layer_list -- used in train_recpool_net to access debug information
+
+   -- take the initial input x and wrap it in a table x [1]
+   model:add(nn.IdentityTable()) -- wrap the tensor in a table
+
+   for layer_i = 1,#lambdas do
+      -- each layer has an input stage, a feature extraction stage, and a pooling stage.  Since the pooling output of one layer is the input of the next, increment the layer_size index by two per layer
+      local current_layer_size = {}
+      for i = 1,3 do
+	 current_layer_size[i] = layer_size[i + (layer_i-1)*2] 
+      end
+
+      -- the global criteria_list is passed into each layer to be built up progressively
+      local current_layer = build_recpool_net_layer(current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
+      model:add(current_layer)
+      layer_list[layer_i] = current_layer -- this is used in a closure for model:repair()
+
+      -- add this layer's filters to the collective filter lists
+      local current_filter_list = {current_layer.module_list.encoding_feature_extraction_dictionary.weight, current_layer.module_list.decoding_feature_extraction_dictionary.weight, current_layer.module_list.explaining_away.weight, current_layer.module_list.encoding_pooling_dictionary.weight, current_layer.module_list.decoding_pooling_dictionary.weight}
+      local current_filter_enc_dec_list = {'encoder', 'decoder', 'encoder', 'encoder', 'decoder'}
+      local current_filter_name_list = {'encoding feature extraction dictionary', 'decoding feature extraction dictionary', 'explaining away', 'encoding pooling dictionary', 'decoding pooling dictionary'}
+      
+      for i,v in ipairs(current_filter_list) do table.insert(model.filter_list, v) end
+      for i,v in ipairs(current_filter_enc_dec_list) do table.insert(model.filter_enc_dec_list, v) end
+      for i,v in ipairs(current_filter_name_list) do table.insert(model.filter_name_list, v .. '_' .. layer_i) end
    end
+
+   -- add the classification dictionary to the collective filter lists
+   table.insert(model.filter_list, classification_dictionary.weight)
+   table.insert(model.filter_enc_dec_list, 'encoder')
+   table.insert(model.filter_name_list, 'classification dictionary')
+
+   local extract_pooled_output = nn.ParallelDistributingTable('remove unneeded original input x') -- ensure that the original input x [2] receives a gradOutput of zero
+   extract_pooled_output:add(nn.SelectTable{1})
+   model:add(extract_pooled_output)
+   model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
+   model:add(classification_dictionary)
+   model:add(nn.LogSoftMax())
+
+   model.module_list = {classification_dictionary = classification_dictionary}
+
+   if DEBUG_OUTPUT then
+      function model:set_target(new_target) print('WARNING: set_target does nothing when using DEBUG_OUTPUT') end
+   else
+      --model:add(nn.ZeroModule()) -- use if we want to remove the classification criterion for debugging purposes
+      model:add(classification_criterion) 
+
+      function model:set_target(new_target) 
+	 classification_criterion:setTarget(new_target) 
+      end 
+
+      table.insert(criteria_list.criteria, classification_criterion)
+      table.insert(criteria_list.names, 'classification criterion')
+      print('inserting classification negative log likelihood loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
+
+      local original_updateOutput = model.updateOutput -- by making this local, it is impossible to access outside of the closures created below
+      
+      -- note that this is different than the original model.output; model is a nn.Sequential, which ends in the classification_criterion, and thus consists of a single number
+      -- it is not desirable to have the model produce a tensor output, since this would imply a corresponding gradOutput, at least in the standard implementation, whereas we want all gradients to be internally generated.  
+      function model:updateOutput(input)
+	 original_updateOutput(self, input)
+	 local summed_loss = 0
+	 for i = 1,#(criteria_list.criteria) do
+	    summed_loss = summed_loss + criteria_list.criteria[i].output
+	 end
+	 -- the output of a tensor is necessary to maintain compatibility with ModifiedJacobian, which directly accesses the output field of the tested module
+	 model.output = torch.Tensor(1)
+	 model.output[1] = summed_loss
+	 return model.output -- while it is tempting to return classification_dictionary.output here, it risks incompatibility with ModifiedJacobian and any other package that expects a single return value
+      end
+
+      function model:get_classifier_output()
+	 return classification_dictionary.output
+      end
+
+      function model:repair()  -- repair each layer; classification dictionary is a normal linear, and so does not need to be repaired
+	 for i = 1,#layer_list do
+	    layer_list[i]:repair()
+	 end
+      end
+   end -- not(DEBUG_OUTPUT)
+
+   --model:add(nn.ParallelDistributingTable('throw away final output')) -- if no modules are added to a ParallelDistributingTable, it throws away its input; updateGradInput produces a tensor of zeros   
+
+   print('criteria_list contains ' .. #(criteria_list.criteria) .. ' entries')      
+
+   return model
 end
 
 
+-- input is a table of one element x [1], output is a table of one element s [1]
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use RUN_JACOBIAN_TEST when testing parameter updates
-function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, RUN_JACOBIAN_TEST) 
+function build_recpool_net_layer(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
-   local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
+   if not(criteria_list) then -- if we're building a multi-layer network, a common criteria list is passed in
+      criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
+   end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
@@ -442,7 +531,7 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
    
    local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true}, RUN_JACOBIAN_TEST) -- this should have zero bias
 
-   local dpd_training_scale_factor = 1
+   local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
       dpd_training_scale_factor = 5 -- decoding_pooling_dictionary is trained faster than any other module
    else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
@@ -452,27 +541,24 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
 	 end
       end
    end
-      
-
+   
    if (dpd_training_scale_factor ~= 1) and (DEBUG_shrink or DEBUG_L2 or DEBUG_L1 or DEBUG_OUTPUT) then
-      print('SET decoding_pooling_dictionary training scale factor to 1 before testing!!!')
+      print('SET decoding_pooling_dictionary training scale factor to 1 before testing!!!  Alternatively, turn off debug mode')
       io.read()
    end
    local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true}, RUN_JACOBIAN_TEST, dpd_training_scale_factor) -- this should have zero bias, and columns normalized to unit magnitude
 
-   local classification_dictionary = nn.Linear(layer_size[3], layer_size[4])
-   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), 1) -- on each iteration classfication_criterion:setTarget(target) must be called
-
    -- there's really no reason to define these here rather than where they're used
-   local use_lagrange_multiplier_for_L1_regularizer = true
+   local use_lagrange_multiplier_for_L1_regularizer = false
    local feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module
    if use_lagrange_multiplier_for_L1_regularizer then
       feature_extraction_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.ista_L1_lambda, lagrange_multiplier_targets.feature_extraction_lambda, lagrange_multiplier_learning_rate_scaling_factors.feature_extraction_scaling_factor, RUN_JACOBIAN_TEST)
 
-      pooling_sparsifying_module = nn.ParameterizedL1Cost(layer_size[3], lambdas.pooling_output_cauchy_lambda, lagrange_multiplier_targets.pooling_lambda, lagrange_multiplier_learning_rate_scaling_factors.pooling_scaling_factor, RUN_JACOBIAN_TEST) 
+      --pooling_sparsifying_module = nn.ParameterizedL1Cost(layer_size[3], lambdas.pooling_output_cauchy_lambda, lagrange_multiplier_targets.pooling_lambda, lagrange_multiplier_learning_rate_scaling_factors.pooling_scaling_factor, RUN_JACOBIAN_TEST) 
+      pooling_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_output_cauchy_lambda) 
 
-      mask_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.pooling_mask_cauchy_lambda, lagrange_multiplier_targets.mask_lambda, lagrange_multiplier_learning_rate_scaling_factors.mask_scaling_factor, RUN_JACOBIAN_TEST) 
-      --mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
+      --mask_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.pooling_mask_cauchy_lambda, lagrange_multiplier_targets.mask_lambda, lagrange_multiplier_learning_rate_scaling_factors.mask_scaling_factor, RUN_JACOBIAN_TEST) 
+      mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
    else
       -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
       feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) 
@@ -481,20 +567,31 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
       mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
    end
 
-   -- initialize the parameters to consistent values
+   -- it's easier to create a single module list, which can be indexed with pairs, than to add each separately to the nn.Sequential module corresponding to this layer
+   -- there's a separate debug_module_list defined below that contains the internal nn.Sequential modules, so we can see the processing flow explicitly
+   local module_list = {encoding_feature_extraction_dictionary = encoding_feature_extraction_dictionary, 
+			decoding_feature_extraction_dictionary = decoding_feature_extraction_dictionary, 
+			explaining_away = base_explaining_away, 
+			shrink = base_shrink, 
+			explaining_away_copies = explaining_away_copies,
+			shrink_copies = shrink_copies,
+			encoding_pooling_dictionary = encoding_pooling_dictionary, 
+			decoding_pooling_dictionary = decoding_pooling_dictionary, 
+			feature_extraction_sparsifying_module = feature_extraction_sparsifying_module, 
+			pooling_sparsifying_module = pooling_sparsifying_module, 
+			mask_sparsifying_module = mask_sparsifying_module}
+   
+   -- Initialize the parameters to consistent values -- this should probably go in a separate function
    --decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
    --decoding_feature_extraction_dictionary:repair()
    encoding_feature_extraction_dictionary.weight:copy(decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(0.2)
+   encoding_feature_extraction_dictionary.weight:mul(0.2) 
    base_explaining_away.weight:mul(-0.2)
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
-   --encoding_feature_extraction_dictionary.weight:mul(0.75)
-   --encoding_pooling_dictionary.weight:mul(0.75)
-   --base_explaining_away.weight:mul(0.75)
    
    base_shrink.shrink_val:fill(1e-5) -- this should probably be very small, and learn to be the appropriate size!!!
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
@@ -509,137 +606,85 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
    end
    --]]
    -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
-   decoding_pooling_dictionary:percentage_zeros_per_column(0.9) -- keep in mind that half of the values are negative, and will be set to zero when repaired
+   decoding_pooling_dictionary:percentage_zeros_per_column(0.5) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
    decoding_pooling_dictionary:repair()
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   encoding_pooling_dictionary.weight:mul(0.5)
+   --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
    encoding_pooling_dictionary:repair()
 
-   classification_dictionary.bias:zero()
 
 
    -- Build the reconstruction pooling network
-   local model = nn.Sequential()
-   
-   -- for debug purposes - used for output in train_recpool_net
-   model.feature_extraction_sparsifying_module = feature_extraction_sparsifying_module
-   model.pooling_sparsifying_module = pooling_sparsifying_module
-   model.mask_sparsifying_module = mask_sparsifying_module
+   local this_layer = nn.Sequential()
 
-   -- take the initial input x and wrap it in a table x [1]
-   model:add(nn.IdentityTable()) -- wrap the tensor in a table
-
-   -- THE REST OF THIS SHOULD BE PUT IN A FUNCTION THAT EASILY ALLOWS LAYERS TO BE STACKED
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
    local ista_seq
    ista_seq, shrink_copies[#shrink_copies + 1] = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink, {layer_size[1], layer_size[2]})
-   model:add(ista_seq)
+   this_layer:add(ista_seq)
 
    for i = 1,num_ista_iterations do
       --calculate the sparse code z [1]; preserve the transformed input W*x [2], and the untransformed input x [3]
       local use_base_explaining_away = (i == 1) -- the base_explaining_away must be used once directly for parameter flattening in nn.Module to work properly; base_shrink is already used by build_ISTA_first_iteration
       ista_seq, explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = build_ISTA_iteration(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
-      model:add(ista_seq)
+      this_layer:add(ista_seq)
    end
-   -- reconstruct the input D*z [2] from the code z [1], leaving z [1] and x [3] unchanged
-   model:add(linearly_reconstruct_input(decoding_feature_extraction_dictionary, 3))
+   -- reconstruct the input D*z [2] from the code z [1], leaving z [1] and x [3->2] unchanged
+   this_layer:add(linearly_reconstruct_input(decoding_feature_extraction_dictionary, 3))
    -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1] and the original input x [2]
-   model:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
+   this_layer:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
    -- calculate the L1 magnitude of the shrunk code z [1] (input also contains the original input x [2]), returning the shrunk code z [1] and original input x[2] unchanged
 
 
+   -- compute the sparsifying loss on the shrunk code; input and output are the subject of the shrink operation z [1], and the original input x [2]
    local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_module, criteria_list)
-   model:add(ista_sparsifying_loss_seq)
-   model.ista_sparsifying_loss_seq = ista_sparsifying_loss_seq -- used when checking for nans in train_recpool_net
+   this_layer:add(ista_sparsifying_loss_seq)
 
    -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved input z [2], and the original input x[3]
    local pooling_seq = build_pooling(encoding_pooling_dictionary)
-   model:add(pooling_seq)
-   model.pooling_seq = pooling_seq -- used when checking for nans in train_recpool_net
+   this_layer:add(pooling_seq)
+   
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
    local pooling_L2_loss_seq, L2_pooling_units, compute_shrink_reconstruction_loss_seq, compute_orig_reconstruction_loss_seq, compute_position_loss_seq, construct_shrink_rec_numerator_seq, construct_pos_numerator_seq, construct_orig_rec_numerator_seq, construct_denominator_seq =
       build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary, mask_sparsifying_module, lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, criteria_list, {layer_size[1], layer_size[2]})
-   model:add(pooling_L2_loss_seq)
-
-   model.pooling_L2_loss_seq = pooling_L2_loss_seq -- used when checking for nans in train_recpool_net
-   model.compute_shrink_reconstruction_loss_seq = compute_shrink_reconstruction_loss_seq
-   model.compute_orig_reconstruction_loss_seq = compute_orig_reconstruction_loss_seq 
-   model.compute_position_loss_seq = compute_position_loss_seq
-   model.construct_shrink_rec_numerator_seq = construct_shrink_rec_numerator_seq
-   model.construct_pos_numerator_seq = construct_pos_numerator_seq
-   model.construct_orig_rec_numerator_seq = construct_orig_rec_numerator_seq
-   model.construct_denominator_seq = construct_denominator_seq
+   this_layer:add(pooling_L2_loss_seq)
 
    -- calculate the L1 magnitude of the pooling code s [1] (also contains the original input x[2]), returning the pooling code s [1] and the original input x [2] unchanged
    local pooling_sparsifying_loss_seq = build_sparsifying_loss(pooling_sparsifying_module, criteria_list)
+   this_layer:add(pooling_sparsifying_loss_seq)
 
-   model:add(pooling_sparsifying_loss_seq)
-   model.pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq -- used when checking for nans in train_recpool_net
 
-   local extract_pooled_output = nn.ParallelDistributingTable('remove unneeded original input x') -- ensure that the original input x [2] receives a gradOutput of zero
-   extract_pooled_output:add(nn.SelectTable{1})
-   model:add(extract_pooled_output)
-   model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
-   model:add(classification_dictionary)
-   model:add(nn.LogSoftMax())
-   if not(DEBUG_OUTPUT) then
-      --model:add(nn.ZeroModule())
-      model:add(classification_criterion) 
+   this_layer.module_list = module_list
+   -- used when checking for nans in train_recpool_net
+   this_layer.debug_module_list = {ista_sparsifying_loss_seq = ista_sparsifying_loss_seq,
+				   pooling_seq = pooling_seq,
+				   pooling_L2_loss_seq = pooling_L2_loss_seq,
+				   L2_pooling_units = L2_pooling_units,
+				   compute_shrink_reconstruction_loss_seq = compute_shrink_reconstruction_loss_seq,
+				   compute_orig_reconstruction_loss_seq = compute_orig_reconstruction_loss_seq,
+				   compute_position_loss_seq = compute_position_loss_seq,
+				   construct_shrink_rec_numerator_seq = construct_shrink_rec_numerator_seq,
+				   construct_pos_numerator_seq = construct_pos_numerator_seq,
+				   construct_orig_rec_numerator_seq = construct_orig_rec_numerator_seq,
+				   construct_denominator_seq = construct_denominator_seq,
+				   pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq}
 
-      --model.set_target = function (self, new_target) 
-      function model:set_target(new_target) 
-	 classification_criterion:setTarget(new_target) 
-      end 
-
-      table.insert(criteria_list.criteria, classification_criterion)
-      table.insert(criteria_list.names, 'classification criterion')
-      print('inserting classification negative log likelihood loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
-   else
-      function model:set_target(new_target) print('WARNING: set_target does nothing when using DEBUG_OUTPUT') end
+   -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
+   -- THIS IS A HACK!!!
+   function this_layer:repair()
+      encoding_feature_extraction_dictionary:repair()
+      decoding_feature_extraction_dictionary:repair()
+      base_explaining_away:repair()
+      base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
+      encoding_pooling_dictionary:repair()
+      decoding_pooling_dictionary:repair()
    end
 
-   --model:add(nn.ParallelDistributingTable('throw away final output')) -- if no modules are added to a ParallelDistributingTable, it throws away its input; updateGradInput produces a tensor of zeros   
 
-   if not(DEBUG_OUTPUT) then
-      model.original_updateOutput = model.updateOutput
-      
-      -- note that this is different than the original model.output; model is a nn.Sequential, which ends in the classification_criterion, and thus consists of a single number
-      -- it is not desirable to have the model produce a tensor output, since this would imply a corresponding gradOutput, at least in the standard implementation, whereas we want all gradients to be internally generated.  
-      function model:updateOutput(input)
-	 model:original_updateOutput(input)
-	 local summed_loss = 0
-	 for i = 1,#(criteria_list.criteria) do
-	    summed_loss = summed_loss + criteria_list.criteria[i].output
-	 end
-	 -- this is necessary to maintain compatibility with ModifiedJacobian, which directly accesses the output field of the tested module
-	 model.output = torch.Tensor(1)
-	 model.output[1] = summed_loss
-	 return model.output -- while it is tempting to return classification_dictionary.output here, it risks incompatibility with ModifiedJacobian and any other package that expects a single return value
-      end
-
-      function model:get_classifier_output()
-	 return classification_dictionary.output
-      end
-
-      -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
-      -- THIS IS A HACK!!!
-      function model:repair()
-	 encoding_feature_extraction_dictionary:repair()
-	 decoding_feature_extraction_dictionary:repair()
-	 base_explaining_away:repair()
-	 base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
-	 encoding_pooling_dictionary:repair()
-	 decoding_pooling_dictionary:repair()
-	 --classification_dictionary:repair()
-      end
-   end
-
-   print('criteria_list contains ' .. #(criteria_list.criteria) .. ' entries')      
-
-   set_debug_fields(model, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, base_explaining_away, base_shrink, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away_copies, shrink_copies, criteria_list, L2_pooling_units)
+   --set_debug_fields(this_layer, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, base_explaining_away, base_shrink, encoding_pooling_dictionary, decoding_pooling_dictionary, explaining_away_copies, shrink_copies, criteria_list, L2_pooling_units)
 
    
-   return model, criteria_list, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
+   --return this_layer, criteria_list, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
+   return this_layer
 end
 
 -- Test full reconstructing-pooling model with Jacobian.  Maintain a list of all Criteria.  When running forward, sum over all Criteria to determine the gradient of a single unified energy (should be able to just run updateOutput on the Criteria).  When running backward, just call updateGradInput on the network.  No gradOutput needs to be provided, since all modules terminate in an output-free Criterion.

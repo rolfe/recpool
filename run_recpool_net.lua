@@ -7,9 +7,9 @@ dofile('display_recpool_net.lua')
 -- reconstructions seem too good, with too sparse internal representations, to be consistent with the reported decoding dictionaries
 -- encoding and decoding pooling dictionaries seem to be almost identical.  Neither obviously map many inputs to a single output
 
-local layer_size = {28*28, 200, 50, 10}
---local layer_size = {28*28, 100, 50, 100, 50, 10}
-local target = math.random(layer_size[4])
+--local layer_size = {28*28, 200, 50, 10}
+local layer_size = {28*28, 200, 50, 100, 50, 10}
+--local target = math.random(layer_size[4])
 --[[
 local sl_mag = 4e-3 -- sparsifying l1 magnitude (2e-3)
 local rec_mag = 1e-1 -- reconstruction L2 magnitude
@@ -20,9 +20,9 @@ local mask_mag = 1e-4
 
 local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2 -- 2e-2 --5e-2 --1e-2 --1e-1 --5e-2 -- sparsifying l1 magnitude (4e-2)
 local rec_mag = 4 -- reconstruction L2 magnitude
-local pooling_rec_mag = 4 --2 --10e-1 --0 --0.25 --8 -- pooling reconstruction L2 magnitude
+local pooling_rec_mag = 1 --4 --2 --10e-1 --0 --0.25 --8 -- pooling reconstruction L2 magnitude
 local pooling_orig_rec_mag = 0 --2 --10e-1 --0 --4 --8 -- pooling reconstruction L2 magnitude
-local pooling_position_L2_mag = 4 --4 --20e-1 --0 --1.5e-2 --16e-2 --8e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
+local pooling_position_L2_mag = 1 --4 --4 --20e-1 --0 --1.5e-2 --16e-2 --8e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
 local pooling_sl_mag = 1e-2 --0 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
 local mask_mag = 0.1e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
@@ -30,17 +30,32 @@ local mask_mag = 0.1e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 
 -- Correct classification of the last few examples are is learned very slowly when we turn up the regularizers, since as the classification improves, the regularization error becomes as large as the classification error, so corrections to the classification trade off against the sparsity and reconstruction quality.  
 local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
 
-local lagrange_multiplier_targets = {feature_extraction_lambda = 1e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
-local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = 1e-2, pooling_scaling_factor = 1e-2, mask_scaling_factor = 1e-2} -- {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 2e-3, mask_scaling_factor = 1e-3}
+local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = 0.5 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = 0.5 * pooling_sl_mag, pooling_mask_cauchy_lambda = 0.5 * mask_mag} -- classification implicitly has a scaling constant of 1
+
+
+local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = 0.5 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = 0.5 * pooling_sl_mag, pooling_mask_cauchy_lambda = 0.5 * mask_mag} -- classification implicitly has a scaling constant of 1
+
+
+local lagrange_multiplier_targets = {feature_extraction_lambda = 1e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} --{feature_extraction_lambda = 5e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
+local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 1e-2} -- {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 2e-3, mask_scaling_factor = 1e-3}
 
 for k,v in pairs(lambdas) do
    lambdas[k] = v * 1
 end
 print(lambdas)
 
+--[[
+local layered_lambdas = {lambdas}
+local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
+local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
+--]]
 
--- build_recpool_net also returns: criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, explaining_away, shrink, explaining_away_copies, shrink_copies
-local model = build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 5) -- last argument is num_ista_iterations
+local layered_lambdas = {lambdas_1, lambdas_2}
+local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets, lagrange_multiplier_targets}
+local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
+
+
+local model = build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
 opt = {log_directory = 'recpool_results', -- subdirectory in which to save/log experiments
@@ -67,11 +82,16 @@ local trainer = nn.RecPoolTrainer(model, opt)
 os.execute('rm -rf ' .. opt.log_directory)
 os.execute('mkdir -p ' .. opt.log_directory)
 
-for i = 1,#model.shrink_copies do
-   print('checking sharing for shrink copy ' .. i)
-   if model.shrink.shrink_val:storage() ~= model.shrink_copies[i].shrink_val:storage() then
-      print('Before training, shrink storage is not the same as the shrink copy ' .. i .. ' storage!!!')
-      io.read()
+for i = 1,#model.layers do
+   print('for layer ' .. i)
+   local shrink = model.layers[i].module_list.shrink
+   local shrink_copies = model.layers[i].module_list.shrink_copies
+   for j = 1,#shrink_copies do
+      print('checking sharing for shrink copy ' .. j)
+      if shrink.shrink_val:storage() ~= shrink_copies[j].shrink_val:storage() then
+	 print('Before training, shrink storage is not the same as the shrink copy ' .. j .. ' storage!!!')
+	 io.read()
+      end
    end
 end
 
