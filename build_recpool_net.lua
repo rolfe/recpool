@@ -218,7 +218,7 @@ end
 
 -- the input is a table of three elements: the subject of the pooling operation s [1], the preserved shrink output z [2], and the original input x [3]
 -- the output is a table of two elements: the subject of the pooling operation s [1] and the original input x [2]
-local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary_original, mask_sparsifying_module, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, criteria_list, layer_size)
+local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary_original, mask_sparsifying_module, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, criteria_list, layer_size, ADD_PRINT_MODULE)
    -- the L2 reconstruction error and the L2 position unit magnitude both depend upon the denominator 1 + (P*s)^2, so calculate them together in a single function
 
    local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
@@ -301,6 +301,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    -- compute the shrink reconstruction loss ||z - (z*(P*s)^2)/(lambda_ratio + (P*s)^2)||^2 = ||lambda_ratio * z / (lambda_ratio + (P*s)^2)||^2
    local compute_shrink_reconstruction_loss_seq = nn.Sequential()
    compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,6})
+   if ADD_PRINT_MODULE then
+      print('adding print module!')
+      io.read()
+      compute_shrink_reconstruction_loss_seq:add(nn.PrintModule())
+   end
    compute_shrink_reconstruction_loss_seq:add(nn.CDivTable())
    if DEBUG_OUTPUT then 
       compute_shrink_reconstruction_loss_seq:add(nn.ZeroModule())
@@ -433,7 +438,7 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
       end
 
       -- the global criteria_list is passed into each layer to be built up progressively
-      local current_layer = build_recpool_net_layer(current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
+      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
       model:add(current_layer)
       layer_list[layer_i] = current_layer -- this is used in a closure for model:repair()
 
@@ -452,9 +457,6 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
    table.insert(model.filter_enc_dec_list, 'encoder')
    table.insert(model.filter_name_list, 'classification dictionary')
 
-   local extract_pooled_output = nn.ParallelDistributingTable('remove unneeded original input x') -- ensure that the original input x [2] receives a gradOutput of zero
-   extract_pooled_output:add(nn.SelectTable{1})
-   model:add(extract_pooled_output)
    model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
    model:add(classification_dictionary)
    model:add(nn.LogSoftMax())
@@ -513,7 +515,7 @@ end
 -- input is a table of one element x [1], output is a table of one element s [1]
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use RUN_JACOBIAN_TEST when testing parameter updates
-function build_recpool_net_layer(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
+function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    if not(criteria_list) then -- if we're building a multi-layer network, a common criteria list is passed in
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
@@ -583,17 +585,17 @@ function build_recpool_net_layer(layer_size, lambdas, lagrange_multiplier_target
    
    -- Initialize the parameters to consistent values -- this should probably go in a separate function
    --decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
-   --decoding_feature_extraction_dictionary:repair()
+   decoding_feature_extraction_dictionary:repair()
    encoding_feature_extraction_dictionary.weight:copy(decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(0.2) 
-   base_explaining_away.weight:mul(-0.2)
+   encoding_feature_extraction_dictionary.weight:mul(2/num_ista_iterations)
+   base_explaining_away.weight:mul(-2/num_ista_iterations)
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
    
-   base_shrink.shrink_val:fill(1e-5) -- this should probably be very small, and learn to be the appropriate size!!!
+   base_shrink.shrink_val:fill(0) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
       
    --[[
@@ -606,7 +608,7 @@ function build_recpool_net_layer(layer_size, lambdas, lagrange_multiplier_target
    end
    --]]
    -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
-   decoding_pooling_dictionary:percentage_zeros_per_column(0.5) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
+   decoding_pooling_dictionary:percentage_zeros_per_column(0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
    decoding_pooling_dictionary:repair()
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
    --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
@@ -651,6 +653,13 @@ function build_recpool_net_layer(layer_size, lambdas, lagrange_multiplier_target
    -- calculate the L1 magnitude of the pooling code s [1] (also contains the original input x[2]), returning the pooling code s [1] and the original input x [2] unchanged
    local pooling_sparsifying_loss_seq = build_sparsifying_loss(pooling_sparsifying_module, criteria_list)
    this_layer:add(pooling_sparsifying_loss_seq)
+
+   local extract_pooled_output = nn.ParallelDistributingTable('remove unneeded original input x') -- ensure that the original input x [2] receives a gradOutput of zero
+   extract_pooled_output:add(nn.SelectTable{1})
+   this_layer:add(extract_pooled_output)
+
+   -- normalize the output of each layer; output is normalized s [1]
+   this_layer:add(nn.NormalizeTable())
 
 
    this_layer.module_list = module_list

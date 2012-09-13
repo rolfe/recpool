@@ -22,7 +22,9 @@ local RecPoolTrainer = torch.class('nn.RecPoolTrainer')
 local check_for_nans
 local output_gradient_magnitudes
 
-function RecPoolTrainer:__init(model, opt)
+function RecPoolTrainer:__init(model, opt, layered_lambdas)
+   self.layered_lambdas = layered_lambdas
+
    -- set default options
    if not opt then
       opt = {}
@@ -223,13 +225,28 @@ function RecPoolTrainer:train(train_data)
       print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:size() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:size())
       self.loss_hist[i] = 0
       self.grad_loss_hist[i] = 0
+
+      if i == 4 then
+	 local alpha = self.layered_lambdas[1].pooling_L2_position_unit_lambda / self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda
+	 local shrink_output = self.model.layers[1].module_list.shrink_copies[#self.model.layers[1].module_list.shrink_copies].output
+	 local theoretical_reconstruction_loss = math.pow(torch.norm(torch.cdiv(torch.mul(shrink_output, alpha), 
+										torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
+	 --print('dividing ', torch.mul(self.model.layers[1].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output, alpha):unfold(1,10,10))
+	 --print('by ', torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha):unfold(1,10,10))
+	 local careful_reconstruction_loss = math.pow(torch.norm(torch.add(shrink_output, -1,
+								    torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)), 
+									       torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
+	 
+	 print('ratio is ' .. theoretical_reconstruction_loss / self.model.criteria_list.criteria[i].output .. ' careful version ' .. careful_reconstruction_loss / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
+	 --io.read()
+      end
    end
    
    for i = 1,#self.model.layers do
       print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
       print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
       -- these two outputs are from the middle of the processing chain, rather than the parameterized modules
-      print('pooling position units', self.model.layers[i].debug_module_list.L2_pooling_units.output:unfold(1,10,10))
+      --print('pooling position units', self.model.layers[i].debug_module_list.L2_pooling_units.output:unfold(1,10,10))
       print('pooling output', self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10))
       -- since the sparsifying modules can be parameterized by lagrange multipliers, they are in the main module list
       if self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight then

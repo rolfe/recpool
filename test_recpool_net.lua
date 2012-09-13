@@ -359,6 +359,22 @@ function rec_pool_test.SafeCMulTable()
 end
 
 
+function rec_pool_test.NormalizeTable()
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local ink = math.random(10,20)
+   local input = {torch.Tensor(ini):zero(), torch.Tensor(ini):zero()}
+   local module = nn.NormalizeTable()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
 
 function rec_pool_test.L2Cost()
    print(' testing L2Cost!!!')
@@ -575,9 +591,10 @@ function rec_pool_test.full_network_test()
    --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
-   local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
+   --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
+   local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {10, 20, 10, 10}
-   local target = math.random(layer_size[4])
+   local target = math.random(layer_size[#layer_size])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 
 		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
@@ -595,9 +612,9 @@ function rec_pool_test.full_network_test()
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors} --{lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
    --]]
 
-   local layered_lambdas = {lambdas, lambdas}
-   local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets, lagrange_multiplier_targets}
-   local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
+   local layered_lambdas = {lambdas, lambdas, lambdas}
+   local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets, lagrange_multiplier_targets, lagrange_multiplier_targets}
+   local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
 
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
