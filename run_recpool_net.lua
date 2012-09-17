@@ -30,20 +30,28 @@ pooling_rec_mag = 0
 pooling_position_L2_mag = 0
 --]]
 
---[[
-sl_mag = 1e-2
-pooling_sl_mag = 5e-2
-local num_ista_iterations = 5
+---[[
+sl_mag = 0 --1e-2
+pooling_sl_mag = 1e-2 --2e-2 --5e-2
+local mask_mag = 0.75e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
+local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
+local num_ista_iterations = 3
+local L1_scaling = 0 -- these shouldn't be used; these parameters are for a single hidden layer
+local L1_scaling_layer_2 = 0
 --]]
 
----[[
-rec_mag = 1
-pooling_rec_mag = 0.25
+--[[
+rec_mag = 4 --1
+pooling_rec_mag = 1 --0.25
 pooling_position_L2_mag = 0.1
-sl_mag = 0
-pooling_sl_mag = 5e-2
-mask_mag = 1e-3
-local L1_scaling = 0.1 -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
+sl_mag = 0.5e-2 --1e-2 -- 0
+pooling_sl_mag = 1e-1 --5e-2 -- remember that this is effectively scaled down by a factor for 4 relative to sl_mag, since there are fewer pooled elements
+mask_mag = 2e-3 --1e-3
+local L1_scaling = 1 -- 2 hidden layers -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
+local L1_scaling_layer_2 = 0.1
+--local L1_scaling = 0.1 -- 3 hidden layers -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
+--local L1_scaling = 0.1 -- 4 hidden layers -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
 local num_ista_iterations = 3
 --]]
 
@@ -64,7 +72,8 @@ local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_ma
 local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
-local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+-- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
+local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = 10 * L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 local lagrange_multiplier_targets = {feature_extraction_lambda = 1e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} --{feature_extraction_lambda = 5e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
@@ -73,20 +82,22 @@ local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_sc
 for k,v in pairs(lambdas) do
    lambdas[k] = v * 1
 end
-print(lambdas)
 
---[[
+---[[
+print(lambdas)
+local layer_size = {28*28, 200, 50, 10}
 local layered_lambdas = {lambdas}
 local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
 local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
 --]]
 
----[[
+--[[
+print(lambdas_1, lambdas_2)
 local layer_size = {28*28, 200, 50}
 local layered_lambdas = {lambdas_1}
 local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
 local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
-for i = 1,3 do
+for i = 1,1 do
    table.insert(layer_size, 100)
    table.insert(layer_size, 50)
    table.insert(layered_lambdas, lambdas_2)
@@ -103,7 +114,7 @@ opt = {log_directory = 'recpool_results', -- subdirectory in which to save/log e
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = 2e-3, --5e-3, --1e-3, -- learning rate at t=0
+   learning_rate = 5e-3, --2e-3, --5e-3, --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)

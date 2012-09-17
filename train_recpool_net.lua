@@ -288,6 +288,12 @@ function output_gradient_magnitudes(self)
 	    'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
    end
    print('classification layer', 'class dict', self.model.module_list.classification_dictionary.gradWeight:norm())
+
+   --print(self.model.layers[1].module_list.encoding_pooling_dictionary.gradWeight:unfold(1,10,10))
+   --print(self.model.layers[1].debug_module_list.ista_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+   --print(self.model.layers[1].debug_module_list.pooling_L2_loss_seq.gradInput[1]:unfold(1,10,10))
+   --print('max value is: ', torch.pow(self.model.layers[1].debug_module_list.ista_sparsifying_loss_seq.output[1], 2):max(), self.model.layers[1].debug_module_list.pooling_L2_loss_seq.gradInput[1]:max())
+   
 end
 
 function check_for_nans(self, output, name)

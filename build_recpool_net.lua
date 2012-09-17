@@ -2,6 +2,7 @@ require 'torch'
 require 'nn'
 require 'kex'
 
+IGNORE_CLASSIFICATION = true
 DEBUG_shrink = false -- don't require that the shrink value be non-negative, to facilitate the comparison of backpropagated gradients to forward-propagated parameter perturbations
 DEBUG_L2 = false
 DEBUG_L1 = false
@@ -10,7 +11,7 @@ FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, 
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
-local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink, layer_size)
+local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink)
    local first_ista_seq = nn.Sequential()
    first_ista_seq:add(nn.CopyTable(1,2)) -- split into the transformed input W*x [1], and the untransformed input x [2]
 
@@ -41,9 +42,7 @@ local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary
    return first_ista_seq, current_shrink
 end
 
--- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
--- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
-local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
+local function duplicate_linear_explaining_away_and_shrink(base_explaining_away, base_shrink, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
    local explaining_away
    if use_base_explaining_away then
       explaining_away = base_explaining_away
@@ -58,7 +57,14 @@ local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_siz
       print('in build_ISTA_iteration, shrink parameters are not shared properly')
       io.read()
    end
+   
+   return explaining_away, shrink
+end
 
+
+-- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
+-- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
+local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST)
    local ista_seq = nn.Sequential()
    local explaining_away_parallel = nn.ParallelTable() 
    explaining_away_parallel:add(explaining_away) --subtract out the explained input: S*z [1]
@@ -77,7 +83,7 @@ local function build_ISTA_iteration(base_explaining_away, base_shrink, layer_siz
    add_in_WX_and_shrink_parallel:add(nn.SelectTable{3}) -- preserve x [3]
    ista_seq:add(add_in_WX_and_shrink_parallel)
 
-   return ista_seq, explaining_away, shrink
+   return ista_seq
 end
 
 -- the input is a table of three elments: the subject of the shrink operation z [1], and the untransformed input x [untransformed_input_index] ; other signals are ignored
@@ -173,10 +179,11 @@ local function build_pooling(encoding_pooling_dictionary)
    --pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
    pooling_transformation_seq:add(nn.SafePower(2))
    pooling_transformation_seq:add(encoding_pooling_dictionary)
-   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), 1e-5)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias
+   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), 1e-3)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
 
    -- Note that backpropagating gradients through nn.Sqrt will generate NANs if any of the inputs are exactly zero.  However, this is correct behavior.  We should ensure that no input to the square root is exactly zero, perhaps by bounding the encoding_pooling_dictionary below by a number greater than zero.
    pooling_transformation_seq:add(nn.Sqrt())
+   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.sqrt(1e-3))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
 
    pool_features_parallel:add(pooling_transformation_seq) -- s = sqrt(Q*z^2) [1]
    pool_features_parallel:add(nn.Identity()) -- preserve z [2]
@@ -214,15 +221,17 @@ local function build_loss_tester(num_inputs, tested_inputs, criteria_list)
 end
 
 
-
+local function duplicate_decoding_feature_extraction_dictionary(base_decoding_feature_extraction_dictionary, layer_size, RUN_JACOBIAN_TEST)
+   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
+   decoding_feature_extraction_dictionary_copy:share(base_decoding_feature_extraction_dictionary, 'weight', 'bias', 'gradWeight', 'gradBias')
+   return decoding_feature_extraction_dictionary_copy
+end
 
 -- the input is a table of three elements: the subject of the pooling operation s [1], the preserved shrink output z [2], and the original input x [3]
 -- the output is a table of two elements: the subject of the pooling operation s [1] and the original input x [2]
-local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary_original, mask_sparsifying_module, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, criteria_list, layer_size, ADD_PRINT_MODULE)
+local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary, mask_sparsifying_module, L2_shrink_reconstruction_lambda, L2_orig_reconstruction_lambda, L2_position_unit_lambda, criteria_list)
    -- the L2 reconstruction error and the L2 position unit magnitude both depend upon the denominator 1 + (P*s)^2, so calculate them together in a single function
 
-   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
-   decoding_feature_extraction_dictionary_copy:share(decoding_feature_extraction_dictionary_original, 'weight', 'bias', 'gradWeight', 'gradBias')
 
    local pool_L2_loss_seq = nn.Sequential()
    -- split into the output from the module s = sqrt(Q*z^2) [1], the basis of the denominator of the losses s [2], the preserved shrink output z [3], and the original input x [4]
@@ -301,11 +310,6 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    -- compute the shrink reconstruction loss ||z - (z*(P*s)^2)/(lambda_ratio + (P*s)^2)||^2 = ||lambda_ratio * z / (lambda_ratio + (P*s)^2)||^2
    local compute_shrink_reconstruction_loss_seq = nn.Sequential()
    compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,6})
-   if ADD_PRINT_MODULE then
-      print('adding print module!')
-      io.read()
-      compute_shrink_reconstruction_loss_seq:add(nn.PrintModule())
-   end
    compute_shrink_reconstruction_loss_seq:add(nn.CDivTable())
    if DEBUG_OUTPUT then 
       compute_shrink_reconstruction_loss_seq:add(nn.ZeroModule())
@@ -326,7 +330,7 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local divide_input_rec_seq = nn.Sequential()
    divide_input_rec_seq:add(nn.SelectTable{2,3})
    divide_input_rec_seq:add(nn.CDivTable())
-   divide_input_rec_seq:add(decoding_feature_extraction_dictionary_copy)
+   divide_input_rec_seq:add(decoding_feature_extraction_dictionary)
    local divide_input_rec_parallel = nn.ParallelDistributingTable('divide_input_rec')
    divide_input_rec_parallel:add(nn.SelectTable{1})
    divide_input_rec_parallel:add(divide_input_rec_seq)
@@ -460,22 +464,27 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
    model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
    model:add(classification_dictionary)
    model:add(nn.LogSoftMax())
-
+   
    model.module_list = {classification_dictionary = classification_dictionary}
 
    if DEBUG_OUTPUT then
       function model:set_target(new_target) print('WARNING: set_target does nothing when using DEBUG_OUTPUT') end
+      if IGNORE_CLASSIFICATION then error('cannot use both DEBUG_OUTPUT and IGNORE_CLASSIFICATION simultaneously') end
    else
-      --model:add(nn.ZeroModule()) -- use if we want to remove the classification criterion for debugging purposes
-      model:add(classification_criterion) 
+      if IGNORE_CLASSIFICATION then 
+	 model:add(nn.ZeroModule()) -- use if we want to remove the classification criterion for debugging purposes
+	 model:add(nn.Ignore())
+      else
+	 model:add(classification_criterion) 
+
+	 table.insert(criteria_list.criteria, classification_criterion)
+	 table.insert(criteria_list.names, 'classification criterion')
+	 print('inserting classification negative log likelihood loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
+      end
 
       function model:set_target(new_target) 
 	 classification_criterion:setTarget(new_target) 
       end 
-
-      table.insert(criteria_list.criteria, classification_criterion)
-      table.insert(criteria_list.names, 'classification criterion')
-      print('inserting classification negative log likelihood loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
 
       local original_updateOutput = model.updateOutput -- by making this local, it is impossible to access outside of the closures created below
       
@@ -525,7 +534,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
    local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
-   local decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
+   local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
@@ -572,7 +581,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- it's easier to create a single module list, which can be indexed with pairs, than to add each separately to the nn.Sequential module corresponding to this layer
    -- there's a separate debug_module_list defined below that contains the internal nn.Sequential modules, so we can see the processing flow explicitly
    local module_list = {encoding_feature_extraction_dictionary = encoding_feature_extraction_dictionary, 
-			decoding_feature_extraction_dictionary = decoding_feature_extraction_dictionary, 
+			decoding_feature_extraction_dictionary = base_decoding_feature_extraction_dictionary, 
 			explaining_away = base_explaining_away, 
 			shrink = base_shrink, 
 			explaining_away_copies = explaining_away_copies,
@@ -584,11 +593,11 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 			mask_sparsifying_module = mask_sparsifying_module}
    
    -- Initialize the parameters to consistent values -- this should probably go in a separate function
-   --decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
-   decoding_feature_extraction_dictionary:repair()
-   encoding_feature_extraction_dictionary.weight:copy(decoding_feature_extraction_dictionary.weight:t())
+   --base_decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
+   base_decoding_feature_extraction_dictionary:repair()
+   encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
-   base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
+   base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
    encoding_feature_extraction_dictionary.weight:mul(2/num_ista_iterations)
    base_explaining_away.weight:mul(-2/num_ista_iterations)
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
@@ -600,9 +609,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       
    --[[
    decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
-   for i = 1,layer_size[2] do
+   for i = 1,layer_size[2] do -- for each unpooled row entry, find the corresponding pooled column entry, plus those beyond it (according to the loop over j)
       --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
-      for j = 0,0 do
+      for j = 0,1 do
 	 decoding_pooling_dictionary.weight[{i, math.min(layer_size[3], j + math.ceil(i * layer_size[3] / layer_size[2]))}] = 1
       end
    end
@@ -621,17 +630,19 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
    local ista_seq
-   ista_seq, shrink_copies[#shrink_copies + 1] = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink, {layer_size[1], layer_size[2]})
+   ista_seq, shrink_copies[#shrink_copies + 1] = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink)
    this_layer:add(ista_seq)
 
    for i = 1,num_ista_iterations do
       --calculate the sparse code z [1]; preserve the transformed input W*x [2], and the untransformed input x [3]
       local use_base_explaining_away = (i == 1) -- the base_explaining_away must be used once directly for parameter flattening in nn.Module to work properly; base_shrink is already used by build_ISTA_first_iteration
-      ista_seq, explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = build_ISTA_iteration(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
+      local this_explaining_away, this_shrink = duplicate_linear_explaining_away_and_shrink(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
+      explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = this_explaining_away, this_shrink
+      ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST)
       this_layer:add(ista_seq)
    end
    -- reconstruct the input D*z [2] from the code z [1], leaving z [1] and x [3->2] unchanged
-   this_layer:add(linearly_reconstruct_input(decoding_feature_extraction_dictionary, 3))
+   this_layer:add(linearly_reconstruct_input(base_decoding_feature_extraction_dictionary, 3))
    -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1] and the original input x [2]
    this_layer:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
    -- calculate the L1 magnitude of the shrunk code z [1] (input also contains the original input x [2]), returning the shrunk code z [1] and original input x[2] unchanged
@@ -646,8 +657,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    this_layer:add(pooling_seq)
    
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
+   local this_decoding_feature_extraction_dictionary = duplicate_decoding_feature_extraction_dictionary(base_decoding_feature_extraction_dictionary, {layer_size[1], layer_size[2]}, RUN_JACOBIAN_TEST)
    local pooling_L2_loss_seq, L2_pooling_units, compute_shrink_reconstruction_loss_seq, compute_orig_reconstruction_loss_seq, compute_position_loss_seq, construct_shrink_rec_numerator_seq, construct_pos_numerator_seq, construct_orig_rec_numerator_seq, construct_denominator_seq =
-      build_pooling_L2_loss(decoding_pooling_dictionary, decoding_feature_extraction_dictionary, mask_sparsifying_module, lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, criteria_list, {layer_size[1], layer_size[2]})
+      build_pooling_L2_loss(decoding_pooling_dictionary, this_decoding_feature_extraction_dictionary, mask_sparsifying_module, lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_position_unit_lambda, criteria_list)
    this_layer:add(pooling_L2_loss_seq)
 
    -- calculate the L1 magnitude of the pooling code s [1] (also contains the original input x[2]), returning the pooling code s [1] and the original input x [2] unchanged
@@ -681,7 +693,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- THIS IS A HACK!!!
    function this_layer:repair()
       encoding_feature_extraction_dictionary:repair()
-      decoding_feature_extraction_dictionary:repair()
+      base_decoding_feature_extraction_dictionary:repair()
       base_explaining_away:repair()
       base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       encoding_pooling_dictionary:repair()
@@ -689,10 +701,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
 
 
-   --set_debug_fields(this_layer, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, base_explaining_away, base_shrink, encoding_pooling_dictionary, decoding_pooling_dictionary, explaining_away_copies, shrink_copies, criteria_list, L2_pooling_units)
+   --set_debug_fields(this_layer, encoding_feature_extraction_dictionary, base_decoding_feature_extraction_dictionary, base_explaining_away, base_shrink, encoding_pooling_dictionary, decoding_pooling_dictionary, explaining_away_copies, shrink_copies, criteria_list, L2_pooling_units)
 
    
-   --return this_layer, criteria_list, encoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
+   --return this_layer, criteria_list, encoding_feature_extraction_dictionary, base_decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
    return this_layer
 end
 
