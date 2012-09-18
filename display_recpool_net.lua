@@ -54,3 +54,38 @@ function plot_reconstructions(opt, input, output)
    
    gnuplot.plotflush()
 end
+
+
+
+
+function save_parameters(model, directory_name, iteration)
+   -- flatten the parameters for storage.  While this has already been done in the trainer, the trainer probably shouldn't be responsible for saving and loading the parameters
+   local flattened_parameters = model:getParameters() 
+
+   -- store model
+   print('starting to store model')
+   local mf = torch.DiskFile(directory_name .. '/model_' .. iteration .. '.bin','w'):binary()
+   print('about to writeObject')
+   mf:writeObject(flattened_parameters)
+   print('about to close')
+   mf:close()
+   print('finished storing model')
+
+   flattened_parameters = nil
+   collectgarbage()
+end
+
+function load_parameters(model, file_name)
+   -- flatten the parameters for loading from storage.  While this has already been done in the trainer, the trainer probably shouldn't be responsible for saving and loading the parameters
+   local flattened_parameters = model:getParameters() 
+
+   print('loading flattened parameters from ' .. file_name)
+   local mf = torch.DiskFile(file_name,'r'):binary()
+   local saved_parameters = mf:readObject()
+   flattened_parameters:copy(saved_parameters)
+   mf:close()
+
+   flattened_parameters = nil
+   saved_parameters = nil
+   collectgarbage()
+end

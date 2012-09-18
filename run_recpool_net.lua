@@ -4,18 +4,17 @@ dofile('train_recpool_net.lua')
 dofile('display_recpool_net.lua')
 
 
--- reconstructions seem too good, with too sparse internal representations, to be consistent with the reported decoding dictionaries
--- encoding and decoding pooling dictionaries seem to be almost identical.  Neither obviously map many inputs to a single output
+cmd = torch.CmdLine()
+cmd:text()
+cmd:text('Reconstruction pooling network')
+cmd:text()
+cmd:text('Options')
+cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
+cmd:option('-load_file','', 'file from which to load experiments')
+cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
 
---local layer_size = {28*28, 200, 50, 10}
---local layer_size = {28*28, 200, 50, 100, 50, 100, 50, 100, 50, 10}
---[[
-local sl_mag = 4e-3 -- sparsifying l1 magnitude (2e-3)
-local rec_mag = 1e-1 -- reconstruction L2 magnitude
-local mask_mag = 1e-4
---]]
+local params = cmd:parse(arg)
 
---local sl_mag, rec_mag, pooling_rec_mag, pooling_sl_mag, mask_mag = 0,0,0,0,0
 
 local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2 -- 2e-2 --5e-2 --1e-2 --1e-1 --5e-2 -- sparsifying l1 magnitude (4e-2)
 local rec_mag = 4 -- reconstruction L2 magnitude
@@ -32,13 +31,23 @@ pooling_position_L2_mag = 0
 
 ---[[
 sl_mag = 0 --1e-2
-pooling_sl_mag = 1e-2 --2e-2 --5e-2
-local mask_mag = 0.75e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+
+-- no classification loss
+--pooling_sl_mag = 0.4e-2 --0.25e-2 --2e-2 --5e-2
+--local mask_mag = 0.5e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+
+-- with classification loss
+-- one layers
+--pooling_sl_mag = 0.25e-2 --0.25e-2 --2e-2 --5e-2
+-- two layers
+pooling_sl_mag = 0.15e-2 --0.25e-2 --2e-2 --5e-2
+local mask_mag = 0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+
 local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
 local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
 local num_ista_iterations = 3
-local L1_scaling = 0 -- these shouldn't be used; these parameters are for a single hidden layer
-local L1_scaling_layer_2 = 0
+local L1_scaling = 1.5 -- these shouldn't be used; these parameters are for a single hidden layer
+local L1_scaling_layer_2 = 0.05
 --]]
 
 --[[
@@ -58,10 +67,13 @@ local num_ista_iterations = 3
 --[[
 rec_mag = 0
 pooling_rec_mag = 0
+pooling_orig_rec_mag = 0 
 pooling_position_L2_mag = 0
 sl_mag = 0
 pooling_sl_mag = 0
 mask_mag = 0
+local L1_scaling = 0
+local L1_scaling_layer_2 = 0
 local num_ista_iterations = 3
 --]]
 
@@ -73,7 +85,7 @@ local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
-local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = 10 * L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 local lagrange_multiplier_targets = {feature_extraction_lambda = 1e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} --{feature_extraction_lambda = 5e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
@@ -83,34 +95,39 @@ for k,v in pairs(lambdas) do
    lambdas[k] = v * 1
 end
 
----[[
-print(lambdas)
-local layer_size = {28*28, 200, 50, 10}
-local layered_lambdas = {lambdas}
-local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
-local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
---]]
-
---[[
-print(lambdas_1, lambdas_2)
-local layer_size = {28*28, 200, 50}
-local layered_lambdas = {lambdas_1}
-local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
-local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
-for i = 1,1 do
-   table.insert(layer_size, 100)
-   table.insert(layer_size, 50)
-   table.insert(layered_lambdas, lambdas_2)
-   table.insert(layered_lagrange_multiplier_targets, lagrange_multiplier_targets)
-   table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors)
+local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors
+local num_layers = tonumber(params.num_layers)
+if num_layers == 1 then
+   print(lambdas)
+   layer_size = {28*28, 200, 50, 10}
+   layered_lambdas = {lambdas}
+   layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
+   layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
+else
+   print(lambdas_1, lambdas_2)
+   layer_size = {28*28, 200, 50}
+   layered_lambdas = {lambdas_1}
+   layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
+   layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
+   for i = 1,num_layers-1 do
+      table.insert(layer_size, 100)
+      table.insert(layer_size, 50)
+      table.insert(layered_lambdas, lambdas_2)
+      table.insert(layered_lagrange_multiplier_targets, lagrange_multiplier_targets)
+      table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors)
+   end
+   table.insert(layer_size, 10) -- insert the classification output last
 end
-table.insert(layer_size, 10) -- insert the classification output last
---]]
 
 local model = build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations) -- last argument is num_ista_iterations
 
+-- load parameters from file if desired
+if params.load_file ~= '' then
+   load_parameters(model, params.load_file)
+end
+
 -- option array for RecPoolTrainer
-opt = {log_directory = 'recpool_results', -- subdirectory in which to save/log experiments
+opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
@@ -126,7 +143,7 @@ torch.manualSeed(10934783) -- init random number generator.  Obviously, this sho
 
 -- create the dataset
 require 'mnist'
-data = mnist.loadTrainSet(5000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  Indexing labels returns an index, rather than a tensor
+data = mnist.loadTrainSet(50000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  Indexing labels returns an index, rather than a tensor
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 
@@ -134,6 +151,7 @@ local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas) -- layered_lambda
 os.execute('rm -rf ' .. opt.log_directory)
 os.execute('mkdir -p ' .. opt.log_directory)
 
+-- confirm that shrink parameters are properly shared
 for i = 1,#model.layers do
    print('for layer ' .. i)
    local shrink = model.layers[i].module_list.shrink
@@ -152,4 +170,17 @@ num_epochs = 100
 for i = 1,num_epochs do
    trainer:train(data)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+
+   if i % 10 == 1 then
+      save_parameters(model, opt.log_directory, i) -- defined in display_recpool_net
+   end
 end
+
+-- reset lambdas to be closer to pure top-down fine-tuning and continue training
+
+
+
+
+
+
+

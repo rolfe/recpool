@@ -61,7 +61,8 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas)
 
    -- Flatten the parameters (and gradParameters) into a single giant storage.  Each parameter and gradParameter tensor then views an offset into the common storage.  Shared parameters are only stored once, since Module:share() already sets the associated tensors to point to a common storage.
    if model then
-      self.parameters,self.gradParameters = model:getParameters() 
+      self.flattened_parameters,self.flattened_grad_parameters = model:getParameters() 
+      model:getParameters() -- this incorrectly throws an error, since the flattened parameter tensor only contains one copy of each shared parameter, but the parameter count used as a check counts each shared instance separately
    else
       error('RecPoolTrainer requires a model')
    end
@@ -92,13 +93,13 @@ function RecPoolTrainer:make_feval()
       end
 
       -- get new parameters
-      if current_params ~= self.parameters then 
-	 self.parameters:copy(current_params)
+      if current_params ~= self.flattened_parameters then 
+	 self.flattened_parameters:copy(current_params)
 	 print('copying parameters in feval') -- does this ever actually run?
       end
       
       -- Reset gradients.  This is more efficient than self.model:zeroGradParameters(), since gradParameters has all gradients flattened into a single storage, viewed by the many parameter tensors.  As a result, when parameters are shared by multiple modules, they are only zeroed once by this procedure.
-      self.gradParameters:zero() 
+      self.flattened_grad_parameters:zero() 
       
       -- total_err is the average of the error over the entire minibatch
       local total_err = 0
@@ -135,13 +136,13 @@ function RecPoolTrainer:make_feval()
       end
       
       -- normalize gradients and f(X)
-      self.gradParameters:div(#self.minibatch_inputs)
+      self.flattened_grad_parameters:div(#self.minibatch_inputs)
       total_err = total_err / #self.minibatch_inputs
       
 
-      --check_for_nans(self, self.gradParameters, 'gradParameters')
+      --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')
       -- return f and df/dX
-      return total_err, self.gradParameters
+      return total_err, self.flattened_grad_parameters
    end
    
    return feval
@@ -178,25 +179,25 @@ function RecPoolTrainer:train(train_data)
       -- optimize on current mini-batch
       if self.opt.optimization == 'CG' then
          self.config = self.config or {maxIter = self.opt.max_iter}
-         optim.cg(self.feval, self.parameters, self.config)
+         optim.cg(self.feval, self.flattened_parameters, self.config)
 	 
       elseif self.opt.optimization == 'LBFGS' then
          self.config = self.config or {learningRate = self.opt.learning_rate,
                              maxIter = self.opt.max_iter,
                              nCorrection = 10}
-         optim.lbfgs(self.feval, self.parameters, self.config)
+         optim.lbfgs(self.feval, self.flattened_parameters, self.config)
 	 
       elseif self.opt.optimization == 'SGD' then
          self.config = self.config or {learningRate = self.opt.learning_rate,
                              weightDecay = self.opt.weight_decay,
                              momentum = self.opt.momentum,
                              learningRateDecay = 5e-7}
-         optim.sgd(self.feval, self.parameters, self.config)
+         optim.sgd(self.feval, self.flattened_parameters, self.config)
 	 
       elseif self.opt.optimization == 'ASGD' then
          self.config = self.config or {eta0 = self.opt.learning_rate,
                              t0 = trsize * self.opt.t0}
-         _,_,average = optim.asgd(self.feval, self.parameters, self.config)
+         _,_,average = optim.asgd(self.feval, self.flattened_parameters, self.config)
 	 
       else
          error('unknown optimization method')
@@ -229,7 +230,7 @@ function RecPoolTrainer:train(train_data)
       if i == 4 then
 	 local alpha = self.layered_lambdas[1].pooling_L2_position_unit_lambda / self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda
 	 local shrink_output = self.model.layers[1].module_list.shrink_copies[#self.model.layers[1].module_list.shrink_copies].output
-	 local theoretical_reconstruction_loss = math.pow(torch.norm(torch.cdiv(torch.mul(shrink_output, alpha), 
+	 local theoretical_reconstruction_loss = alpha^2 * math.pow(torch.norm(torch.cdiv(shrink_output, 
 										torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
 	 --print('dividing ', torch.mul(self.model.layers[1].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output, alpha):unfold(1,10,10))
 	 --print('by ', torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha):unfold(1,10,10))
@@ -237,12 +238,32 @@ function RecPoolTrainer:train(train_data)
 								    torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)), 
 									       torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
 	 
-	 print('ratio is ' .. theoretical_reconstruction_loss / self.model.criteria_list.criteria[i].output .. ' careful version ' .. careful_reconstruction_loss / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
+	 print('reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
+
+	 local theoretical_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
+									  torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
+
+	 print('position ratio is ' .. (self.layered_lambdas[1].pooling_L2_position_unit_lambda * theoretical_position_loss) / self.model.criteria_list.criteria[6].output)
+
+	 local combined_loss_careful = self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_reconstruction_loss + 
+	    self.layered_lambdas[1].pooling_L2_position_unit_lambda * theoretical_position_loss
+	    
+	 -- this should not equal the exact combined loss, since (a + b)^2 ~= a^2 + b^2!!!
+	 local combined_loss = self.layered_lambdas[1].pooling_L2_position_unit_lambda * 
+	    math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, 
+						      torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, math.sqrt(alpha))), 
+					      torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
+	 local exact_combined_loss = self.model.criteria_list.criteria[4].output + self.model.criteria_list.criteria[6].output -- this already includes the lambdas
+	 print('combined ratio is ' .. combined_loss / exact_combined_loss .. ' careful: ' .. combined_loss_careful / exact_combined_loss)
+	 
 	 --io.read()
       end
    end
    
    for i = 1,#self.model.layers do
+      print('shrink magnitude ', self.model.layers[i].module_list.shrink.shrink_val:norm())
+      --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
+      print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
       print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
       print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
       -- these two outputs are from the middle of the processing chain, rather than the parameterized modules

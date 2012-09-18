@@ -11,7 +11,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
 
    self.learning_scale_factor = learning_scale_factor or 1
    
-   local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'threshold_normalized_rows'}
+   local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'threshold_normalized_rows', 'non_negative_diag'}
    for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
       self[defined_constraints[i]] = false
    end
@@ -92,6 +92,18 @@ end
 function ConstrainedLinear:repair() -- after any sort of update or initialization, enforce the desired constraints
    if self.non_negative then
       self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
+   elseif self.non_negative_diag then
+      if self.weight:dim() ~= 2 then
+	 error('expected two dimensions in tensor to enforce non_negative_diag constraint')
+      end
+
+      --local found_neg = false
+      -- WARNING: THIS IS UNNECESSARILY INEFFICIENT!  (EFFICIENCY NOTE).  The iteration over the diagonal elements of the weight tensor should be done in C
+      for i = 1,math.min(self.weight:size(1), self.weight:size(2)) do --1,torch.Tensor(self.weight:size()):min() do -- this doesn't work, since self.weight:size() is interpreted as the desired sizes
+	 --if(self.weight[{i,i}] < 0) then found_neg = true end
+	 self.weight[{i,i}] = math.max(0, self.weight[{i,i}])
+      end
+      --if found_neg then print('correcting diagonal element < 0') end
    end
 
    if self.normalized_columns then

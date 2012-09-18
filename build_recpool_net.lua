@@ -2,7 +2,7 @@ require 'torch'
 require 'nn'
 require 'kex'
 
-IGNORE_CLASSIFICATION = true
+IGNORE_CLASSIFICATION = false
 DEBUG_shrink = false -- don't require that the shrink value be non-negative, to facilitate the comparison of backpropagated gradients to forward-propagated parameter perturbations
 DEBUG_L2 = false
 DEBUG_L1 = false
@@ -47,7 +47,7 @@ local function duplicate_linear_explaining_away_and_shrink(base_explaining_away,
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST)
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = true}, RUN_JACOBIAN_TEST)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
@@ -535,7 +535,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
    local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = true}, RUN_JACOBIAN_TEST) 
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
    local shrink_copies = {}
@@ -604,7 +604,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
    
-   base_shrink.shrink_val:fill(0) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
+   base_shrink.shrink_val:fill(0) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
       
    --[[
