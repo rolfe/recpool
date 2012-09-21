@@ -261,9 +261,10 @@ function RecPoolTrainer:train(train_data)
    end
    
    for i = 1,#self.model.layers do
-      print('shrink magnitude ', self.model.layers[i].module_list.shrink.shrink_val:norm())
+      --print('feature reconstruction ', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output:unfold(1,10,10))
+      --print('shrink magnitude ', self.model.layers[i].module_list.shrink.shrink_val:norm())
       --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
-      print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
+      --print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
       print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
       print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
       -- these two outputs are from the middle of the processing chain, rather than the parameterized modules
@@ -279,12 +280,21 @@ function RecPoolTrainer:train(train_data)
       if self.model.layers[i].module_list.mask_sparsifying_module.weight then
 	 print('mask L1', self.model.layers[i].module_list.mask_sparsifying_module.weight:unfold(1,10,10))
       end
+      --print('normalized output', self.model.layers[i].debug_module_list.normalize_output.output[1]:unfold(1,10,10))
       
       --print('shrink values', torch.add(self.model.layers[i].module_list.shrink.shrink_val, -1e-5):unfold(1,10,10))
       --print('negative_shrink values', torch.add(self.model.layers[i].module_list.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
       -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!
       -- check that without regularization, filters are meaningless.  Confirm that trainable pooling has an effect on the pooled filters.
-      --plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+      
+      local plot_recs = false
+      if plot_recs then
+	 if i == 1 then
+	    plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+	 else
+	    plot_reconstructions(self.opt, self.model.layers[i-1].debug_module_list.pooling_seq.output[1], self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+	 end
+      end
    end
 
    output_gradient_magnitudes(self)

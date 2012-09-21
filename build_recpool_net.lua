@@ -612,8 +612,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 2/num_ista_iterations))
-   base_explaining_away.weight:mul(-math.max(0.1, 2/num_ista_iterations))
+   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1/num_ista_iterations))
+   base_explaining_away.weight:mul(-math.max(0.1, 1/num_ista_iterations))
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
@@ -689,7 +689,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    this_layer:add(extract_pooled_output)
 
    -- normalize the output of each layer; output is normalized s [1]
-   this_layer:add(nn.NormalizeTable()) -- this is undefined if all outputs are zero
+   local normalize_output = nn.NormalizeTable()
+   this_layer:add(normalize_output) -- this is undefined if all outputs are zero
 
 
    this_layer.module_list = module_list
@@ -705,7 +706,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 				   construct_pos_numerator_seq = construct_pos_numerator_seq,
 				   construct_orig_rec_numerator_seq = construct_orig_rec_numerator_seq,
 				   construct_denominator_seq = construct_denominator_seq,
-				   pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq}
+				   pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq,
+				   normalize_output = normalize_output}
 
    -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
    -- THIS IS A HACK!!!

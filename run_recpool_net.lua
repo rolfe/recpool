@@ -12,9 +12,11 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
+cmd:option('-full_test',false, 'train slowly over the entire training set (except for the held-out validation elements)')
+
 
 local params = cmd:parse(arg)
-
+local FULL_TEST = params.full_test
 
 local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2 -- 2e-2 --5e-2 --1e-2 --1e-1 --5e-2 -- sparsifying l1 magnitude (4e-2)
 local rec_mag = 4 -- reconstruction L2 magnitude
@@ -29,7 +31,7 @@ pooling_rec_mag = 0
 pooling_position_L2_mag = 0
 --]]
 
----[[
+--[[
 sl_mag = 0 --1e-2
 
 -- no classification loss
@@ -55,21 +57,8 @@ local L1_scaling = 1.5 --1.2 --1.5
 local L1_scaling_layer_2 = 0.05
 --]]
 
---[[
-rec_mag = 4 --1
-pooling_rec_mag = 1 --0.25
-pooling_position_L2_mag = 0.1
-sl_mag = 0.5e-2 --1e-2 -- 0
-pooling_sl_mag = 1e-1 --5e-2 -- remember that this is effectively scaled down by a factor for 4 relative to sl_mag, since there are fewer pooled elements
-mask_mag = 2e-3 --1e-3
-local L1_scaling = 1 -- 2 hidden layers -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
-local L1_scaling_layer_2 = 0.1
---local L1_scaling = 0.1 -- 3 hidden layers -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
---local L1_scaling = 0.1 -- 4 hidden layers -- proper scaling of the L1 losses is CRITICAL for good performance!  If it's too low, training is ridiculously slow!
-local num_ista_iterations = 3
---]]
 
---[[
+---[[
 rec_mag = 0
 pooling_rec_mag = 0
 pooling_orig_rec_mag = 0 
@@ -167,7 +156,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = 2e-3, --5e-3, --1e-3, -- learning rate at t=0
+   learning_rate = (FULL_TEST and 2e-3) or 5e-3, --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
@@ -179,7 +168,8 @@ torch.manualSeed(10934783) -- init random number generator.  Obviously, this sho
 
 -- create the dataset
 require 'mnist'
-data = mnist.loadTrainSet(50000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  Indexing labels returns an index, rather than a tensor
+local data_set_size = (FULL_TEST and 50000) or 5000
+data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  Indexing labels returns an index, rather than a tensor
 --data = mnist.loadTrainSet(10000, 'recpool_net', 50000)
 --data = mnist.loadTestSet(10000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1
