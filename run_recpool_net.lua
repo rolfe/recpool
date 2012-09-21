@@ -39,14 +39,19 @@ sl_mag = 0 --1e-2
 -- with classification loss
 -- one layers
 --pooling_sl_mag = 0.25e-2 --0.25e-2 --2e-2 --5e-2
--- two layers
-pooling_sl_mag = 0.15e-2 --0.25e-2 --2e-2 --5e-2
-local mask_mag = 0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+-- two layers (CURRENTLY USED)
+pooling_sl_mag = 0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer
+mask_mag = 0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+
+-- experiment to train all feature extraciton filters
+--pooling_sl_mag = 0 --0.5e-2 
+--mask_mag = 0.4e-2 --0.2e-2 
+
 
 local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
 local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
 local num_ista_iterations = 3
-local L1_scaling = 1.5 -- these shouldn't be used; these parameters are for a single hidden layer
+local L1_scaling = 1.5 --1.2 --1.5 
 local L1_scaling_layer_2 = 0.05
 --]]
 
@@ -88,8 +93,15 @@ local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_
 local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
-local lagrange_multiplier_targets = {feature_extraction_lambda = 1e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} --{feature_extraction_lambda = 5e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
-local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 1e-2} -- {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 2e-3, mask_scaling_factor = 1e-3}
+-- targets a multiplied by layer_size to produce the final value, since the L1 loss increases linear with the number of units; it represents the desired value for each unit
+local lagrange_multiplier_targets = {feature_extraction_target = 5e-3, pooling_target = 1e-3, mask_target = 0.25e-3} --{feature_extraction_lambda = 5e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
+local lagrange_multiplier_targets_1 = {feature_extraction_target = 5e-3, pooling_target = 1e-3, mask_target = 0.25e-3}
+local lagrange_multiplier_targets_2 = {feature_extraction_target = 5e-3, pooling_target = 1e-3, mask_target = 5e-3}
+local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 1e-4} -- {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 2e-3, mask_scaling_factor = 1e-3}
+local lagrange_multiplier_learning_rate_scaling_factors_1 = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 0} --1e-4} 
+local lagrange_multiplier_learning_rate_scaling_factors_2 = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 0} --2e-6} 
+
+
 
 for k,v in pairs(lambdas) do
    lambdas[k] = v * 1
@@ -101,29 +113,53 @@ if num_layers == 1 then
    print(lambdas)
    layer_size = {28*28, 200, 50, 10}
    layered_lambdas = {lambdas}
-   layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
-   layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
+   local this_layer_lagrange_multiplier_targets = {}
+   this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_1.feature_extraction_target * layer_size[2]
+   this_layer_lagrange_multiplier_targets.pooling_target = lagrange_multiplier_targets_1.pooling_target * layer_size[3]
+   this_layer_lagrange_multiplier_targets.mask_target = lagrange_multiplier_targets_1.mask_target * layer_size[2]
+   layered_lagrange_multiplier_targets = {this_lagrange_multiplier_targets}
+   layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors_1}
 else
    print(lambdas_1, lambdas_2)
-   layer_size = {28*28, 200, 50}
-   layered_lambdas = {lambdas_1}
-   layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
-   layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
-   for i = 1,num_layers-1 do
-      table.insert(layer_size, 100)
-      table.insert(layer_size, 50)
-      table.insert(layered_lambdas, lambdas_2)
-      table.insert(layered_lagrange_multiplier_targets, lagrange_multiplier_targets)
-      table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors)
+   layer_size = {28*28}
+   layered_lambdas = {}
+   layered_lagrange_multiplier_targets = {}
+   layered_lagrange_multiplier_learning_rate_scaling_factors = {}
+   for i = 1,num_layers do
+      if i == 1 then
+	 table.insert(layer_size, 200)
+	 table.insert(layer_size, 50)
+	 table.insert(layered_lambdas, lambdas_1)
+      else
+	 table.insert(layer_size, 100)
+	 table.insert(layer_size, 50)
+	 table.insert(layered_lambdas, lambdas_2)
+      end
+      
+      local this_layer_lagrange_multiplier_targets = {}
+      if i == 1 then
+	 this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_1.feature_extraction_target * layer_size[#layer_size - 1]
+	 this_layer_lagrange_multiplier_targets.pooling_target = lagrange_multiplier_targets_1.pooling_target * layer_size[#layer_size]
+	 this_layer_lagrange_multiplier_targets.mask_target = lagrange_multiplier_targets_1.mask_target * layer_size[#layer_size - 1] 
+	 table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors_1)
+      else
+	 this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_2.feature_extraction_target * layer_size[#layer_size - 1]
+	 this_layer_lagrange_multiplier_targets.pooling_target = lagrange_multiplier_targets_2.pooling_target * layer_size[#layer_size]
+	 this_layer_lagrange_multiplier_targets.mask_target = lagrange_multiplier_targets_2.mask_target * layer_size[#layer_size - 1] 
+	 table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors_2)
+      end
+      table.insert(layered_lagrange_multiplier_targets, this_layer_lagrange_multiplier_targets)
+
    end
    table.insert(layer_size, 10) -- insert the classification output last
 end
 
-local model = build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations) -- last argument is num_ista_iterations
+local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations) -- last argument is num_ista_iterations
 
 -- load parameters from file if desired
 if params.load_file ~= '' then
    load_parameters(model, params.load_file)
+   --model:randomize_pooling()
 end
 
 -- option array for RecPoolTrainer
@@ -131,7 +167,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = 5e-3, --2e-3, --5e-3, --1e-3, -- learning rate at t=0
+   learning_rate = 2e-3, --5e-3, --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
@@ -144,6 +180,8 @@ torch.manualSeed(10934783) -- init random number generator.  Obviously, this sho
 -- create the dataset
 require 'mnist'
 data = mnist.loadTrainSet(50000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  Indexing labels returns an index, rather than a tensor
+--data = mnist.loadTrainSet(10000, 'recpool_net', 50000)
+--data = mnist.loadTestSet(10000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 
@@ -165,18 +203,28 @@ for i = 1,#model.layers do
    end
 end
 
-
-num_epochs = 100
-for i = 1,num_epochs do
+model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
+num_epochs_no_classification = 0 --20
+for i = 1,num_epochs_no_classification do
    trainer:train(data)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
 
-   if i % 10 == 1 then
+   if (i % 10 == 1) and (i > 1) then
       save_parameters(model, opt.log_directory, i) -- defined in display_recpool_net
    end
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
+model:reset_classification_lambda(1)
+num_epochs = 500
+for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
+   trainer:train(data)
+   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+
+   if (i % 10 == 1) and (i > 1) then
+      save_parameters(model, opt.log_directory, i) -- defined in display_recpool_net
+   end
+end
 
 
 

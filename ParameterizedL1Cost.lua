@@ -47,12 +47,15 @@ end
 function ParameterizedL1Cost:updateGradInput(input, gradOutput) -- we leave out the standard gradOutput argument here to make it clear that ParameterizedL1Cost's gradInput is sui generis
    local current_grad_output = 1
    if gradOutput then
+      print('using gradOutput in ParameterizedL1Cost')
       current_grad_output = gradOutput[1]
    end
 
 
    self.gradInput:cmul(self.criterion:updateGradInput(input), self.weight)
-   self.gradInput:mul(current_grad_output)
+   if gradOutput then -- avoid the cost of the mul if we don't need it
+      self.gradInput:mul(current_grad_output)
+   end
 
   return self.gradInput
 end 

@@ -592,8 +592,8 @@ function rec_pool_test.full_network_test()
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
-   local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
-   --local layer_size = {10, 20, 10, 10}
+   --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
+   local layer_size = {10, 20, 10, 10}
    local target = math.random(layer_size[#layer_size])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 
@@ -603,23 +603,26 @@ function rec_pool_test.full_network_test()
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
 
-   local lagrange_multiplier_targets = {feature_extraction_lambda = math.random(), pooling_lambda = math.random(), mask_lambda = math.random()}
+   local lagrange_multiplier_targets = {feature_extraction_target = math.random(), pooling_target = math.random(), mask_target = math.random()}
    local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = -1, pooling_scaling_factor = -1, mask_scaling_factor = -1}
 
-   --[[
+   ---[[
    local layered_lambdas = {lambdas} --{lambdas, lambdas}
    local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets} --{lagrange_multiplier_targets, lagrange_multiplier_targets}
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors} --{lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
    --]]
 
+   --[[
    local layered_lambdas = {lambdas, lambdas, lambdas}
    local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets, lagrange_multiplier_targets, lagrange_multiplier_targets}
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
-
+   --]]
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
+   -- TURNING ON JACOBIAN_TESTING INDUCES NANS IN OUTPUT!!!
    local model =
-      build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, true) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, true) -- final true -> NORMALIZATION IS DISABLED!!!
+   print('finished building recpool net')
 
    -- THERE'S NO REASON TO REMOVE THE PARAMETERS FROM THIS LIST BY INDEX; INSTEAD, JUST SEARCH FOR THE ENTRY IN THE LIST THAT MATCHES THE PARAMETER TO BE TESTED
    --[[
@@ -668,6 +671,18 @@ function rec_pool_test.full_network_test()
    local precision = 3*expprecision
    
    local input = torch.Tensor(layer_size[1]):zero()
+
+
+   -- check that we don't always produce nans
+   local check_for_non_nans = false
+   if check_for_non_nans then
+      local test_input = torch.rand(layer_size[1])
+      model:updateOutput(test_input)
+      print('check that we do not always produce nans')
+      print(test_input)
+      print(model.module_list.classification_dictionary.output)
+      io.read()
+   end
 
 
    local err = jac.testJacobian(model, input)
@@ -719,7 +734,7 @@ function rec_pool_test.ISTA_reconstruction()
 		    pooling_L2_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
-   local lagrange_multiplier_targets = {feature_extraction_lambda = math.random(), pooling_lambda = math.random(), mask_lambda = math.random()}
+   local lagrange_multiplier_targets = {feature_extraction_target = math.random(), pooling_target = math.random(), mask_target = math.random()}
    local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = -1, pooling_scaling_factor = -1, mask_scaling_factor = -1}
 
    local layered_lambdas = {lambdas}
@@ -727,11 +742,11 @@ function rec_pool_test.ISTA_reconstruction()
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
 
    local model =
-      build_recpool_net(layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50) -- final true -> NORMALIZATION IS DISABLED!!!
 
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-   --   build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 50) -- normalization is not disabled
+   --   build_recpool_net(layer_size, lambdas, 1, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 50) -- normalization is not disabled
 
 
    -- convenience names for easy access
@@ -739,6 +754,7 @@ function rec_pool_test.ISTA_reconstruction()
    local shrink = model.layers[1].module_list.shrink
    local explaining_away_copies = model.layers[1].module_list.explaining_away_copies
    local explaining_away = model.layers[1].module_list.explaining_away
+   local decoding_feature_extraction_dictionary = model.layers[1].module_list.decoding_feature_extraction_dictionary
 
    local test_input = torch.rand(layer_size[1])
    local target = math.random(layer_size[4])
@@ -775,9 +791,9 @@ function rec_pool_test.ISTA_reconstruction()
 
 
    --[[
-   local shrink_output_tensor = torch.Tensor(decoding_dictionary.output:size(1), #shrink_copies)
+   local shrink_output_tensor = torch.Tensor(decoding_feature_extraction_dictionary.output:size(1), #shrink_copies)
    for i = 1,#shrink_copies do
-      shrink_output_tensor:select(2,i):copy(decoding_dictionary:updateOutput(shrink_copies[i].output))
+      shrink_output_tensor:select(2,i):copy(decoding_feature_extraction_dictionary:updateOutput(shrink_copies[i].output))
    end
    print(shrink_output_tensor)
    --]]

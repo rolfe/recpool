@@ -410,7 +410,7 @@ end
 
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
 -- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
-function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, RUN_JACOBIAN_TEST)
+function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
@@ -418,7 +418,7 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
    local model = nn.Sequential()
    local layer_list = {} -- an array of the component layers for easy access
    local classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
-   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), 1) -- on each iteration classfication_criterion:setTarget(target) must be called
+   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
 
    classification_dictionary.bias:zero()
 
@@ -486,6 +486,10 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
 	 classification_criterion:setTarget(new_target) 
       end 
 
+      function model:reset_classification_lambda(new_lambda)
+	 classification_criterion:reset_lambda(new_lambda)
+      end
+
       local original_updateOutput = model.updateOutput -- by making this local, it is impossible to access outside of the closures created below
       
       -- note that this is different than the original model.output; model is a nn.Sequential, which ends in the classification_criterion, and thus consists of a single number
@@ -511,6 +515,12 @@ function build_recpool_net(layer_size, lambdas, lagrange_multiplier_targets, lag
 	    layer_list[i]:repair()
 	 end
       end
+
+      function model:randomize_pooling()
+	 for i = 1,#layer_list do
+	    layer_list[i]:randomize_pooling()
+	 end
+      end
    end -- not(DEBUG_OUTPUT)
 
    --model:add(nn.ParallelDistributingTable('throw away final output')) -- if no modules are added to a ParallelDistributingTable, it throws away its input; updateGradInput produces a tensor of zeros   
@@ -530,6 +540,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
+
+   -- Build the reconstruction pooling network
+   local this_layer = nn.Sequential()
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
@@ -563,13 +576,14 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local use_lagrange_multiplier_for_L1_regularizer = false
    local feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module
    if use_lagrange_multiplier_for_L1_regularizer then
-      feature_extraction_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.ista_L1_lambda, lagrange_multiplier_targets.feature_extraction_lambda, lagrange_multiplier_learning_rate_scaling_factors.feature_extraction_scaling_factor, RUN_JACOBIAN_TEST)
+      --feature_extraction_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.ista_L1_lambda, lagrange_multiplier_targets.feature_extraction_target, lagrange_multiplier_learning_rate_scaling_factors.feature_extraction_scaling_factor, RUN_JACOBIAN_TEST)
+      feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) 
 
-      --pooling_sparsifying_module = nn.ParameterizedL1Cost(layer_size[3], lambdas.pooling_output_cauchy_lambda, lagrange_multiplier_targets.pooling_lambda, lagrange_multiplier_learning_rate_scaling_factors.pooling_scaling_factor, RUN_JACOBIAN_TEST) 
+      --pooling_sparsifying_module = nn.ParameterizedL1Cost(layer_size[3], lambdas.pooling_output_cauchy_lambda, lagrange_multiplier_targets.pooling_target, lagrange_multiplier_learning_rate_scaling_factors.pooling_scaling_factor, RUN_JACOBIAN_TEST) 
       pooling_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_output_cauchy_lambda) 
 
-      --mask_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.pooling_mask_cauchy_lambda, lagrange_multiplier_targets.mask_lambda, lagrange_multiplier_learning_rate_scaling_factors.mask_scaling_factor, RUN_JACOBIAN_TEST) 
-      mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
+      mask_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.pooling_mask_cauchy_lambda, lagrange_multiplier_targets.mask_target, lagrange_multiplier_learning_rate_scaling_factors.mask_scaling_factor, RUN_JACOBIAN_TEST) 
+      --mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
    else
       -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
       feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) 
@@ -598,8 +612,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(2/num_ista_iterations)
-   base_explaining_away.weight:mul(-2/num_ista_iterations)
+   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 2/num_ista_iterations))
+   base_explaining_away.weight:mul(-math.max(0.1, 2/num_ista_iterations))
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
@@ -616,17 +630,21 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
    end
    --]]
-   -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
-   decoding_pooling_dictionary:percentage_zeros_per_column(0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
-   decoding_pooling_dictionary:repair()
-   encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
-   encoding_pooling_dictionary:repair()
 
+   function this_layer:randomize_pooling(avoid_reset)
+      if not(avoid_reset) then -- when using RUN_JACOBIAN_TEST, constraints are disabled after the first initialization.  A reset here will thus incorrectly include e.g. negative values.
+	 decoding_pooling_dictionary:reset()
+      end
+      -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
+      decoding_pooling_dictionary:percentage_zeros_per_column(0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
+      decoding_pooling_dictionary:repair()
+      encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
+      --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
+      encoding_pooling_dictionary:repair()
+   end
 
+   this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
 
-   -- Build the reconstruction pooling network
-   local this_layer = nn.Sequential()
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
    local ista_seq
@@ -671,7 +689,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    this_layer:add(extract_pooled_output)
 
    -- normalize the output of each layer; output is normalized s [1]
-   this_layer:add(nn.NormalizeTable())
+   this_layer:add(nn.NormalizeTable()) -- this is undefined if all outputs are zero
 
 
    this_layer.module_list = module_list

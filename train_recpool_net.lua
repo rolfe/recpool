@@ -351,68 +351,75 @@ function check_for_nans(self, output, name)
       
    output:apply(find_nans)
    if found_a_nan then
-      print('checking for nans in ' .. name)
-      io.read()
-      print('outputs')
-      --print(output:unfold(1,10,10))
-      print(self.model.encoding_feature_extraction_dictionary.output:unfold(1,10,10))
-      print(self.model.encoding_pooling_dictionary.output:unfold(1,10,10))
-      print(self.model.ista_sparsifying_loss_seq.output[1]:unfold(1,10,10))
-      print(self.model.pooling_seq.output[1]:unfold(1,10,10)) -- one nan is present
-      print(self.model.pooling_L2_loss_seq.output[1]:unfold(1,10,10))
-      print(self.model.pooling_sparsifying_loss_seq.output[1]:unfold(1,10,10))
-      print(self.model.classification_dictionary.output:unfold(1,10,10))
-      print(self.model.decoding_pooling_dictionary.output:unfold(1,10,10))
-      io.read()
-
-      print('gradInputs test')
-      print('shrink_reconstruction')
-      find_nans_in_table(self.model.compute_shrink_reconstruction_loss_seq.gradInput)
-      print('orig_reconstruction')
-      find_nans_in_table(self.model.compute_orig_reconstruction_loss_seq.gradInput)
-      print('position_loss')
-      find_nans_in_table(self.model.compute_position_loss_seq.gradInput)
+      for i = 1,#self.model.layers do
+	 print('checking for nans in ' .. name .. ' layer ' .. i)
+	 io.read()
+	 print('outputs')
+	 --print(output:unfold(1,10,10))
+	 print(self.model.layers[i].module_list.encoding_feature_extraction_dictionary.output:unfold(1,10,10))
+	 print(self.model.layers[i].module_list.encoding_pooling_dictionary.output:unfold(1,10,10))
+	 print(self.model.layers[i].debug_module_list.ista_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+	 print(self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10)) -- one nan is present
+	 print(self.model.layers[i].debug_module_list.pooling_L2_loss_seq.output[1]:unfold(1,10,10))
+	 print(self.model.layers[i].debug_module_list.pooling_sparsifying_loss_seq.output[1]:unfold(1,10,10))
+	 print(self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
+      end
+      print(self.model.module_list.classification_dictionary.output:unfold(1,10,10))
       io.read()
 
-      print('gradInputs second test')
-      print('shrink_rec_numerator')
-      find_nans_in_table(self.model.construct_shrink_rec_numerator_seq.gradInput)
-      print(self.model.construct_shrink_rec_numerator_seq.output:unfold(1,10,10))
-      print('pos_numerator_seq')
-      find_nans_in_table(self.model.construct_pos_numerator_seq.gradInput)
-      print(self.model.construct_pos_numerator_seq.output:unfold(1,10,10))
-      print('orig_rec_numerator_seq')
-      find_nans_in_table(self.model.construct_orig_rec_numerator_seq.gradInput)
-      print(self.model.construct_orig_rec_numerator_seq.output:unfold(1,10,10))
-      print('denominator_seq')
-      find_nans_in_table(self.model.construct_denominator_seq.gradInput)
-      print(self.model.construct_denominator_seq.output:unfold(1,10,10))
-      io.read()
+      for i = 1,#self.model.layers do
+	 print('gradInputs test in layer ' .. i)
+
+	 print('shrink_reconstruction')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_shrink_reconstruction_loss_seq.gradInput)
+	 print('orig_reconstruction')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_orig_reconstruction_loss_seq.gradInput)
+	 print('position_loss')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_position_loss_seq.gradInput)
+	 io.read()
+	 
+	 print('gradInputs second test')
+	 print('shrink_rec_numerator')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_shrink_rec_numerator_seq.gradInput)
+	 --print(self.model.construct_shrink_rec_numerator_seq.output:unfold(1,10,10))
+	 print('pos_numerator_seq')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_pos_numerator_seq.gradInput)
+	 --print(self.model.construct_pos_numerator_seq.output:unfold(1,10,10))
+	 print('orig_rec_numerator_seq')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_orig_rec_numerator_seq.gradInput)
+	 --print(self.model.construct_orig_rec_numerator_seq.output:unfold(1,10,10))
+	 print('denominator_seq')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_denominator_seq.gradInput)
+	 --print(self.model.construct_denominator_seq.output:unfold(1,10,10))
+	 io.read()
 
 
-      print('gradInputs')
-      print(self.model.encoding_feature_extraction_dictionary.gradInput:unfold(1,10,10)) -- all nans
-      print(self.model.encoding_pooling_dictionary.gradInput:unfold(1,10,10)) -- all nans
-      print(self.model.ista_sparsifying_loss_seq.gradInput[1]:unfold(1,10,10)) -- all nans
-      print(self.model.pooling_seq.gradInput[1]:unfold(1,10,10)) -- all nans
-      print('pooling L2 loss input 1')
-      print(self.model.pooling_L2_loss_seq.gradInput[1]:unfold(1,10,10)) -- all nans
-      print('pooling L2 loss input 2')
-      print(self.model.pooling_L2_loss_seq.gradInput[2]:unfold(1,10,10)) -- all nans
-      print('pooling L2 loss input 3')
-      print(self.model.pooling_L2_loss_seq.gradInput[3]:unfold(1,10,10)) -- all nans
-      print(self.model.pooling_sparsifying_loss_seq.gradInput[1]:unfold(1,10,10))
-      print(self.model.pooling_sparsifying_loss_seq.gradInput[2]:unfold(1,10,10))
-      print(self.model.classification_dictionary.gradInput:unfold(1,10,10))
-      io.read()
-
-      print('weights')
-      print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-      print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
-      print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
-      print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
-      print(self.model.classification_dictionary.weight)
-      io.read()
-   end
+	 --[[
+	 print('gradInputs')
+	 print(self.model.encoding_feature_extraction_dictionary.gradInput:unfold(1,10,10)) -- all nans
+	 print(self.model.encoding_pooling_dictionary.gradInput:unfold(1,10,10)) -- all nans
+	 print(self.model.ista_sparsifying_loss_seq.gradInput[1]:unfold(1,10,10)) -- all nans
+	 print(self.model.pooling_seq.gradInput[1]:unfold(1,10,10)) -- all nans
+	 print('pooling L2 loss input 1')
+	 print(self.model.pooling_L2_loss_seq.gradInput[1]:unfold(1,10,10)) -- all nans
+	 print('pooling L2 loss input 2')
+	 print(self.model.pooling_L2_loss_seq.gradInput[2]:unfold(1,10,10)) -- all nans
+	 print('pooling L2 loss input 3')
+	 print(self.model.pooling_L2_loss_seq.gradInput[3]:unfold(1,10,10)) -- all nans
+	 print(self.model.pooling_sparsifying_loss_seq.gradInput[1]:unfold(1,10,10))
+	 print(self.model.pooling_sparsifying_loss_seq.gradInput[2]:unfold(1,10,10))
+	 print(self.model.classification_dictionary.gradInput:unfold(1,10,10))
+	 io.read()
+	 
+	 print('weights')
+	 print(self.model.encoding_feature_extraction_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	 print(self.model.explaining_away.weight[{1,{1,10}}]:unfold(1,10,10))
+	 print(self.model.shrink.shrink_val[{{1,10}}]:unfold(1,10,10))
+	 print(self.model.encoding_pooling_dictionary.weight[{1,{1,10}}]:unfold(1,10,10))
+	 print(self.model.classification_dictionary.weight)
+	 io.read()
+	 --]]
+      end -- loop over model layers
+   end -- if found_a_nan
 end
 	    

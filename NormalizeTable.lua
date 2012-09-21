@@ -8,11 +8,12 @@ function NormalizeTable:__init()
    self.norm = {}
 end
 
+-- for each element of the output table, divisively normalize by the L2 norm: x_i -> x_i / sqrt( 1e-5 + \sum_j x_j^2 ).  The constant added to the normalization avoids nans when all x_i = 0
 function NormalizeTable:updateOutput(input)
    for i=1,#input do
       self.output[i] = self.output[i] or torch.Tensor()
       self.output[i]:resizeAs(input[i]):copy(input[i])
-      self.norm[i] = input[i]:norm()
+      self.norm[i] = math.sqrt(math.pow(input[i]:norm(), 2) + 1e-8) -- avoids nans if input[i] is all zeros; relies upon input[i] being non-negative
       self.output[i]:div(self.norm[i])
    end
    return self.output

@@ -17,7 +17,7 @@ local function download()
 end
 
 -- alternative_access_method specifies the format with which the dataset should be returned 
-local function loadFlatDataset(fileName, maxLoad, alternative_access_method)
+local function loadFlatDataset(fileName, maxLoad, alternative_access_method, offset)
    download()
 
    local f = torch.DiskFile(fileName, 'r')
@@ -26,6 +26,9 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method)
    local nExample = f:readInt()
    local dim = f:readInt()
    print('<mnist> dataset has ' .. nExample .. ' elements of dimension ' .. dim-1 .. '+1')
+   if offset then
+      maxLoad = maxLoad + offset
+   end
 
    if maxLoad and maxLoad > 0 and maxLoad < nExample then
       nExample = maxLoad
@@ -33,13 +36,24 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method)
    elseif maxLoad and maxLoad == nExample then
       print('<mnist> loading all ' .. nExample .. ' examples')
    end
+
    print('<mnist> reading ' .. nExample .. ' examples with ' .. dim-1 .. '+1 dimensions...')
    local tensor = torch.Tensor(nExample, dim)
-   tensor:storage():copy(f:readFloat(nExample*dim))
+   tensor:storage():copy(f:readFloat(maxLoad*dim))
    print('<mnist> done')
 
+   if offset then
+      nExample = nExample - offset
+   end
    local dataset = {}
    dataset.tensor = tensor
+   if offset then
+      tensor = tensor:narrow(1,offset+1, nExample)
+   end
+   if nExample ~= tensor:size(1) then
+      error('dataset was not properly offset: nExample = ' .. nExample .. ' but tensor:size(1) = ' .. tensor:size(1))
+   end
+   
 
    function dataset:normalize(mean_, std_)
       local data = tensor:narrow(2, 1, dim-1)
@@ -105,12 +119,12 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method)
    return dataset
 end
 
-function mnist.loadTrainSet(maxLoad, alternative_access_method)
-   return loadFlatDataset(mnist.path_trainset, maxLoad, alternative_access_method)
+function mnist.loadTrainSet(maxLoad, alternative_access_method, offset)
+   return loadFlatDataset(mnist.path_trainset, maxLoad, alternative_access_method, offset)
 end
 
-function mnist.loadTestSet(maxLoad)
-   return loadFlatDataset(mnist.path_testset, maxLoad)
+function mnist.loadTestSet(maxLoad, alternative_access_method, offset)
+   return loadFlatDataset(mnist.path_testset, maxLoad, alternative_access_method, offset)
 end
 
 

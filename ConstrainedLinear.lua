@@ -9,6 +9,7 @@ local check_for_nans
 function ConstrainedLinear:__init(input_size, output_size, desired_constraints, disable_normalized_updates, learning_scale_factor)
    parent.__init(self, input_size, output_size)
 
+   --disable_normalized_updates = false -- THIS AVOIDS NANS!!!
    self.learning_scale_factor = learning_scale_factor or 1
    
    local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'threshold_normalized_rows', 'non_negative_diag'}

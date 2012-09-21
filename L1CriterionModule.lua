@@ -26,6 +26,13 @@ function L1CriterionModule:setTarget(target) -- the target need not be set if th
    self.target = target
 end
 
+function L1CriterionModule:reset_lambda(new_lambda)
+   self.lambda = new_lambda
+   if self.weight then
+      self.weight[1] = self.lambda
+   end
+end
+
 function L1CriterionModule:updateOutput(input) 
    if self.weight then
       self.lambda = self.weight[1]
