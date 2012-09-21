@@ -12,10 +12,15 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
-cmd:option('-full_test',false, 'train slowly over the entire training set (except for the held-out validation elements)')
+cmd:option('-full_test','false', 'train slowly over the entire training set (except for the held-out validation elements)')
 
 
 local params = cmd:parse(arg)
+if params.full_test == 'false' then
+   params.full_test = false
+else
+   params.full_test = true
+end
 local FULL_TEST = params.full_test
 
 local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2 -- 2e-2 --5e-2 --1e-2 --1e-1 --5e-2 -- sparsifying l1 magnitude (4e-2)
