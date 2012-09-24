@@ -52,7 +52,7 @@ mask_mag = 0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --
 local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
 local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
 local num_ista_iterations = 3 --7 --3
-local L1_scaling = 1.2 --1.5 --0.001 --0.4 --1.5 --1.2 --1.5 
+local L1_scaling = 1.0 --1.5 --0.001 --0.4 --1.5 --1.2 --1.5 
 local L1_scaling_layer_2 = 0.3 --0.05
 --]]
 
