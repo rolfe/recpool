@@ -36,7 +36,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
       error('Cannot have both normalized columns and normalized rows')
    end
    
-   self:repair()
+   self:repair(true)
 
    if disable_normalized_updates then -- when debugging, disable constraints after initialization
       for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
@@ -70,12 +70,17 @@ function ConstrainedLinear:accUpdateGradParameters(input, gradOutput, lr)
    self:repair()
 end
 
--- ensure that the dictionary matrix has normalized columns (enforce a maximum norm, but not a minimum)
-local function do_normalize_columns(m, desired_norm_value)
+-- ensure that the dictionary matrix has normalized columns (enforce a maximum norm, but not a minimum, unless full_normalization is true)
+local function do_normalize_columns(m, desired_norm_value, full_normalization)
    desired_norm_value = desired_norm_value or 1
-   for i=1,m:size(2) do
-      m:select(2,i):div(math.min(m:select(2,i):norm()/desired_norm_value, 1) + 1e-12)
-      --m:select(2,i):div(m:select(2,i):norm()/desired_norm_value + 1e-12)
+   if full_normalization then
+      for i=1,m:size(2) do
+	 m:select(2,i):div(m:select(2,i):norm()/desired_norm_value + 1e-12)
+      end
+   else
+      for i=1,m:size(2) do
+	 m:select(2,i):div(math.max(m:select(2,i):norm()/desired_norm_value, 1) + 1e-12) -- WARNING!!! THIS WAS MIN RATHER THAN MAX!!!
+      end
    end
 end
 
@@ -90,7 +95,7 @@ local function do_threshold_normalize_rows(m)
    end
 end
 
-function ConstrainedLinear:repair() -- after any sort of update or initialization, enforce the desired constraints
+function ConstrainedLinear:repair(full_normalization) -- after any sort of update or initialization, enforce the desired constraints
    if self.non_negative then
       self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
    elseif self.non_negative_diag then
@@ -108,12 +113,12 @@ function ConstrainedLinear:repair() -- after any sort of update or initializatio
    end
 
    if self.normalized_columns then
-      do_normalize_columns(self.weight)
+      do_normalize_columns(self.weight, nil, full_normalization)
    elseif self.normalized_columns_pooling then
       if(self.weight:size(1) < self.weight:size(2)) then
 	 error('Did not expect output dimension to be smaller than input dimension for ConstrainedLinear with normalized_columns_pooling')
       end
-      do_normalize_columns(self.weight, math.sqrt(self.weight:size(1)/self.weight:size(2)))
+      do_normalize_columns(self.weight, math.sqrt(self.weight:size(1)/self.weight:size(2)), full_normalization)
    elseif self.threshold_normalized_rows then
       do_threshold_normalize_rows(self.weight)
    end

@@ -12,16 +12,10 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
-cmd:option('-full_test','false', 'train slowly over the entire training set (except for the held-out validation elements)')
-
+cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
+cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local params = cmd:parse(arg)
-if params.full_test == 'false' then
-   params.full_test = false
-else
-   params.full_test = true
-end
-local FULL_TEST = params.full_test
 
 local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2 -- 2e-2 --5e-2 --1e-2 --1e-1 --5e-2 -- sparsifying l1 magnitude (4e-2)
 local rec_mag = 4 -- reconstruction L2 magnitude
@@ -36,7 +30,7 @@ pooling_rec_mag = 0
 pooling_position_L2_mag = 0
 --]]
 
---[[
+---[[
 sl_mag = 0 --1e-2
 
 -- no classification loss
@@ -57,13 +51,13 @@ mask_mag = 0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --
 
 local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
 local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
-local num_ista_iterations = 3
-local L1_scaling = 1.5 --1.2 --1.5 
-local L1_scaling_layer_2 = 0.05
+local num_ista_iterations = 3 --7 --3
+local L1_scaling = 1.2 --1.5 --0.001 --0.4 --1.5 --1.2 --1.5 
+local L1_scaling_layer_2 = 0.3 --0.05
 --]]
 
 
----[[
+--[[
 rec_mag = 0
 pooling_rec_mag = 0
 pooling_orig_rec_mag = 0 
@@ -161,7 +155,8 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = (FULL_TEST and 2e-3) or 5e-3, --1e-3, -- learning rate at t=0
+   learning_rate = ((params.full_test == 'full_train') and 2e-3) or ((params.full_test == 'quick_train') and 5e-3) or 
+      (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
@@ -169,14 +164,28 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    max_iter = 2 -- maximum nb of iterations for CG and LBFGS
 }
 
+print('Using opt.learning_rate = ' .. opt.learning_rate)
+
 torch.manualSeed(10934783) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
 
 -- create the dataset
 require 'mnist'
-local data_set_size = (FULL_TEST and 50000) or 5000
-data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  Indexing labels returns an index, rather than a tensor
---data = mnist.loadTrainSet(10000, 'recpool_net', 50000)
---data = mnist.loadTestSet(10000, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
+local data_set_size
+if params.data_set == 'train' then
+   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or 5000
+   data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
+else
+   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
+   if params.data_set == 'validation' then
+      data = mnist.loadTrainSet(data_set_size, 'recpool_net', 50000)
+   elseif params.data_set == 'test' then
+      data = mnist.loadTestSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
+   else
+      error('requested data set ' .. params.data_set .. ' was not recognized')
+   end
+end
+
+--Indexing labels returns an index, rather than a tensor
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 

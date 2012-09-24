@@ -281,7 +281,14 @@ function RecPoolTrainer:train(train_data)
 	 print('mask L1', self.model.layers[i].module_list.mask_sparsifying_module.weight:unfold(1,10,10))
       end
       --print('normalized output', self.model.layers[i].debug_module_list.normalize_output.output[1]:unfold(1,10,10))
-      
+      local m = self.model.layers[i].module_list.decoding_pooling_dictionary.weight
+      local norms = torch.Tensor(m:size(2))
+      for j = 1,m:size(2) do
+	 norms[j] = m:select(2,j):norm()
+      end
+      print('col norms are ', norms:unfold(1,10,10))
+
+
       --print('shrink values', torch.add(self.model.layers[i].module_list.shrink.shrink_val, -1e-5):unfold(1,10,10))
       --print('negative_shrink values', torch.add(self.model.layers[i].module_list.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
       -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!

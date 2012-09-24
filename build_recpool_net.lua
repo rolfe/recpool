@@ -552,7 +552,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
    local shrink_copies = {}
-   
+
    local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true}, RUN_JACOBIAN_TEST) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
@@ -608,7 +608,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    
    -- Initialize the parameters to consistent values -- this should probably go in a separate function
    --base_decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
-   base_decoding_feature_extraction_dictionary:repair()
+   base_decoding_feature_extraction_dictionary:repair(true) -- make sure that the norm of each column is 1, even after it is thinned out
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
@@ -618,7 +618,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
    
-   base_shrink.shrink_val:fill(0) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
+   base_shrink.shrink_val:fill(1e-3) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
       
    --[[
@@ -637,10 +637,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
       -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
       decoding_pooling_dictionary:percentage_zeros_per_column(0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
-      decoding_pooling_dictionary:repair()
+      decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
       encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
       --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
-      encoding_pooling_dictionary:repair()
+      encoding_pooling_dictionary:repair(true) -- make sure that the norm of each column is 1, even after it is thinned out
    end
 
    this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
