@@ -223,7 +223,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 50
+num_epochs_no_classification = 201
 for i = 1,num_epochs_no_classification do
    trainer:train(data)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)

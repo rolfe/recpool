@@ -281,8 +281,8 @@ function RecPoolTrainer:train(train_data)
 	 print('mask L1', self.model.layers[i].module_list.mask_sparsifying_module.weight:unfold(1,10,10))
       end
       --print('normalized output', self.model.layers[i].debug_module_list.normalize_output.output[1]:unfold(1,10,10))
-      --local m = self.model.layers[i].module_list.decoding_feature_extraction_dictionary.weight
-      local m = self.model.layers[i].module_list.decoding_pooling_dictionary.weight
+      local m = self.model.layers[i].module_list.decoding_feature_extraction_dictionary.weight
+      --local m = self.model.layers[i].module_list.decoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(2))
       for j = 1,m:size(2) do
 	 norms[j] = m:select(2,j):norm()
@@ -290,8 +290,8 @@ function RecPoolTrainer:train(train_data)
       print('col norms are ', norms:unfold(1,10,10))
 
 
-      --local m = self.model.layers[i].module_list.encoding_feature_extraction_dictionary.weight
-      local m = self.model.layers[i].module_list.encoding_pooling_dictionary.weight
+      local m = self.model.layers[i].module_list.encoding_feature_extraction_dictionary.weight
+      --local m = self.model.layers[i].module_list.encoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(1))
       for j = 1,m:size(1) do
 	 norms[j] = m:select(1,j):norm()
