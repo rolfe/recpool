@@ -12,7 +12,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
    --disable_normalized_updates = false -- THIS AVOIDS NANS!!!
    self.learning_scale_factor = learning_scale_factor or 1
    
-   local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'threshold_normalized_rows', 'non_negative_diag'}
+   local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'normalized_rows', 'threshold_normalized_rows', 'non_negative_diag'}
    for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
       self[defined_constraints[i]] = false
    end
@@ -70,16 +70,17 @@ function ConstrainedLinear:accUpdateGradParameters(input, gradOutput, lr)
    self:repair()
 end
 
+-- THIS APPEARS TO BE VERY SLOW!  IS IT POSSIBLE TO DO THIS IN C?!?
 -- ensure that the dictionary matrix has normalized columns (enforce a maximum norm, but not a minimum, unless full_normalization is true)
-local function do_normalize_columns(m, desired_norm_value, full_normalization)
+local function do_normalize_rows_or_columns(m, desired_norm_value, full_normalization, normalized_dimension)
    desired_norm_value = desired_norm_value or 1
    if full_normalization then
-      for i=1,m:size(2) do
-	 m:select(2,i):div(m:select(2,i):norm()/desired_norm_value + 1e-12)
+      for i=1,m:size(normalized_dimension) do -- was 2
+	 m:select(normalized_dimension,i):div(m:select(normalized_dimension,i):norm()/desired_norm_value + 1e-12)
       end
    else
-      for i=1,m:size(2) do
-	 m:select(2,i):div(math.max(m:select(2,i):norm()/desired_norm_value, 1) + 1e-12) -- WARNING!!! THIS WAS MIN RATHER THAN MAX!!!
+      for i=1,m:size(normalized_dimension) do
+	 m:select(normalized_dimension,i):div(math.max(m:select(normalized_dimension,i):norm()/desired_norm_value, 1) + 1e-12) -- WARNING!!! THIS WAS MIN RATHER THAN MAX!!!
       end
    end
 end
@@ -113,12 +114,15 @@ function ConstrainedLinear:repair(full_normalization) -- after any sort of updat
    end
 
    if self.normalized_columns then
-      do_normalize_columns(self.weight, nil, full_normalization)
+      do_normalize_rows_or_columns(self.weight, nil, full_normalization, 2) -- 2 specificies that the second dimension (columns) should be normalized
    elseif self.normalized_columns_pooling then
       if(self.weight:size(1) < self.weight:size(2)) then
 	 error('Did not expect output dimension to be smaller than input dimension for ConstrainedLinear with normalized_columns_pooling')
       end
-      do_normalize_columns(self.weight, math.sqrt(self.weight:size(1)/self.weight:size(2)), full_normalization)
+      -- the L2 norm is the square root of the sum of squares; the L2 norm of a vector of n ones is sqrt(n)
+      do_normalize_rows_or_columns(self.weight, math.sqrt(self.weight:size(1)/self.weight:size(2)), full_normalization, 2)
+   elseif self.normalized_rows then
+      do_normalize_rows_or_columns(self.weight, nil, full_normalization, 1) -- 1 specificies that the first dimension (rows) should be normalized
    elseif self.threshold_normalized_rows then
       do_threshold_normalize_rows(self.weight)
    end

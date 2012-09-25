@@ -51,11 +51,20 @@ mask_mag = 0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --
 
 local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
 local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
-local num_ista_iterations = 3 --7 --3
+local num_ista_iterations = 5 --3 --7 --3
 local L1_scaling = 1.0 --1.5 --0.001 --0.4 --1.5 --1.2 --1.5 
 local L1_scaling_layer_2 = 0.3 --0.05
 --]]
 
+---[[
+sl_mag = 5e-2
+--pooling_sl_mag = 0
+--mask_mag = 0
+--pooling_rec_mag = 0
+pooling_position_L2_mag = 0.01 --0.001
+L1_scaling = 0.4 --0.1 --0.75
+L1_scaling_layer_2 = 0.12 --0.03
+--]]
 
 --[[
 rec_mag = 0
@@ -142,7 +151,32 @@ else
    table.insert(layer_size, 10) -- insert the classification output last
 end
 
-local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations) -- last argument is num_ista_iterations
+
+
+-- create the dataset
+require 'mnist'
+local data_set_size, data
+if params.data_set == 'train' then
+   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or 5000
+   data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
+else
+   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
+   if params.data_set == 'validation' then
+      data = mnist.loadTrainSet(data_set_size, 'recpool_net', 50000)
+   elseif params.data_set == 'test' then
+      data = mnist.loadTestSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
+   else
+      error('requested data set ' .. params.data_set .. ' was not recognized')
+   end
+end
+
+--Indexing labels returns an index, rather than a tensor
+data:normalizeL2() -- normalize each example to have L2 norm equal to 1
+
+
+
+
+local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, data) -- last argument is num_ista_iterations
 
 -- load parameters from file if desired
 if params.load_file ~= '' then
@@ -168,26 +202,6 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 
 torch.manualSeed(10934783) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
 
--- create the dataset
-require 'mnist'
-local data_set_size
-if params.data_set == 'train' then
-   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or 5000
-   data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
-else
-   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
-   if params.data_set == 'validation' then
-      data = mnist.loadTrainSet(data_set_size, 'recpool_net', 50000)
-   elseif params.data_set == 'test' then
-      data = mnist.loadTestSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
-   else
-      error('requested data set ' .. params.data_set .. ' was not recognized')
-   end
-end
-
---Indexing labels returns an index, rather than a tensor
-data:normalizeL2() -- normalize each example to have L2 norm equal to 1
-
 
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas) -- layered_lambdas is required for debugging purposes only
 os.execute('rm -rf ' .. opt.log_directory)
@@ -207,8 +221,9 @@ for i = 1,#model.layers do
    end
 end
 
+-- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 0 --20
+num_epochs_no_classification = 50
 for i = 1,num_epochs_no_classification do
    trainer:train(data)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)

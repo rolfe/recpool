@@ -619,9 +619,9 @@ function rec_pool_test.full_network_test()
    --]]
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-   -- TURNING ON JACOBIAN_TESTING INDUCES NANS IN OUTPUT!!!
+   
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, true) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
    print('finished building recpool net')
 
    -- THERE'S NO REASON TO REMOVE THE PARAMETERS FROM THIS LIST BY INDEX; INSTEAD, JUST SEARCH FOR THE ENTRY IN THE LIST THAT MATCHES THE PARAMETER TO BE TESTED
@@ -741,8 +741,17 @@ function rec_pool_test.ISTA_reconstruction()
    local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets}
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors}
 
+   -- create the dataset so the features of the network can be initialized
+   local data = nil
+   --require 'mnist'
+   --local data = mnist.loadTrainSet(500, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
+
+   --Indexing labels returns an index, rather than a tensor
+   --data:normalizeL2() -- normalize each example to have L2 norm equal to 1
+
+
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50, nil) -- final true -> NORMALIZATION IS DISABLED!!!
 
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
@@ -790,7 +799,7 @@ function rec_pool_test.ISTA_reconstruction()
    end
 
 
-   --[[
+   ---[[
    local shrink_output_tensor = torch.Tensor(decoding_feature_extraction_dictionary.output:size(1), #shrink_copies)
    for i = 1,#shrink_copies do
       shrink_output_tensor:select(2,i):copy(decoding_feature_extraction_dictionary:updateOutput(shrink_copies[i].output))

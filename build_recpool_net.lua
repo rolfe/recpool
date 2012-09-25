@@ -47,7 +47,7 @@ local function duplicate_linear_explaining_away_and_shrink(base_explaining_away,
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = true}, RUN_JACOBIAN_TEST)
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
@@ -410,7 +410,7 @@ end
 
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
 -- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
-function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, RUN_JACOBIAN_TEST)
+function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, data_set, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
@@ -442,7 +442,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       end
 
       -- the global criteria_list is passed into each layer to be built up progressively
-      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
+      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, criteria_list, data_set, RUN_JACOBIAN_TEST) 
       model:add(current_layer)
       layer_list[layer_i] = current_layer -- this is used in a closure for model:repair()
 
@@ -534,7 +534,7 @@ end
 -- input is a table of one element x [1], output is a table of one element s [1]
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use RUN_JACOBIAN_TEST when testing parameter updates
-function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, criteria_list, RUN_JACOBIAN_TEST) 
+function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, criteria_list, data_set, RUN_JACOBIAN_TEST) 
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    if not(criteria_list) then -- if we're building a multi-layer network, a common criteria list is passed in
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
@@ -546,9 +546,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true}, RUN_JACOBIAN_TEST) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_rows = false}, RUN_JACOBIAN_TEST) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = true}, RUN_JACOBIAN_TEST) 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST) 
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
    local shrink_copies = {}
@@ -608,20 +608,25 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    
    -- Initialize the parameters to consistent values -- this should probably go in a separate function
    --base_decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
+   if data_set and (layer_id == 1) then
+      for i = 1,0 do --base_decoding_feature_extraction_dictionary.weight:size(2) do
+	 base_decoding_feature_extraction_dictionary.weight:select(2,i):copy(data_set.data[math.random(data_set:size())])
+      end
+   end
    base_decoding_feature_extraction_dictionary:repair(true) -- make sure that the norm of each column is 1, even after it is thinned out
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1/num_ista_iterations))
-   base_explaining_away.weight:mul(-math.max(0.1, 1/num_ista_iterations))
+   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 0.75/num_ista_iterations))
+   base_explaining_away.weight:mul(-math.max(0.1, 0.75/num_ista_iterations))
    for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
    
-   base_shrink.shrink_val:fill(1e-3) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
+   base_shrink.shrink_val:fill(1e-5) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
       
-   --[[
+   ---[[
    decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
    for i = 1,layer_size[2] do -- for each unpooled row entry, find the corresponding pooled column entry, plus those beyond it (according to the loop over j)
       --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
@@ -629,6 +634,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 decoding_pooling_dictionary.weight[{i, math.min(layer_size[3], j + math.ceil(i * layer_size[3] / layer_size[2]))}] = 1
       end
    end
+   decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
+   encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
+   encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
+   --encoding_pooling_dictionary.weight:mul(2) -- DEBUG ONLY!!!
    --]]
 
    function this_layer:randomize_pooling(avoid_reset)
@@ -640,10 +649,14 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
       encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
       --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
-      encoding_pooling_dictionary:repair(true) -- make sure that the norm of each column is 1, even after it is thinned out
+      encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
+
+      -- DEBUG ONLY
+      --decoding_pooling_dictionary.weight:fill(1)
+      --decoding_pooling_dictionary:repair(true)
    end
 
-   this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
+   --this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
 
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -713,11 +726,11 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- THIS IS A HACK!!!
    function this_layer:repair()
       encoding_feature_extraction_dictionary:repair()
-      base_decoding_feature_extraction_dictionary:repair()
+      base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       base_explaining_away:repair()
       base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       encoding_pooling_dictionary:repair()
-      decoding_pooling_dictionary:repair()
+      decoding_pooling_dictionary:repair(true) -- fore full normalization of columns
    end
 
 
