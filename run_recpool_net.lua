@@ -11,7 +11,7 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
-cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
+cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
@@ -21,13 +21,14 @@ local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2
 local rec_mag = 4 -- reconstruction L2 magnitude
 local pooling_rec_mag = 1 --4 --2 --10e-1 --0 --0.25 --8 -- pooling reconstruction L2 magnitude
 local pooling_orig_rec_mag = 0 --2 --10e-1 --0 --4 --8 -- pooling reconstruction L2 magnitude
-local pooling_position_L2_mag = 1 --4 --4 --20e-1 --0 --1.5e-2 --16e-2 --8e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
+local pooling_shrink_position_L2_mag = 1 --4 --4 --20e-1 --0 --1.5e-2 --16e-2 --8e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
+local pooling_orig_position_L2_mag = 0
 local pooling_sl_mag = 1e-2 --0 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
 local mask_mag = 0.1e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
 --[[
 pooling_rec_mag = 0
-pooling_position_L2_mag = 0
+pooling_shrink_position_L2_mag = 0
 --]]
 
 ---[[
@@ -50,27 +51,32 @@ mask_mag = 0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --
 
 
 local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
-local pooling_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
+local pooling_shrink_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
 local num_ista_iterations = 5 --3 --7 --3
 local L1_scaling = 1.0 --1.5 --0.001 --0.4 --1.5 --1.2 --1.5 
 local L1_scaling_layer_2 = 0.3 --0.05
 --]]
 
 ---[[
-sl_mag = 5e-2
+sl_mag = 2e-2 --5e-2
 --pooling_sl_mag = 0
 --mask_mag = 0
---pooling_rec_mag = 0
-pooling_position_L2_mag = 0.01 --0.001
-L1_scaling = 0.4 --0.1 --0.75
-L1_scaling_layer_2 = 0.12 --0.03
+pooling_rec_mag = 0 --0.5
+pooling_orig_rec_mag = 1
+--pooling_shrink_position_L2_mag = 0.1
+--pooling_shrink_position_L2_mag = 0.01 --0.001
+pooling_shrink_position_L2_mag = 0
+pooling_orig_position_L2_mag = 0.1
+-- when not using pooling reconstruction, 4 seems too small; 8 seems too large
+L1_scaling = 1.5 --5 --2.5 --2 --0.4 --0.1 --0.75
+L1_scaling_layer_2 = 0.06 --0.12 --0.03
 --]]
 
 --[[
 rec_mag = 0
 pooling_rec_mag = 0
 pooling_orig_rec_mag = 0 
-pooling_position_L2_mag = 0
+pooling_shrink_position_L2_mag = 0
 sl_mag = 0
 pooling_sl_mag = 0
 mask_mag = 0
@@ -80,14 +86,14 @@ local num_ista_iterations = 3
 --]]
 
 -- Correct classification of the last few examples are is learned very slowly when we turn up the regularizers, since as the classification improves, the regularization error becomes as large as the classification error, so corrections to the classification trade off against the sparsity and reconstruction quality.  
-local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
 
 -- reduce lambda scaling to 0.15; still too sparse
-local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
-local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_position_unit_lambda = pooling_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- targets a multiplied by layer_size to produce the final value, since the L1 loss increases linear with the number of units; it represents the desired value for each unit
@@ -106,7 +112,7 @@ end
 
 local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors
 local num_layers = tonumber(params.num_layers)
-if num_layers == 1 then
+if false and (num_layers == 1) then
    print(lambdas)
    layer_size = {28*28, 200, 50, 10}
    layered_lambdas = {lambdas}
@@ -178,12 +184,6 @@ data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, data) -- last argument is num_ista_iterations
 
--- load parameters from file if desired
-if params.load_file ~= '' then
-   load_parameters(model, params.load_file)
-   --model:randomize_pooling()
-end
-
 -- option array for RecPoolTrainer
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
@@ -204,6 +204,13 @@ torch.manualSeed(10934783) -- init random number generator.  Obviously, this sho
 
 
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas) -- layered_lambdas is required for debugging purposes only
+
+-- load parameters from file if desired
+if params.load_file ~= '' then
+   load_parameters(trainer:get_flattened_parameters(), params.load_file)
+   --model:randomize_pooling()
+end
+
 os.execute('rm -rf ' .. opt.log_directory)
 os.execute('mkdir -p ' .. opt.log_directory)
 
@@ -229,7 +236,7 @@ for i = 1,num_epochs_no_classification do
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
 
    if (i % 10 == 1) and (i > 1) then
-      save_parameters(model, opt.log_directory, i) -- defined in display_recpool_net
+      save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 end
 
@@ -241,7 +248,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
 
    if (i % 10 == 1) and (i > 1) then
-      save_parameters(model, opt.log_directory, i) -- defined in display_recpool_net
+      save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 end
 

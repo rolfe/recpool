@@ -61,8 +61,8 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas)
 
    -- Flatten the parameters (and gradParameters) into a single giant storage.  Each parameter and gradParameter tensor then views an offset into the common storage.  Shared parameters are only stored once, since Module:share() already sets the associated tensors to point to a common storage.
    if model then
-      self.flattened_parameters,self.flattened_grad_parameters = model:getParameters() 
-      model:getParameters() -- this incorrectly throws an error, since the flattened parameter tensor only contains one copy of each shared parameter, but the parameter count used as a check counts each shared instance separately
+      -- this must *NOT* be called twice; each call allocates new storage and unlinks the modules from the old storage(s)
+      self.flattened_parameters,self.flattened_grad_parameters = model:getParameters()  
    else
       error('RecPoolTrainer requires a model')
    end
@@ -73,8 +73,11 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas)
 
    -- note that feval takes only current_params as input, whereas make_feval takes self as input; the self provided to make_feval is accessible to feval through the closure
    self.feval = self:make_feval() 
-   
    self.epoch = 0
+end
+
+function RecPoolTrainer:get_flattened_parameters() -- flattened_parameters are more sensibly handled by the model, rather than the trainer
+   return self.flattened_parameters
 end
 
 
@@ -227,10 +230,11 @@ function RecPoolTrainer:train(train_data)
       self.loss_hist[i] = 0
       self.grad_loss_hist[i] = 0
 
-      if i == 4 then
-	 local alpha = self.layered_lambdas[1].pooling_L2_position_unit_lambda / self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda
+      if self.model.criteria_list.names[i] == 'pooling L2 shrink reconstruction loss' then
+	 print('performing additional testing on ' .. self.model.criteria_list.names[i])
+	 local alpha = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda / self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda
 	 local shrink_output = self.model.layers[1].module_list.shrink_copies[#self.model.layers[1].module_list.shrink_copies].output
-	 local theoretical_reconstruction_loss = alpha^2 * math.pow(torch.norm(torch.cdiv(shrink_output, 
+	 local theoretical_shrink_reconstruction_loss = alpha^2 * math.pow(torch.norm(torch.cdiv(shrink_output, 
 										torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
 	 --print('dividing ', torch.mul(self.model.layers[1].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output, alpha):unfold(1,10,10))
 	 --print('by ', torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha):unfold(1,10,10))
@@ -238,18 +242,24 @@ function RecPoolTrainer:train(train_data)
 								    torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)), 
 									       torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
 	 
-	 print('reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
+	 print('shrink reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_shrink_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
 
-	 local theoretical_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
+	 local theoretical_shrink_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
 									  torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
 
-	 print('position ratio is ' .. (self.layered_lambdas[1].pooling_L2_position_unit_lambda * theoretical_position_loss) / self.model.criteria_list.criteria[6].output)
+	 local theoretical_orig_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(self.model.layers[1].module_list.decoding_feature_extraction_dictionary_transpose.output,
+											  self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
+										 torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
 
-	 local combined_loss_careful = self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_reconstruction_loss + 
-	    self.layered_lambdas[1].pooling_L2_position_unit_lambda * theoretical_position_loss
+
+	 print('shrink position ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * theoretical_shrink_position_loss) / self.model.criteria_list.criteria[6].output)
+	 print('orig position ratio is ' .. (self.layered_lambdas[1].pooling_L2_orig_position_unit_lambda * theoretical_orig_position_loss) / self.model.criteria_list.criteria[7].output)
+
+	 local combined_loss_careful = self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_shrink_reconstruction_loss + 
+	    self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * theoretical_shrink_position_loss
 	    
 	 -- this should not equal the exact combined loss, since (a + b)^2 ~= a^2 + b^2!!!
-	 local combined_loss = self.layered_lambdas[1].pooling_L2_position_unit_lambda * 
+	 local combined_loss = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * 
 	    math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, 
 						      torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, math.sqrt(alpha))), 
 					      torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
@@ -268,7 +278,7 @@ function RecPoolTrainer:train(train_data)
       print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
       print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
       -- these two outputs are from the middle of the processing chain, rather than the parameterized modules
-      --print('pooling position units', self.model.layers[i].debug_module_list.L2_pooling_units.output:unfold(1,10,10))
+      --print('pooling position units', self.model.layers[i].debug_module_list.compute_shrink_position_units.output:unfold(1,10,10))
       print('pooling output', self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10))
       -- since the sparsifying modules can be parameterized by lagrange multipliers, they are in the main module list
       if self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
@@ -298,11 +308,41 @@ function RecPoolTrainer:train(train_data)
       end
       print('row norms are ', norms:unfold(1,10,10))
 
-
+      --[[
+      print('shrink values', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('shrink values', torch.add(self.model.layers[i].module_list.shrink.shrink_val, -1e-5):unfold(1,10,10))
       --print('negative_shrink values', torch.add(self.model.layers[i].module_list.shrink.negative_shrink_val, 1e-5):unfold(1,10,10))
       -- display filters!  Also display reconstructions minus originals, so we can see how the reconstructions improve with training!
       -- check that without regularization, filters are meaningless.  Confirm that trainable pooling has an effect on the pooled filters.
+
+      print('encoding_feature_extraction_dictionary output')
+      print(self.model.layers[i].module_list.encoding_feature_extraction_dictionary.output:unfold(1,10,10))
+
+      print('explaining_away outputs')
+      local desired_size = 20 --self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output:size(1)
+      local explaining_away_output_tensor = torch.Tensor(desired_size, #self.model.layers[i].module_list.explaining_away_copies)
+      for j = 1,#self.model.layers[i].module_list.explaining_away_copies do 	 
+	 explaining_away_output_tensor:select(2,j):copy(self.model.layers[i].module_list.explaining_away_copies[j].output:narrow(1,1,desired_size))
+      end
+      print(explaining_away_output_tensor)
+
+      print('raw shrink outputs')
+      local desired_size = 20 --self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output:size(1)
+      local shrink_output_tensor = torch.Tensor(desired_size, #self.model.layers[i].module_list.shrink_copies)
+      for j = 1,#self.model.layers[i].module_list.shrink_copies do 	 
+	 shrink_output_tensor:select(2,j):copy(self.model.layers[i].module_list.shrink_copies[j].output:narrow(1,1,desired_size))
+      end
+      print(shrink_output_tensor)
+
+      print('reconstructed shrink outputs')
+      local desired_size = 200 --self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output:size(1)
+      local shrink_output_tensor = torch.Tensor(desired_size, #self.model.layers[i].module_list.shrink_copies)
+      for j = 1,#self.model.layers[i].module_list.shrink_copies do 	 
+	 shrink_output_tensor:select(2,j):copy(self.model.layers[i].module_list.decoding_feature_extraction_dictionary:updateOutput(
+						  self.model.layers[i].module_list.shrink_copies[j].output):narrow(1,1,desired_size))
+      end
+      print(shrink_output_tensor)
+      --]]
       
       local plot_recs = false
       if plot_recs then
@@ -401,20 +441,25 @@ function check_for_nans(self, output, name)
 	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_shrink_reconstruction_loss_seq.gradInput)
 	 print('orig_reconstruction')
 	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_orig_reconstruction_loss_seq.gradInput)
-	 print('position_loss')
-	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_position_loss_seq.gradInput)
+	 print('shrink position_loss')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_shrink_position_loss_seq.gradInput)
+	 print('orig position_loss')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.compute_orig_position_loss_seq.gradInput)
 	 io.read()
 	 
 	 print('gradInputs second test')
 	 print('shrink_rec_numerator')
 	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_shrink_rec_numerator_seq.gradInput)
 	 --print(self.model.construct_shrink_rec_numerator_seq.output:unfold(1,10,10))
-	 print('pos_numerator_seq')
-	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_pos_numerator_seq.gradInput)
-	 --print(self.model.construct_pos_numerator_seq.output:unfold(1,10,10))
+	 print('shink_pos_numerator_seq')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_shrink_pos_numerator_seq.gradInput)
+	 --print(self.model.construct_shrink_pos_numerator_seq.output:unfold(1,10,10))
 	 print('orig_rec_numerator_seq')
 	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_orig_rec_numerator_seq.gradInput)
 	 --print(self.model.construct_orig_rec_numerator_seq.output:unfold(1,10,10))
+	 print('orig_pos_numerator_seq')
+	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_orig_pos_numerator_seq.gradInput)
+	 --print(self.model.construct_orig_pos_numerator_seq.output:unfold(1,10,10))
 	 print('denominator_seq')
 	 find_nans_in_table(self.model.layers[i].debug_module_list.construct_denominator_seq.gradInput)
 	 --print(self.model.construct_denominator_seq.output:unfold(1,10,10))

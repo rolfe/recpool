@@ -599,7 +599,8 @@ function rec_pool_test.full_network_test()
 		    ista_L1_lambda = math.random(), 
 		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
 		    pooling_L2_orig_reconstruction_lambda = math.random(), 
-		    pooling_L2_position_unit_lambda = math.random(), 
+		    pooling_L2_shrink_position_unit_lambda = math.random(), 
+		    pooling_L2_orig_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
 
@@ -618,33 +619,11 @@ function rec_pool_test.full_network_test()
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
    --]]
 
-   --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-   
    local model =
       build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
    print('finished building recpool net')
 
-   -- THERE'S NO REASON TO REMOVE THE PARAMETERS FROM THIS LIST BY INDEX; INSTEAD, JUST SEARCH FOR THE ENTRY IN THE LIST THAT MATCHES THE PARAMETER TO BE TESTED
-   --[[
-   local parameter_list = {model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-			   model.layers[1].module_list.decoding_feature_extraction_dictionary.bias, 
-			   model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
-			   model.layers[1].module_list.encoding_feature_extraction_dictionary.bias, 
-			   model.layers[1].module_list.explaining_away.weight, 
-			   model.layers[1].module_list.explaining_away.bias, 
-			   model.layers[1].module_list.shrink.shrink_val, 
-			   model.layers[1].module_list.shrink.negative_shrink_val, 
-			   model.layers[1].module_list.decoding_pooling_dictionary.weight, 
-			   model.layers[1].module_list.decoding_pooling_dictionary.bias, 
-			   model.layers[1].module_list.encoding_pooling_dictionary.weight, 
-			   model.layers[1].module_list.encoding_pooling_dictionary.bias, 
-			   model.module_list.classification_dictionary.weight, 
-			   model.module_list.classification_dictionary.bias, 
-			   model.layers[1].module_list.feature_extraction_sparsifying_module.weight, 
-			   model.layers[1].module_list.pooling_sparsifying_module.weight, 
-			   model.layers[1].module_list.mask_sparsifying_module.weight}
-   --]]
-
+   -- create a list of all the parameters of all modules, so they can be held constant when doing Jacobian tests
    local parameter_list = {}
    for i = 1,#model.layers do
       for k,v in pairs(model.layers[i].module_list) do
@@ -731,7 +710,8 @@ function rec_pool_test.ISTA_reconstruction()
 		    ista_L1_lambda = math.random(), 
 		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
 		    pooling_L2_orig_reconstruction_lambda = math.random(), 
-		    pooling_L2_position_unit_lambda = math.random(), 
+		    pooling_L2_shrink_position_unit_lambda = math.random(), 
+		    pooling_L2_orig_position_unit_lambda = math.random(), 
 		    pooling_output_cauchy_lambda = math.random(), 
 		    pooling_mask_cauchy_lambda = math.random()}
    local lagrange_multiplier_targets = {feature_extraction_target = math.random(), pooling_target = math.random(), mask_target = math.random()}

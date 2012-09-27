@@ -58,9 +58,9 @@ end
 
 
 
-function save_parameters(model, directory_name, iteration)
+function save_parameters(flattened_parameters, directory_name, iteration)
    -- flatten the parameters for storage.  While this has already been done in the trainer, the trainer probably shouldn't be responsible for saving and loading the parameters
-   local flattened_parameters = model:getParameters() 
+   --local flattened_parameters = model:getParameters() 
 
    -- store model
    print('starting to store model')
@@ -71,13 +71,13 @@ function save_parameters(model, directory_name, iteration)
    mf:close()
    print('finished storing model')
 
-   flattened_parameters = nil
-   collectgarbage()
+   --flattened_parameters = nil
+   --collectgarbage()
 end
 
-function load_parameters(model, file_name)
+function load_parameters(flattened_parameters, file_name)
    -- flatten the parameters for loading from storage.  While this has already been done in the trainer, the trainer probably shouldn't be responsible for saving and loading the parameters
-   local flattened_parameters = model:getParameters() 
+   --local flattened_parameters = model:getParameters() 
 
    print('loading flattened parameters from ' .. file_name)
    local mf = torch.DiskFile(file_name,'r'):binary()
@@ -85,7 +85,7 @@ function load_parameters(model, file_name)
    flattened_parameters:copy(saved_parameters)
    mf:close()
 
-   flattened_parameters = nil
+   --flattened_parameters = nil
    saved_parameters = nil
    collectgarbage()
 end
