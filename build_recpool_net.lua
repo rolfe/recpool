@@ -640,8 +640,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1/num_ista_iterations))
-   base_explaining_away.weight:mul(-math.max(0.1, 1/num_ista_iterations))
+   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1.25/num_ista_iterations))
+   base_explaining_away.weight:mul(-math.max(0.1, 1.25/num_ista_iterations))
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
@@ -665,8 +665,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
+   --encoding_pooling_dictionary.weight:mul(1.25) -- DEBUG ONLY!!!
    encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
-   --encoding_pooling_dictionary.weight:mul(2) -- DEBUG ONLY!!!
    --]]
 
    function this_layer:randomize_pooling(avoid_reset)
