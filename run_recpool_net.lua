@@ -26,14 +26,8 @@ local pooling_orig_position_L2_mag = 0
 local pooling_sl_mag = 1e-2 --0 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
 local mask_mag = 0.1e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
---[[
-pooling_rec_mag = 0
-pooling_shrink_position_L2_mag = 0
---]]
 
 ---[[
-sl_mag = 0 --1e-2
-
 -- no classification loss
 --pooling_sl_mag = 0.4e-2 --0.25e-2 --2e-2 --5e-2
 --local mask_mag = 0.5e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
@@ -69,7 +63,7 @@ pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.01 --0.001
 pooling_shrink_position_L2_mag = 0.01 --0.005 --0
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
-local pooling_reconstruction_scaling = 0.25 --0.5 --0.25
+local pooling_reconstruction_scaling = 0.125 --0.5 --0.25
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
@@ -77,7 +71,7 @@ pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_pos
 
 -- when not using pooling reconstruction, 4 seems too small; 8 seems too large
 L1_scaling = 1.0 --0.5 --1.5 --5 --2.5 --2 --0.4 --0.1 --0.75
-L1_scaling_layer_2 = 0.06 --0.12 --0.03
+L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 --]]
 
 --[[
