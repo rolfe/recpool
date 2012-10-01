@@ -562,18 +562,18 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_rows = false}, RUN_JACOBIAN_TEST) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_rows = true}, RUN_JACOBIAN_TEST) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST) 
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
    local shrink_copies = {}
 
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true}, RUN_JACOBIAN_TEST, 10) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = true}, RUN_JACOBIAN_TEST, 0) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
-      dpd_training_scale_factor = 50 --5 -- decoding_pooling_dictionary is trained faster than any other module
+      dpd_training_scale_factor = 0 --5 -- decoding_pooling_dictionary is trained faster than any other module
    else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
       for k,v in pairs(lagrange_multiplier_learning_rate_scaling_factors) do
 	 if v ~= -1 then
@@ -745,12 +745,12 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
    -- THIS IS A HACK!!!
    function this_layer:repair()
-      encoding_feature_extraction_dictionary:repair()
+      encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/num_ista_iterations))
       base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       base_explaining_away:repair()
       base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
-      encoding_pooling_dictionary:repair()
-      decoding_pooling_dictionary:repair(true) -- fore full normalization of columns
+      encoding_pooling_dictionary:repair(true) -- force full normalization of rows
+      decoding_pooling_dictionary:repair(true) -- force full normalization of columns
    end
 
    

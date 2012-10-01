@@ -12,7 +12,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
    --disable_normalized_updates = false -- THIS AVOIDS NANS!!!
    self.learning_scale_factor = learning_scale_factor or 1
    
-   local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'normalized_rows', 'threshold_normalized_rows', 'non_negative_diag'}
+   local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'normalized_rows', 'normalized_rows_pooling', 'threshold_normalized_rows', 'non_negative_diag'}
    for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
       self[defined_constraints[i]] = false
    end
@@ -96,7 +96,7 @@ local function do_threshold_normalize_rows(m)
    end
 end
 
-function ConstrainedLinear:repair(full_normalization) -- after any sort of update or initialization, enforce the desired constraints
+function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- after any sort of update or initialization, enforce the desired constraints
    if self.non_negative then
       self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
    elseif self.non_negative_diag then
@@ -122,7 +122,13 @@ function ConstrainedLinear:repair(full_normalization) -- after any sort of updat
       -- the L2 norm is the square root of the sum of squares; the L2 norm of a vector of n ones is sqrt(n)
       do_normalize_rows_or_columns(self.weight, math.sqrt(self.weight:size(1)/self.weight:size(2)), full_normalization, 2)
    elseif self.normalized_rows then
-      do_normalize_rows_or_columns(self.weight, nil, full_normalization, 1) -- 1 specificies that the first dimension (rows) should be normalized
+      do_normalize_rows_or_columns(self.weight, desired_norm_value, full_normalization, 1) -- 1 specificies that the first dimension (rows) should be normalized
+   elseif self.normalized_rows_pooling then
+      if(self.weight:size(2) < self.weight:size(1)) then
+	 error('Did not expect input dimension to be smaller than output dimension for ConstrainedLinear with normalized_rows_pooling')
+      end
+      -- the L2 norm is the square root of the sum of squares; the L2 norm of a vector of n ones is sqrt(n)
+      do_normalize_rows_or_columns(self.weight, math.sqrt(self.weight:size(2)/self.weight:size(1)), full_normalization, 1) -- 1 specifies that the first dimension (rows) should be normalized
    elseif self.threshold_normalized_rows then
       do_threshold_normalize_rows(self.weight)
    end
