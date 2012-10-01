@@ -70,7 +70,7 @@ pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink
 pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_position_L2_mag
 
 -- when not using pooling reconstruction, 4 seems too small; 8 seems too large
-L1_scaling = 2.0 --1.0 --0.5 --1.5 --5 --2.5 --2 --0.4 --0.1 --0.75
+L1_scaling = 1.5 --1.0 --0.5 --1.5 --5 --2.5 --2 --0.4 --0.1 --0.75
 L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 --]]
 
