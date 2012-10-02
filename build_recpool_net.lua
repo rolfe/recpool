@@ -556,7 +556,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
-   local disable_trainable_pooling = true
+   local disable_trainable_pooling = false
 
    -- Build the reconstruction pooling network
    local this_layer = nn.Sequential()
@@ -757,7 +757,6 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       base_explaining_away:repair()
       base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       if not(disable_trainable_pooling) then
-	 print('repairing pooling dictionaries')
 	 encoding_pooling_dictionary:repair(true) -- force full normalization of rows
 	 decoding_pooling_dictionary:repair(true) -- force full normalization of columns
       end
