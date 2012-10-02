@@ -1,0 +1,275 @@
+Is decoding_pooling_dictionary training?  It doesn't appear to change.  encoding_pooling_dictionary trains, but this may be due solely to the classification loss.
+Why is pooling L2 position loss so small?
+Take unequal lambdas into account when calculating position units and pooling reconstruction loss.  This may allow us to turn up the pooling reconstruction loss without forcing everything to zero; as it is, reconstructions are smaller than they should be, so pooling reconstruction errors can be reduced by ensuring that the shrink layer is all-zero.
+
+Pooling reconstruction is still very small!
+
+Why is the last element of the pooling dictionary flat?
+
+10 epochs, all lambda = 0, 
+95.5%
+Forward filters look like hazy digits and digit-halves.  Perhaps 2/3 are strongly trained.
+
+10 epochs, feature encoding lambdas = 0
+59.6%
+Only 12 forward feature extracting filters train significantly, and look like average digits.  The number of significantly trained filters increases with training.  The sparse representation only has at most one non-zero element.  Presumably, this makes the pooling units sparse and increases the accuracy of the pooling reconstruction.  The encoding and decoding pooling dictionaries train, but not drastically.
+
+
+10 epochs, pooling lambdas = 0, 2e-3 reconstruction sparsity
+95.2%
+All encoding filters train, perhaps half strongly and tend to look like very hazy digits.  Shrink representations are not very sparse (at most half zeros, which would probably be expected from using non-negative units alone).  Decoding filters have structure, but it is all small scale, and they are extremely noisy on the whole, suggesting that sparsification is insufficient without the pooling lambdas.  Encoding pooling dictionaries become less sparse.
+
+10 epochs, pooling lambdas = 0, 5e-2 reconstruction sparsity
+95.8%
+Almost all decoding filters seem to be moving towards the representation of digit parts; few represent whole digits.  Encoding filters are suprisingly clear, especially those that correspond to digit part decodings, rather than full digits.  Encoding pooling dictionaries learn to be less sparse.  Shrink representations are perhaps 80% sparse.
+
+
+10 epochs, all lambdas used except pooling sparsity = 0, 1e-2 reconstruction sparsity, 1e-2 mask sparsity
+95.7%
+Extreme sparsity observed when using full pooling-layer regularization seems to be due to the large coefficient used on the pooling sparsity
+Shrink representations are perhaps 60% sparse (i.e., mostly unsparsened, given non-negative units).  Decoding pooling dictionary is not visibly trained; encoding pooling dictionary becomes a little less sparse, but not as much as without mask sparsity.  Decoding filters only have high frequency structure, and so are obviously insufficiently sparsened.  About 1/3 of encoding feature extracting filters are strongly trained and look like hazy digits  
+
+
+10 epochs, no lambdas set to zero, all sparsifying lambdas 5e-2
+95.2%
+Both encoding and decoding feature extraction dictionaries look like full digits, although there are some digit parts.  Shrink representation is perhaps 90% sparse.  In contrast to unregularized approach, classification error reduces evenly throughout training, rather than quickly obtaining 90% correct and then improving very slowly.  Encoding pooling dictionaries are not rendered overly non-sparse; decoding pooling dictionaries change a little.
+
+
+10 epochs, all lambdas used but pooling sparsity = 0, 5e-2 reconstruction sparsity, 5e-2 mask sparsity
+94.5%
+Shrink representations are perhaps 90% sparse.  There are about 10 elements of the decoding feature extraction dictionary that consist of smooth digits; the rest seem to be evolving towards digit parts.  At least half of the elements of the encoding feature extraction dictionary have small weights.  Remember that mask and pooling sparsity have very similar effects; consider using half as much for each as for feature encoding sparsity.  Classification performance improves consistently throughout the 10 epochs.  Encoding pooling dictionaries are not rendered overly non-sparse; decoding pooling dictionaries change a little.
+
+
+10 epochs, all lambdas but L2_position_unit = 0, 5e-2 feature reconstruction sparsity, 2.5e-2 pooling and mask sparsity
+96.6%
+Shrink representations are about 80% sparse.  All trained elements of the decoding feature extraction dictionary are feature parts.  Encoding pooling dictionaries are not rendered overly non-sparse, but are perhaps a little less sparse than with other lambda settings; decoding pooling dictionaries change a little.
+
+
+10 epochs, all lambdas but L2_position_unit = 1, 5e-2 feature reconstruction sparsity, 2.5e-2 pooling and mask sparsity
+94.6%
+Pooling position units are an order of magnitude smaller.  Remember that L1 and L2 scaling factors should be matched to induce pooling behavior when directly minimizing the bilinear reconstruction loss; presumably the L2_position_unit lambda should match the sum of the pooling and mask sparsities.  Shrink representations are about 90% sparse.  Trained elements of the decoding feature extraction dictionary look like whole digits or differences between digit pairs.  The decoding pooling dictionary is rendered noticeably non-sparse, in contrast to previous runs.
+
+
+10 epochs, all lambdas; 5e-2 feature reconstruction sparsity and L2_position_unit, 2.5e-2 pooling and mask sparsity
+95.2% (98.4% after 20 epochs)
+Shrink representations are about 85% sparse.  Almost all trained elements of the decoding feature extraction dictionary are feature parts.  Encoding pooling dictionaries are not rendered overly non-sparse; decoding pooling dictionaries change a little.  There's probably too much sparsity within pooling groups at the feature extraction level.  While there is some similarlity between nearby feature extraction units, such units are often not coactive.  We would like sparsity to be enforced more at the pooling level than at the feature extraction level.  Note that the 5e-2 lambda seems optimal without any pooling regularization; try turning down the feature-extraction-level sparsity.
+
+
+10 epochs 3e-2 feature reconstruction sparsity, 1.5e-2 pooling and mask sparsity, 3e-2 L2_position_unit
+95.6% (98.8% after 20 epochs)
+Shrink representations are perhaps 80% sparse.  Decoding feature extraction dictionary elements are all feature parts, although disturbingly some remain mostly untrained even after 26 epochs.  Some elements of the decoding pooling dictionary become very nonsparse (although with small magnitude).  THere's still probably too much sparsity within pooling groups at the feature extraction level, and not enough between groups at the pooling level.  
+
+10 epochs 1.5e-2 feature reconstruction sparsity, 3e-2 pooling and mask sparsity, 6e-2 L2_position_unit
+95.3% (98.96% after 20 epochs)
+Many feature extraction units are still underused.
+
+10 epochs 0.5e-2 feature reconstruction sparsity, 4e-2 pooling and mask sparsity, 8e-2 L2_position_unit
+95.96% (98.96% after 20 epochs)
+
+10 epochs 4 feature reconstruction L2 error, 1 pooling reconstruction L2 error, 0.5e-2 feature reconstruction sparsity, 4e-2 pooling and mask sparsity, 8e-2 L2_position_unit
+96.54% (99.26% after 20 epochs)
+
+10 epochs 4 feature reconstruction L2 error, 1 pooling reconstruction L2 error, 2e-2 feature reconstruction sparsity, 4e-2 pooling and mask sparsity, 8e-2 L2_position_unit
+96.42% (99.34% after 20 epochs)
+Sparsity seems close to 70% - probably need to make sparser
+
+10 epochs 4 feature reconstruction L2 error, 1 pooling reconstruction L2 error, 4e-2 feature reconstruction sparsity, 4e-2 pooling and mask sparsity, 8e-2 L2_position_unit
+96.88% (99.22% after 20 epochs)
+Sparsity seems about 80%
+
+
+
+
+Try doing one or two epochs of 50,000 elements.  Compare lambdas to no regularization.
+Consider including a full reconstruction of the input from the pooling units, passing through the decoding feature extraction dictionary
+Why are encoding feature extraction dictionary elements so noisy?  Could be that the gradients are too large.  Remember that the gradients on the encoding and explaining away dictionaries are larger than on the decoding dictionaries (CHECK)
+
+
+CONFIRM that without the reconstruction error, traininable pooling fails, since the sparsity term causes renders most units inactive (is this still true when there is a supervised loss?).  Without reconstruction error, deep networks can't be trained in an unsupervised fashion.  Confirm that trainable pooling (with reconstruction error) outperforms nontrainable pooling with 50,000 MNIST datapoints.
+
+20,000 datapoints, 7 epochs, two-sided normalization of decoding columns, no pooling reconstruction, random pooling initialization
+96.025%
+95.14% with pooling reconstruction
+95.55% with 1 orig/0.25 shrink pooling reconstruction - pooling output is significantly sparsified, but pooling reconstruction is not very sparse at all.
+
+
+Where do nans come from when we turn up the mask sparsity!?! - nn.Power and nn.CMulTable produced nans in gradInput when the input is exactly equal to zero
+
+CAUCHY COST DOES NOT SEEM TO BEHAVE SENSIBLY FOR SMALL VALUES!  IT IS NOT SPARSIFYING FOR SMALL x!!!  Working on adding a constant multiplier.  Changed mask to L1
+Why does a mask L1 norm have such a large effect?  
+Check relative magnitude of gradients on different parameter matrices.  Adjust so they are more even!  decoding_pooling_dictionary has gradient norm 10% as large as the encoding_feature_extracting_dictionary.  Try scaling encoding-pooling by 2 and decoding-pooling by 10
+
+If L1 and L2 lambdas aren't equal, how does that affect the optimality of traditional pooling?  Actually, it seems to make traditional pooling even better, especially with L1 regularization, since the additive constant in the denominator is smaller.  However, this also implies that the position units are almost exactly the terms required to get perfect reconstruction, so even though the scaling factor on the pooling reconstruction is large, the actual reconstruction error will generally be small.  The ratio that matters should be that between L2 reconstruction and L2 pooling, since that sets the position values.  A smaller L1 regularizer should just make the optimal pooling output smaller. 
+
+Why are decoding dictionary elements so poor?  Try allowing the network to train much longer (doesn't seem to help).  Check the quality of the parts learned when pooling reconstruction error and sparsity is turned off completely; confirm that the separation of encoder and decoder is not an insuperable problem.  Results from 9/3 suggest that, when sparsity and reconstruction errors are only imposed on the feature extraction layer, sensible-looking parts are learned.  Consider ensuring that the additional regularization on pooling is sufficiently weak that it does not disrupt this process.  Note that the encoding pooling dictionaries learned when only the feature extraction is regularized are already sparse, and tend to have only one strong connection.  A rerun with the current set of parameters (and with the pooling dictionary initialized randomly) seems much messier.  Note that the 9/3 results use much less sparsity (5e-3), but due use pooling regularization, and learn strings of similar consecutive feature extraction filters.
+
+
+
+Check again what happens if we turn the pooling reconstruction regularizers off.  Make the mask sparsity a ParameterizedL1Cost.  Do variable L1 scaling factors properly find the best reconstruction with a given level of sparsity, given that the degree of regularization changes as the sparsity changes?
+
+Imposing L1 regularizers on the pooling output or mask without a pooling reconstruction error doesn't make sense, since the encoding pooling dictionary can just shrink to nothing as the classification dictionary grows to compensate; it's magnitude is not propped up by any term of the loss function.  As a result, the set point for the pooling sparsity can be anomalously low, since it can be reduced by just scaling down the encoding pooling dictionary and scaling up the classification dictionary.
+
+It's odd to control the L2 norm of the decoding pooling dictionary, the L1 mask norm, and the L1 pooling norm.  It seems important to control the L1 norm of the feature extraction units, since the shrink operation can easily turn units off, and the approximate ISTA operation can cause some units to be very active in response to a disproportionate percentage of the inputs.  The pooling units, in contrast, will generally not be silenced entirely.  Insufficient mask activity should be handled by the combination of L1 regulation of the feature extraction units and the L2 pooling reconstruction loss.  
+
+The position units and thus the actual reconstruction only have a sensible magnitude if the mask values are close to 1.  Otherwise, the position units will be small, so the reconstruction will be small, and the reconstruction error will be largely irrelevant, since it will be due primarily to the small magnitude of the reconstruction, and will not be substantially affected by the quality of the reconstruction.
+
+Rather than find the optimal scaling of the reconstruction pooling regularizer, show that a small increment from zero improves performance.  A full search can be performed later.
+
+
+Is initial encoder pooling dictionary large enough?
+Check facial plausibility of pooling reconstruction operation.  
+Check that mismatch between L1 and L2 penalties is not problematic in the context of the decoder only (minimize the energy, rather than use the encoder).  When the L1 term is very small, this implies that the minimum of the decoding loss has huge pooling units relative to the position units.  Indeed, in practice the position units are about 1e-2 as large as the pooling units, exactly matching the ratio between the scaling factors on the L1 and L2 loss functions.  HOWEVER, the scaling induced by the 
+
+
+
+Why does the magnitude decay as we pass through the layers?  This implies that sparsity will set activity to zero, and pooling reconstruction error will be dwarfed by the constant.  Track the change in L2 norm of the representations as we move through the hierarchy.  Solved by adding divisive normalization to each recpool layer.
+
+Four hidden layers seems to be sufficient to get bad performance without reconstruction loss on the pooling layer.  With only three hidden layers, the magnitude of the gradients on the first layer encoding pooling dictionary are less than 10% of those on the other encoding pooling dictionaries, but training is still effective.  The encoding feature extraction dictionaries, in contrast, all have gradients with similar magnitudes, presumably because these gradients are largely driven by the feature extraction reconstruction error, which I leave in.  89.72% after 15 epochs of 5000 with three hidden layers.  Learning slows down considerably as it progresses.  Does the same thing happen with reconstruction pooling?  For unclear reasons, reconsturction error slows learning considerably, and only acheives about 60% after 15 epochs of 5000 with three hidden layers.
+
+Why is the decoding feature extraction dictionary so poor?  Is there insufficient sparsity in the first layer, leading to bad features?  The problem seems to be due to the low reconstruction loss scaling AND the low sparsity used on the first layer.  With two recpool layers, we can get good features if we turn up the reconstruction loss for both layers, and make the sparsity loss for the first layer much larger than that in the second layer (comparable to that used with only one recpool layer)
+
+Pooling reconstruction doesn't seem to be doing anything for the first of two hidden layers.  Second layer decoding pooling dictionary starts out non-sparse (it's unclear if the encoding dictionary learns to be sparse, or the decoding dictionary learns to be non-sparse in the first epoch), but grows sparse with trainingw.  Pooling output from first layer is not sparse at all, which likely explains the poor pooling reconstruction, since roughly the same reconstruction is activated on all iterations.  Some sparsity develops in the pooling output from the first layer when it is trained alone, with classification turned off, so long as the pooling weights are initialized to be contigous groups.
+
+Gradients on the encoding pooling dictionary can grow monstrously huge, but it doesn't seem to change (graphically) relative to the decoding pooling dictionary, which consistently has tiny gradients.  What's going on?  This is further surprising since no criterion seems to be producing a huge gradient.  There are a small number of very large values.  The problem was that after I reduced the additive constant fed into the square root, the gradient of the square root exploded.  I've attempted to resolve the problem by adding in a relatively large constant, but then subtracting out its square root afterwards, so zero is mapped to zero by the composite operation.
+
+Pooling reconstruction seems to be anticorrelated with the input.  The largest inputs tend to have reconstructions that are tiny or equal to zero.  Keep in mind that the L2 position loss is relevant, and is minimized by exactly this sort of mismatch if alpha is large compared to the magnitude of the reconstructions.  Alpha should thus be around 1e-3
+
+Only a small subset of the pooling units ever appears to be large.
+
+2 layers, reconstruction pooling loss
+68.34 after 10 epochs; 94.78 after 20 epochs; 96.8 after 27 epochs
+75.28 after 10 epochs; 94.56 after 20 epochs; 96.82 after 30 epochs
+2 layers, reconstruction pooling loss, nonnegative explaining away diagonal
+76.3 after 10 epochs; 94.54 after 20 epochs; 97.3 after 30 epochs; 98.38 after 40 epochs (no longer improving consistently)
+2 layers, only classification loss
+89.72 after 10 epochs; 94.7 after 20 epochs; goes to nans shortly thereafter
+91.36 after 10 epochs; 95.64 after 20 epochs; 96.96 after 30 epochs
+2 layer, 10 epochs of purely unsupervised pretraining
+85 after 10 epochs; 96.68 after 20 epochs; 98.52 after 30 epochs (no longer improving consistently)
+2 layer, 20 epochs of purely unsupervised pretraining
+80.76 after 10 epochs; 94.88 after 20 epochs; 98.42 after 30 epochs (no longer improving consistently) - turning down the training rate from 5e-3 to 5e-4 seems to significantly improve the converged performance, from 98.42 to 99.2 even without classification loss - turning down from 5e-3 to 5e-4 with classification loss improves performance to at least 99.74%, and doesn't seem to be bounded 
+Long run on cassio with two hidden layers: 99.838% on the training set of 50,000;  97.13% on validation set of 10,000; 97.15% on test set of 10,000 - decoding_pooling_dictionary_1 often has only one non-zero element, and is thus much too sparse.  Mask sparsity is too strong relative to pooling sparsity.  Although many first-layer feature extraction units aren't used, it's evident that the trained subset is sufficient to solve the training set, but better regularization is necessary to obtain good performance on the validation/testing set.  This might require a different ratio of sparsifying to reconstruction losses, but might also require a different trade-off between regularization and classification losses.  
+
+2 layers, correct normalization, reconstruction pooling loss, rebalanced mask versus pooling L1
+90.7 after 10 epochs; 
+First layer is too sparse; second layer isn't sparse enough
+
+2 layers, only classification loss; long run
+99.6% training set loss (5000 elements) after 121 epochs; 97% validation loss (5000 elements) after 121 epochs
+
+2 layers, correct normalization, reconstruction pooling loss, 50,000 training set elements
+99.8% train set loss (5000 elements) after 31 epochs; 97.63% validation loss (10,000 elements) after 31 epochs (97.47 with reduced_feature_extraction_sparsity)
+Decoding pooling dictionaries are not sparse at all!!!  Reconstruction of some units seem to be turned off completely, whereas others seem to be almost uniformly active.
+
+Using units that can go negative does not yield obviously better results: 10 epochs over 5000 elements gives an error of 74.46%
+
+Why do the diagonal elements of explaining_away become negative?  I'm now forcibly holding the diagonal elements of explaining_away non-negative.  THEY SEEM TO GO TO ZERO for all (most?) strongly trained filters.
+
+How does pooling_reconstruction become exactly equal to zero?  decoding_pooling_dictionary is non-negative, corresponding to the non-negativity of the feature extraction units.  However, since pooling_output is generally positive, reconstruction values exactly equal to zero imply that all columns of the decoding_pooling_dictionary have zeros in the corresponding entries.
+
+
+Can we learn weighted L2 divisive normalization based upon reconstruction by optimizing the pooling units and outputting the position units, the opposite of the arrangement used for pooling?  This isn't as simple, since taking the derivative of the loss with respect to the pooling units and setting it equal to zero, the pooling units are subject to nontrivial linear transforms, which would need to be inverted to solve for the pooling units.  However, we can always perform the same calculations as for the pooling layer, but return the position units instead of the pooling units.  The network then optimizes the position units given a learned approximation for the pooling units.  The resulting calculations are similar to traditional divisive normalization, but instead of dividing by the square root of the weighted sum of square, we divide by the weighted sum of the square root of the weighted sum of squares; there's an extra weighted sum, since a small, common set of pooling units is used for all position units.  This becomes equivalent to traditional contrast normalization if the pooling regions are disjoint and all-ones.  
+CHECK that pooling dictionaries actually change, just as feature extraction dictionaries change.  Try loading learned feature extraction dictionary and randomizing the pooling dictionary; confirm that pooling dictionaries change significantly, even without the classification loss function.  (After randomizing pooling dictionaries with classification loss, they do not converge back to their original values.  In fact, there seems to be almost no overlap.)
+Compare performance with logistic units rather than non-negative ISTA units; compare performance with ISTA units that can be negative
+If gamma tones are the sparse features of human speech, and PLP features the topological ICA/reconstruction pooling features of speech?
+What does GMM look like as a feedforward network?  Similar to softmax?
+Consider the possibility that feature extraction filters go untrained because mask sparsity is too high relative to pooling sparsity, since this might force the decoding pooling dictionary to be consistently zero for some feature extraction units.  On the other hand, maybe the issue is that, in order to push some pooling units to always be zero (which happens in practice), the associated feature extraction units are forced to be zero.  This may be easier than pushing all of the associated encoding pooling dictionary weights to zero.  Decreasing the amount of pooling unit sparsification seems to improve the appearance of the feature extraction dictionary elements, and seems to reduce the prevalence of pooling units that are completely silenced.  Try longer pretraining and reduced sparsity.
+
+
+Sparsity in pooling output is often achieved by making some pooling units consistently very small (i.e., unused).  Perhaps sufficient to ensure that feature extraction units never actually go to zero.  Try smoothed version used by Karol or Koray! (softshrink)  However, gradients will still be very small, although not exactly equal to zero.  Reintroducing lagrange multipliers on the mask sparsity might be more effective, since it directly addresses the issue.
+
+When using lagrange multipliers on the mask sparsity, pooling output is not very sparse, especially in the first hidden layer.  This may be problematic.  Check that this resolved when lagrange update rate is set to 0.
+
+The final four elements of explaining_away in the filter image lack a diagonal element equal to one, since the 200-element vector is being displayed in a 14*14 = 196 element square.
+
+Consider trying deeper ista stacks.  Three is much too small with units that are allowed to go negative.  It seems plausible that sparsity is being achieved by taking advantage of nonnegativity and setting the diagonal of explaining_away to zero (or negative, if this is not prevented).  A ten-deep ista stack should allow sparsity to be achieved without the nonnegativity constraint.
+
+WHY DOES A DEEP ISTA STACK LEAD TO SUCH DIFFERENT RESULTS?
+NORMALIZATION OF MATRIX COLUMNS WAS INCORRECT: A minimum rather than a maximum norm was applied.  With the correct maximum norm, initial errors and gradients become huge, and training is horrible.
+When using min rather than max (incorrectly), there isn't a problem, even when all columns are initialized to a norm of 1, and despite the fact that norms change very slowly.
+decoding_pooling_dictionary seems to be initialized incorrectly
+
+
+To satisfy Yann's desire for simplicity, try presenting closed-form loss function with position units factored out.
+Check that reconstructions from pooling units (and higher layers) are sensible.
+
+Is explicit normalization of layer pooling outputs required now that the columns of the decoding dictionaries are properly normalized?  Probably, especially because of the classification loss, which will otherwise directly operate on the magnitude of the encoding dictionaries and explaining_away.  Explaining_away in particular would likely be unstable, since it can induce output magnitude to increase exponentially if any of its eigenvalues are greater than one.
+Row norms of the feature encoding dictionary grow larger than one.  In this case, the explaining-away matrix should potentially have a diagonal less than zero.  Bounding the magnitude of the feature encoding dictionary rows at 1 keeps the explaining away diagonal from going (strongly) negative, even if this constraint is not explicitly enforced.  Increasing row norms in the encoding_feature_extraction_dictionary is associated with decreasing column norms in the decoding_feature_extraction_dictionary.  Fixing the magnitude of the decoding_feature_extraction_dictionary columns to one, rather than merely bounding them above by one, does not keep the row norms of the encoding_feature_extraction_dictionary from growing larger than one.  Most of the gradient seems to be driven by the classification loss.  When the classification loss is removed, the rows of the encoding_feature_extraction dictionary do not grow large, and explaining_away retains its diagonal structure.  However, most of the feature extraction units are not trained.  It seems as if sparsity and pooling reconstruction loss are minimized by only using a small subset of the feature extraction units, so the pooling reconstruction can easily reconstruct all of them.
+
+Link encoding and decoding dictionaries?  Would still need to account for scaling factor difference.
+
+Confirmed that using only reconstruction and sparsity on the feature extraction layer, just about every feature_extraction unit is trained.  This is preserved when pooling reconstruction is added, then pooling sparsity, then mask sparsity (all with position loss set very small).  With mask sparsity and minimal position loss, most units train, but many learn bad, high-frequency features.  Turning up the position loss from 0.001 to 0.01 substantially reduces the number of feature extraction units trained.  This issue may be that pooling reconstruction effectively puts an L2 loss on the feature extraction outputs, divisively scaled by the pooling reconstruction.  If the pooling reconstruction of a unit is small, then this will tend to silence the feature extraction unit.  Consider the possibility that few features train since the units are forced to zero by the pooling and mask sparsity, combined with the requirement that all feature extraction units be equal to zero if their pooling reconstruction is equal to zero.  We turned the pooling and mask sparsity up so high because it was necessary to get sparsity amongst the features from the very beginning, but we pay a steep price for this.  What if we allow sparsity to develop more gradually?  Will it do so?
+
+Even when we turn down pooling sparsity (and initialize the pooling dictionary to consist of groups of consecutive elements), some feature extraction elements don't train, others become high frequency, and most disturbingly, the pooling dictionaries lose all coherence.  On the plus side, the diagonal of explaining_away doesn't go negative, even though it is not constrained.  If we disable training of the pooling dictionaries, only a few rows of feature extraction elements train, and the feature extraction layer is extremely sparse, suggesting that normalization is too strong.  Because the reconstruction pooling error is L2, either every element must be reconstructed initially, the alpha control on the maximum reconstruction pooling error needs to be relaxed, or some mechanism needs to be introduced to allow sparsification of the pooling units directly.  Otherwise, those pooling units that are randomly less active on average will suppress their feature extraction inputs, which will learn to turn off, and these will never be trained.  
+
+Mechanism of failure is as follows: the pooling sparsity causes the network to learn to activate some pooling groups more than others.  The less active pooling groups don't provide pooling reconstruction support, so the corresponding feature-extraction units are induced to be small with an L2 norm rather than a more forgiving L1 norm.  This strongly decreases their activity, inducing a positive feedback cycle that is only broken by the L2 feature extraction reconstruction loss.  The pooling sparsity terms alone are fine, since they are heavy-tailed and just correspond to group sparsity.  While we want to encourage the feature extraction units activated by an input to be compatible with the pooling reconstruction, we do not want to silence feature extraction units entirely just because the pooling reconstruction is bad.  
+
+If we use the full reconstruction rather than the shrink reconstruction, there is no benefit to silencing useful feature extraction units (except that they won't be available for the pooling reconstruction, so units available for both the feature extraction and the pooling reconstruction will be favored).  Feature extraction units without pooling support are increased if they improve the feature extraction reconstruction without hurting the pooling reconstruction.  The full pooling reconstruction is like the feature extraction layer reconstruction, but the feature extraction units are scaled down if their pooling reconstruction is much smaller than alpha.  If alpha is very small, it will be possible to just enable all units with the pooling layer; with more reasonable alpha, there should be the classic balance between L1 and L2 norms.  Importantly, a feature extraction unit is never pushed down simply because its pooling support is small; rather, it is pushed up if the pooling support is too small to allow correct reconstruction.  
+
+Even with full pooling reconstruction and full position loss, rather than shrink-based losses, only a few feature extraction units are trained sensibly; the rest are high-frequency, with weak encodings.  Strangely, the pooling dictionary changes little, even when it is trainable.  The feature extraction units that are trained are located in two or three contiguous blocks, suggesting that only a few pooling units grow strong enough to support reconstructions (the alternate explanation, that this increases the pooling sparsity, is inconsistent with good training when pooling reconstruction losses are disabled, as explained below).  Even if feature extraction units are not directly disabled by insufficient pooling reconstruction, large decoded inputs that well-reconstructed induce large L2 position loss.  
+
+When pooling reconstruction and position losses are disabled, all units train.  The best-trained units are not obviously in contiguous blocks, and adjacent units appear only vaguely similar, but the pooling output is in fact sparse, with a few contiguous elements that are about 10 times larger than the rest.  Consider the possibility that it's just too difficult to make the pooling units large enough to reconstruct the inputs (or feature extraction units) with sufficient magnitude.  In particular, pushing the pooling units larger would make the pooling sparsity loss larger than the pooling reconstruction loss.  Without pooling reconstruction loss, the pooling reconstruction rarely exceeds 0.2, and (0.2)^2 << 0.1.  
+
+Turning down the L2 position loss from 0.1 to 0.01 substantially increases the number of feature extraction units that train, but a substantial fraction are still silenced.  The pooling output is very sparse, with many outputs almost equal to zero.  This seems related to the observation that the L2 position loss has a maximum at sqrt(lambda_position / lambda_pooling_reconstruction); some feature extraction units minimize the L2 position loss by making the pooling reconstruction large, others by making the pooling reconstruction small.  We really want the network to learn to vary which are large and which are small based on the input.  The magnitude of the rows of the encoding_feature_extraction_dictionary seems to increase consistently with training, suggesting that the initialization to 1/num_ista_iterations is too small.
+
+Decreasing both the scaling factor on the pooling reconstruction and pooling position loss, which maintains alpha but scales down the magnitude of the pooling reconstruction losses, allows all feature extraction units to train, but makes the pooling reconstruction gradients so small as to be irrelevant.  Keep in mind that if a row of the encoding_feature_extraction_dictionary is large, but it is not reconstructed by pooling, then it cannot contribute to the pooling reconstruction, and the to whatever degree that feature extraction unit reduces the reconstruction error of the feature extraction loss, it will not do so for the pooling reconstruction loss.  If we remove the FE reconstruction loss, then we do not need to split this mismatch, and feature extraction units can grow large only bounded by the L1 loss.  Turning off the feature extraction reconstruction loss without changing the L1 losses causes activity to crash to zero, indicating that it was the strongest force in the network, and the pooling reconstruction was weak in comparison.  When the L1 losses are scaled down to match, some pooling units are always turned off, and the corresponding feature extraction units do not train.  
+
+After turning off all pooling sparsity, some pooling units are still consistently made very small, and the associated feature extraction units do not train strongly; this tendency seems to increase with training.  The remaining pooling outputs become uniform and large, thereby supporting all possible reconstructions.  If we turn up the initial scaling on the encoding_pooling_dictionary, only the very last feature extraction and pooling units, which do not have the same range of inputs as the others, fail to be active.
+
+Keep in mind that the reconstruction pooling is necessary primarily to counter the effects of group sparsity on trainable pooling.  At the current balance of loss functions, the decoding_pooling_dictionary becomes non-sparse, indicating that the pooling reconstruction loss is too strong relative to the L1 losses, can can be reduced, thereby also allowing all feature extraction units to train.  Note though that while reducing the magnitude fo the pooling reconstruction loss may be an effective strategy with one layer, once we start stacking layers, the strong feature extraction reconstruction loss will dominate the pooling dictionaries, and force them to produce outputs that are easy to reconstruct.  
+
+We want the pooling reconstruction to be big wherever the input is big, using as few pooling dictionary elements as possible, with each pooling element being as sparse as possible, and when there is a conflict between the pooling reconstruction and the input, we *always* want to change the pooling reconstruction.  This can be achieved by making the pooling reconstruction loss much smaller than the feature extraction reconstruction loss.  In practice, it doesn't seem to be necessary to make the scaling on the pooling reconstruction loss much less than 1, so long as the L2 position loss is small, making the threshold that the pooling reconstruction must pass to drive down the pooling reconstruction and L2 position losses relatively low.  
+
+The main difference between the 9/28 runs and the 9/24 runs is that the L2 position norm has been reduced from 0.1 to 0.01, implying that the pooling reconstruction needs to be about 0.1, rather than about 0.3; and on top of that both the pooling reconstruction loss and pooling L2 position loss have been reduced by a factor of between 0.5 and 0.125, to ensure that the shrink reconstruction is more important than the pooling reconstruction.  I need to identify the point at which the reduced pooling reconstruction loss is no longer sufficient to balance the pooling L1 norms, and the magnitudes of the encoding_pooling_dictionary rows begin to fall significantly over the course of training.  Scaling down both pooling reconstruction loss and L2 position loss by the same amount does not have any obvious effect on filter structure (9/28 runs).  However, pooling row norms fall considerably; to as low as 0.5 (with 0.125 scaling) or 0.7 (with 0.5 scaling) from 2.  When using accelerated training of encoding_ and decoding_pooling_dictionary (10x and 50x, respectively), some pooling row norms collapse almost to zero, and perhaps half are below 0.5.  Correspondingly, the rows of the encoding_pooling_dictionary generally only have a single non-zero elements, and the decoding_pooling_dictionary tends to have one large (matching) element, and a scattering of smaller non-zero elements.  Over half of the feature extraction units train poorly, without a single smooth, spatially localized, well-defined shape.  
+
+Alternatively, consider the possibility that mismatches between the sparse encoding and the pooling can be rectified primarily using the pooling dictionary by increasing the learning rate of the pooling dictionaries.  This presumably corresponds to optimizing the feature extraction dictionaries at something like a local minimum of the pooling dictionaries.  When tried on 9/28, this doesn't work well; many feature extraction elements are not trained to correspond to well-formed features.
+
+Since pure group sparsity seems to work well, check whether the problem is the pooling reconstruction loss or the training of the pooling weights.  Run three simulations, one of which has all L1 norms but fixed pooling dictionaries, the next of which adds pooling reconstruction but leaves pooling dictionaries fixed, and the last of which has both pooling reconstruction loss and trainable pooling dictionaries.  These tests differ from similar tests on 9/27, in that the L2 position loss and thus alpha is much smaller, which should keep pooling units and their corresponding feature extraction units from being driven to zero, as described below.
+
+Large alpha (ratio of L2 position to pooling reconstruction loss) is problematic, since it makes initial increases in the pooling outputs relatively unprofitable, assuming they start too small; any increase in the pooling reconstruction is small compared to alpha, and so has a minimal effect on the pooling reconstruction loss.  In contrast, the gradient of the L1 loss on the pooling units has a constant gradient regardless of the size of the pooling reconstruction, and so the pooling units are driven towards zero.  At the same time, if the scaling factor on the pooling reconstruction loss is large, a small pooling reconstruction implies that large feature extraction units are heavily penalized.  The combination of a large alpha (compared to the initial pooling reconstructions) and a large scaling factor on the pooling reconstruction loss act to drive most of the feature extraction units to zero.  
+
+A large part of the problem of the pooling dictionary seems to be that the encoding rows can vary in magnitude; when magnitude decays, the importance of both that pooling unit and its reconstruction decreases.  What if we normalized the magnitude, either of the encoders, or of the pooled output before?  Normalizing the magnitude of the encoding_pooling_dictionary pulls us a step closer to the pure group sparsity case, which actually works.  It makes less sense to normalize the magnitude of the rows of the encoding_feature_extraction_dictionary, since the overall magnitude of feature extraction can also be modulated by the explaining_away tensor and the parameterized_shrinks.
+
+It seems like the right level of L1 loss corresponds to the point where the encoding_feature_extraction_dictionary rows begin decreasing in magnitude, rather than remaining pegged at the maximum 1.25/num_ista_iterations to which they are initialized.
+
+The relative magnitudes of the loss gradients at their source does not seem to be a good estimate of their effect.  When we add the pooling reconstruction loss into group sparsity, the pooling reconstruction induces a much smaller direct gradient than the group sparsity, but the pooling reconstruction loss falls consistently, whereas the group sparsity actually tends to increase initially, although it begins to fall consistently after a couple tens of epochs of 5000 datapoints.
+
+When the pooling dictionaries are made trainable, the pooling L1 losses decrease (even with less training) while the pooling reconstruction loss increases many times over, relative to the those obtained with the same pooling reconstruction loss but fixed pooling dictionaries.  Presumably, the encoding pooling dictionary is altered to minimize the magnitude of the pooling units.  Empirically, the encoding_pooling_dictionary becomes sparse, and the decreased elements seem to correspond to strongly trained feature extraction units.  Of course, this will also reduce the quality of the pooling reconstruction, since it will not increase correspondingly to account for these large feature extraction units.  We can presumably reduce this spurious reduction of the pooling L1 losses by increasing the scaling on the pooling reconstruction loss, thereby requiring that the encoding_ and decoding_pooling_dictionary accurately reflect the feature extraction unit statistics.  Check if this reduces the magnitude of the gradient on the encoding pooling dictionary, which substantially increased when we turned on trainable pooling.
+
+Alternatively, we could counter the decrease in the L1 loss functions with the advent of trainable pooling by increasing the scaling factor on the L1 loss functions directly.  That is, we accept that there will be some spurious decrease in the L1 loss functions because of cheating due to reconfiguration of the pooling dictionary.  This cannot be wholly avoided with any sensible amount of pooling reconstruction loss, so just reverse the decrease directly.  On the other hand, making pooling trainable makes it easier to satisfy both the L1 sparsity and pooling reconstruction constraints.  As a result, more effort will be devoted to these loss functions, since they can be more effectively reduced.  This is consistent with the large gradient on the encoding_pooling_dictionary.  The appropriate counter is to increase the feature extraction reconstruction loss, since otherwise it will be neglected, since gains are harder to achieve.  Correspondingly, the feature extraction reconstruction loss increases when trainable pooling is enabled.  We can only force it back down (and thus force the other losses back up, since there is a trade-off between them) by increasing the feature extraction reconstruction loss.  The same argument should then apply to the pooling reconstruction, since empricially, it also increases when the pooling dictionary is made trainable, and the percentage change is much larger than for the feature extraction reconstruction; it's easier to decrease the pooling L1 loss than to decrease the pooling reconstruction loss by changing the pooling dictionary.
+
+Untrained pooling: 
+pooling_reconstruction_scaling = 0.5
+rec_mag = 4
+L1_scaling = 7.5 
+
+Trained pooling:
+pooling_reconstruction_scaling = 1
+rec_mag = 6
+L1_scaling = 7.5 
+
+
+
+
+
+Be careful about the L2 position loss; if alpha is much larger than the squared reconstruction, it increases linearly with the reconstruction.  
+
+With the switch to full pooling reconstruction from shrink pooling reconstruction, the encoding_feature_extraction_dictionary has come to closely resember the decoding_feature_extraction_dictionary, rather than having weird diffuse elements with strongly negative regions.  
+
+What happens if we initialize the decoding pooling dictionary to be uniform?
+
+
+After training stops due to multiple calls to getParameters(), gradients grow linearly, since accGradParameters continues to update the gradients, but they are not zeroed on each iteration by the trainer, which no longer points to the actual parameters.
+
+
+
+
+If both position and reconstruction loss are very small, the encoding pooling dictionary goes to zero as expected.
+What if we normalize the feature extraction outputs before pooling?
+What if we use something like cosine between (normalized) feature extraction input and pooling output?
+Pure group sparsity does not appear to be as good as on the last attempt.  What parameters changed?
+
+cassio
+duncan
+macbeth
+banquo

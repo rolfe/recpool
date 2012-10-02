@@ -63,7 +63,7 @@ pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.01 --0.001
 pooling_shrink_position_L2_mag = 1e-3 --0.0001 --0.01 --0.005 --0
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
-local pooling_reconstruction_scaling = 0.5 --0.25
+local pooling_reconstruction_scaling = 0.85 --0.5 --0.25
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
@@ -76,8 +76,8 @@ L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 
 ---[[
 -- GROUP SPARSITY TEST
-rec_mag = 4
-L1_scaling = 6
+rec_mag = 5 --4
+L1_scaling = 7.5 --6 is not too large; 9 is too large
 --]]
 
 --[[
