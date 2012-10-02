@@ -74,6 +74,12 @@ L1_scaling = 2 --1.5 --1.0 --0.5 --1.5 --5 --2.5 --2 --0.4 --0.1 --0.75
 L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 --]]
 
+---[[
+-- GROUP SPARSITY TEST
+rec_mag = 4
+L1_scaling = 6
+--]]
+
 --[[
 rec_mag = 0
 pooling_rec_mag = 0

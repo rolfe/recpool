@@ -76,11 +76,17 @@ local function do_normalize_rows_or_columns(m, desired_norm_value, full_normaliz
    desired_norm_value = desired_norm_value or 1
    if full_normalization then
       for i=1,m:size(normalized_dimension) do -- was 2
-	 m:select(normalized_dimension,i):div(m:select(normalized_dimension,i):norm()/desired_norm_value + 1e-12)
+	 local selected_vector = m:select(normalized_dimension,i)
+	 local norm_val = math.sqrt(selected_vector:dot(selected_vector))
+	 selected_vector:div(norm_val/desired_norm_value + 1e-12)
+	 --m:select(normalized_dimension,i):div(m:select(normalized_dimension,i):norm()/desired_norm_value + 1e-12)
       end
    else
       for i=1,m:size(normalized_dimension) do
-	 m:select(normalized_dimension,i):div(math.max(m:select(normalized_dimension,i):norm()/desired_norm_value, 1) + 1e-12) -- WARNING!!! THIS WAS MIN RATHER THAN MAX!!!
+	 local selected_vector = m:select(normalized_dimension,i)
+	 local norm_val = math.sqrt(selected_vector:dot(selected_vector))
+	 selected_vector:div(math.max(norm_val/desired_norm_value, 1) + 1e-12)
+	 --m:select(normalized_dimension,i):div(math.max(m:select(normalized_dimension,i):norm()/desired_norm_value, 1) + 1e-12) -- WARNING!!! THIS WAS MIN RATHER THAN MAX!!!
       end
    end
 end

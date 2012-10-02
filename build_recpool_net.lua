@@ -556,6 +556,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
+   local disable_trainable_pooling = true
 
    -- Build the reconstruction pooling network
    local this_layer = nn.Sequential()
@@ -569,11 +570,11 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local explaining_away_copies = {}
    local shrink_copies = {}
 
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = true}, RUN_JACOBIAN_TEST, 0) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = true}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or 1) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
-      dpd_training_scale_factor = 0 --5 -- decoding_pooling_dictionary is trained faster than any other module
+      dpd_training_scale_factor = (disable_trainable_pooling and 0) or 1 --5 -- decoding_pooling_dictionary is trained faster than any other module
    else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
       for k,v in pairs(lagrange_multiplier_learning_rate_scaling_factors) do
 	 if v ~= -1 then
@@ -744,13 +745,22 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
    -- THIS IS A HACK!!!
+   local repair_counter = 0
    function this_layer:repair()
-      encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/num_ista_iterations))
-      base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
+      -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
+      if repair_counter % 5 == 0 then
+	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/num_ista_iterations))
+	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
+      end
+      repair_counter = (repair_counter + 1) % 5
+      
       base_explaining_away:repair()
       base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
-      encoding_pooling_dictionary:repair(true) -- force full normalization of rows
-      decoding_pooling_dictionary:repair(true) -- force full normalization of columns
+      if not(disable_trainable_pooling) then
+	 print('repairing pooling dictionaries')
+	 encoding_pooling_dictionary:repair(true) -- force full normalization of rows
+	 decoding_pooling_dictionary:repair(true) -- force full normalization of columns
+      end
    end
 
    
