@@ -575,6 +575,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
       dpd_training_scale_factor = (disable_trainable_pooling and 0) or 1 --5 -- decoding_pooling_dictionary is trained faster than any other module
+      dpd_training_scale_factor = 0 -- DEBUG ONLY!!!
    else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
       for k,v in pairs(lagrange_multiplier_learning_rate_scaling_factors) do
 	 if v ~= -1 then

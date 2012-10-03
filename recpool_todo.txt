@@ -249,6 +249,9 @@ rec_mag = 6
 L1_scaling = 7.5 
 
 
+A small alpha (ratio of L2 position loss to pooling reconstruction loss) may be even more important when the pooling dictionaries are trainable, since if the decoding_pooling_dictionary projection to a feature extraction unit is reduced since it is not yet significantly used, it will be hard to recover if the threshold set by alpha is not very small.
+It seems like the real difficulty is posed by making the encoding_pooling_dictionary trainable.  This quickly learns to be sparse, eliminating connections from some feature extraction units entirely, presumably reducing the L1 pooling norm.  Counterintively, the only resolution appears to be reducing the pooling L1 norms, which is equivalent to increasing the reconstruction norms (and scaling down the learning rate), and puts more pressure on the network not to cheat by using a pooling output that is insufficient to reconstruct the input.  It seems plausible that the relative importance of feature extraction reconstruction should be reduced along with that of pooling sparsity, since it is the pooling reconstruction alone that is being contravened by a poor encoding_pooling_dictionary.  Consider using the parameters that worked well with fixed pooling, and just increasing the scaling of pooling reconstruction, possibly while simultaneously reducing alpha.  A simple increase of pooling reconstruction loss should be sufficient so long as only the encoding_pooling_dictionary is trained; when the decoding_pooling_dictionary is also trained, alpha reduction will be more important to avoid vicious positive feedback cycles that disable relatively bad feature extraction units.  
+
 
 
 
