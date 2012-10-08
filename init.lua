@@ -29,7 +29,7 @@ dofile('ZeroModule.lua')
 dofile('L1CriterionModule.lua')
 dofile('L2Cost.lua')
 dofile('CauchyCost.lua')
-dofile('DebugSquare.lua')
+--dofile('DebugSquare.lua')
 dofile('ConstrainedLinear.lua')
 
 
