@@ -162,9 +162,6 @@ local function build_sparsifying_loss(sparsifying_criterion_module, criteria_lis
    apply_L1_norm:add(scaled_L1_norm) -- since we add scaled_L1_norm without a SelectTable, it receives 
    --L1_seq:add(apply_L1_norm)
 
-   -- FOR THE LOVE OF GOD!!! TRY REMOVING THIS!!!
-   --L1_seq:add(nn.SelectTable({1}, true)) -- when running updateGradInput, this passes a nil back to the L1Cost, which ignores it away; make sure that the output is a table, rather than a tensor
-      
    return apply_L1_norm --L1_seq
 end
 
@@ -570,12 +567,12 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local explaining_away_copies = {}
    local shrink_copies = {}
 
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = true}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or 1) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or 1) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
       dpd_training_scale_factor = (disable_trainable_pooling and 0) or 1 --5 -- decoding_pooling_dictionary is trained faster than any other module
-      dpd_training_scale_factor = 0 -- DEBUG ONLY!!!
+      --dpd_training_scale_factor = 0 -- DEBUG ONLY!!!
    else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
       for k,v in pairs(lagrange_multiplier_learning_rate_scaling_factors) do
 	 if v ~= -1 then
@@ -661,13 +658,13 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
    for i = 1,layer_size[2] do -- for each unpooled row entry, find the corresponding pooled column entry, plus those beyond it (according to the loop over j)
       --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
-      for j = 0,1 do
+      for j = 0,0 do
 	 decoding_pooling_dictionary.weight[{i, math.min(layer_size[3], j + math.ceil(i * layer_size[3] / layer_size[2]))}] = 1
       end
    end
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   --encoding_pooling_dictionary.weight:mul(1.25) -- DEBUG ONLY!!!
+   encoding_pooling_dictionary.weight:mul(100) -- 1.25 --DEBUG ONLY!!!
    encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
    --]]
 
@@ -717,7 +714,32 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved input z [2], and the original input x[3]
    local pooling_seq = build_pooling(encoding_pooling_dictionary)
    this_layer:add(pooling_seq)
+
+
+   --[[
+   -- the gradient of the L2 position loss is only negative if P*s >= sqrt(alpha)
+   -- add a constant additive offset to the pooling units
+   local offset_pt = nn.ParallelTable()
+   local lambda_ratio = math.min((lambdas.pooling_L2_shrink_position_unit_lambda + lambdas.pooling_L2_orig_position_unit_lambda) / (lambdas.pooling_L2_shrink_reconstruction_lambda + lambdas.pooling_L2_orig_reconstruction_lambda), 1e5)
+   offset_pt:add(nn.AddConstant(layer_size[3], math.sqrt(lambda_ratio))) -- / (layer_size[2] * layer_size[3]))))
+   offset_pt:add(nn.Identity())
+   offset_pt:add(nn.Identity())
+   this_layer:add(offset_pt)
+   --]]
    
+   --[[
+   -- divisively normalize the pooling units before reconstruction
+   local normalize_pt = nn.ParallelTable()
+   local normalize_seq = nn.Sequential()
+   local normalize_pooled_output = nn.NormalizeTensor()
+   normalize_seq:add(normalize_pooled_output)
+   normalize_seq:add(nn.MulConstant(layer_size[3], math.sqrt(2)))
+   normalize_pt:add(normalize_seq)
+   normalize_pt:add(nn.Identity())
+   normalize_pt:add(nn.Identity())
+   this_layer:add(normalize_pt)
+   --]]
+
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
    local pooling_L2_loss_seq, pooling_L2_debug_module_list =
       build_pooling_L2_loss(decoding_pooling_dictionary, this_decoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary_transpose, mask_sparsifying_module, lambdas, criteria_list)
@@ -743,6 +765,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    this_layer.debug_module_list.pooling_seq = pooling_seq
    this_layer.debug_module_list.pooling_sparsifying_loss_seq = pooling_sparsifying_loss_seq
    this_layer.debug_module_list.normalize_output = normalize_output
+   this_layer.debug_module_list.normalize_pooled_output = normalize_pooled_output
 
    -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
    -- THIS IS A HACK!!!
@@ -758,7 +781,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       base_explaining_away:repair()
       base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       if not(disable_trainable_pooling) then
-	 encoding_pooling_dictionary:repair(true) -- force full normalization of rows
+	 encoding_pooling_dictionary:repair() --true) -- force full normalization of rows -- DEBUG ONLY!!!  FOR THE LOVE OF GOD!!  RECONSIDER THIS!!!
 	 decoding_pooling_dictionary:repair(true) -- force full normalization of columns
       end
    end

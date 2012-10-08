@@ -68,14 +68,15 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
       return mean, std
    end
 
-   function dataset:normalizeL2() -- added by Jason 6/8/12
+   function dataset:normalizeL2(desired_norm) -- added by Jason 6/8/12
+      desired_norm = desired_norm or 1
       print('normalizing: data has ' .. dim-1 .. ' dimensions')
       local data = tensor:narrow(2, 1, dim-1)
       --local L2norm = torch.norm(data)
       local current_example
       for i=1,nExample do
          current_example = data:select(1, i)
-	 current_example:div(torch.norm(current_example))
+	 current_example:div(torch.norm(current_example) / desired_norm)
       end
    end
 

@@ -326,6 +326,9 @@ function RecPoolTrainer:train(train_data)
       end
       print('P row norms are ', norms:unfold(1,10,10))
 
+      if self.model.layers[i].debug_module_list.normalize_pooled_output then
+	 print('Pooling normalization is ', self.model.layers[i].debug_module_list.normalize_pooled_output.norm)
+      end
 
       --[[
       print('shrink values', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))

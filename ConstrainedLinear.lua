@@ -75,6 +75,7 @@ end
 local function do_normalize_rows_or_columns(m, desired_norm_value, full_normalization, normalized_dimension)
    desired_norm_value = desired_norm_value or 1
    if full_normalization then
+      -- CONSIDER using pow, which copies to a consistent working tensor, and then sum; this saves us from using a for loop in lua
       for i=1,m:size(normalized_dimension) do -- was 2
 	 local selected_vector = m:select(normalized_dimension,i)
 	 local norm_val = math.sqrt(selected_vector:dot(selected_vector))
