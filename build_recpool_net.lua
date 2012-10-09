@@ -664,7 +664,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   encoding_pooling_dictionary.weight:mul(200) -- 1.25 --DEBUG ONLY!!!
+   encoding_pooling_dictionary.weight:mul(1) -- 1.25 --DEBUG ONLY!!!
    encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
    --]]
 
@@ -727,13 +727,13 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    this_layer:add(offset_pt)
    --]]
    
-   --[[
+   ---[[
    -- divisively normalize the pooling units before reconstruction
    local normalize_pt = nn.ParallelTable()
    local normalize_seq = nn.Sequential()
-   local normalize_pooled_output = nn.NormalizeTensor()
-   normalize_seq:add(normalize_pooled_output)
-   normalize_seq:add(nn.MulConstant(layer_size[3], math.sqrt(2)))
+   --local normalize_pooled_output = nn.NormalizeTensor()
+   --normalize_seq:add(normalize_pooled_output)
+   normalize_seq:add(nn.MulConstant(layer_size[3], 5)) --50*math.sqrt(2)))
    normalize_pt:add(normalize_seq)
    normalize_pt:add(nn.Identity())
    normalize_pt:add(nn.Identity())

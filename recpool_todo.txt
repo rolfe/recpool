@@ -279,7 +279,13 @@ Pure group sparsity does not appear to be as good as on the last attempt.  What 
 
 CONSIDER doing a divisive normalization *before* pooling.  Or after pooling, just before the L1 norm.  Equivalently, use an L1/L2 norm, rather than a straight L1 norm.  Note that this reduces the problem of the L1 norm decreasing the magnitude of the sparse representation, since the L2 component is factored out.
 
+
+
+CONSIDER sanity check with no reconstruction pooling.
+
 cassio
+
+iago
 duncan
 macbeth
 banquo
