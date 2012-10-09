@@ -664,7 +664,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   encoding_pooling_dictionary.weight:mul(100) -- 1.25 --DEBUG ONLY!!!
+   encoding_pooling_dictionary.weight:mul(200) -- 1.25 --DEBUG ONLY!!!
    encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
    --]]
 

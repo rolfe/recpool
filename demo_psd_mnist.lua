@@ -37,8 +37,9 @@ cmd:option('-momentum',0,'gradient momentum')
 cmd:option('-decay',0,'weight decay')
 cmd:option('-datasetsize',5000,'number of elements loaded from dataset')
 cmd:option('-maxiter',1000000,'max number of updates')
-cmd:option('-textstatinterval',1000,'interval for displaying stats and models') -- 1000
+cmd:option('-textstatinterval',10000,'interval for displaying stats and models') -- 1000
 cmd:option('-diskstatinterval',250000,'interval for saving stats and models')
+cmd:option('-run_unit_tests', false, 'run unit tests to confirm that everything is correct')
 cmd:option('-v', false, 'be verbose')
 cmd:option('-wcar', '', 'additional flag to differentiate this run')
 cmd:text()
@@ -80,13 +81,15 @@ fista_params = {maxiter = 50, encoderType = 'tanh_shrink_parallel'}; -- was usin
 mlp = unsup.HLinearPsd(input_code_size, params.dictionarysize, target_code_size, params.lambda, params.beta, fista_params)
 
 -- run a unit test to make sure that everything is working properly
-print('Before unit tests')
---test_factored_sparse_coder_main_chain(mlp.decoder)
-local unit_test_example_index = math.random(params.datasetsize)
-local unit_test_example = data[unit_test_example_index]
-test_factored_sparse_coder_ista(mlp, unit_test_example[1], unit_test_example[2])
-print('After unit tests')
-io.read()
+if params.run_unit_tests then
+   print('Before unit tests')
+   --test_factored_sparse_coder_main_chain(mlp.decoder)
+   local unit_test_example_index = math.random(params.datasetsize)
+   local unit_test_example = data[unit_test_example_index]
+   test_factored_sparse_coder_ista(mlp, unit_test_example[1], unit_test_example[2])
+   print('After unit tests')
+   io.read()
+end
 
 
 
@@ -306,7 +309,7 @@ function train(module,dataset)
       end
       
 
-      if t % 200 == 0 then -- CONTINUE HERE!!!  We should probably only test ista after the network has trained for a bit, or use a saved network
+      if params.run_unit_tests and t % 200 == 0 then -- We should probably only test ista after the network has trained for a bit, or use a saved network
 	 test_factored_sparse_coder_ista(mlp, example[1], example[2])
 	 print('After unit tests')
 	 io.read()
