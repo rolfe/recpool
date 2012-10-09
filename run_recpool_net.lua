@@ -77,7 +77,7 @@ L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 ---[[
 -- GROUP SPARSITY TEST
 rec_mag = 5 --4 --5 --4
-L1_scaling = 0.75 --0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
+L1_scaling = 0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
 --]]
 
 --[[
