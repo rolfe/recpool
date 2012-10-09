@@ -287,5 +287,7 @@ cassio
 
 iago
 duncan
+othello
+
 macbeth
 banquo

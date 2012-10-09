@@ -727,13 +727,13 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    this_layer:add(offset_pt)
    --]]
    
-   ---[[
+   --[[
    -- divisively normalize the pooling units before reconstruction
    local normalize_pt = nn.ParallelTable()
    local normalize_seq = nn.Sequential()
    --local normalize_pooled_output = nn.NormalizeTensor()
    --normalize_seq:add(normalize_pooled_output)
-   normalize_seq:add(nn.MulConstant(layer_size[3], 10)) --50*math.sqrt(2)))
+   normalize_seq:add(nn.MulConstant(layer_size[3], 1)) --50*math.sqrt(2)))
    normalize_pt:add(normalize_seq)
    normalize_pt:add(nn.Identity())
    normalize_pt:add(nn.Identity())
