@@ -231,7 +231,7 @@ function RecPoolTrainer:train(train_data)
       self.grad_loss_hist[i] = 0
 
       if self.model.criteria_list.names[i] == 'pooling L2 shrink reconstruction loss' then
-	 print('performing additional testing on ' .. self.model.criteria_list.names[i])
+	 print('performing additional testing on ' .. self.model.criteria_list.names[i] .. ' with value ' .. self.model.criteria_list.criteria[i].output)
 	 local alpha = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda / self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda
 	 local shrink_output = self.model.layers[1].module_list.shrink_copies[#self.model.layers[1].module_list.shrink_copies].output
 	 local theoretical_shrink_reconstruction_loss = alpha^2 * math.pow(torch.norm(torch.cdiv(shrink_output, 
@@ -260,6 +260,24 @@ function RecPoolTrainer:train(train_data)
 	 print('shrink reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_shrink_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
 	 
 	 print('shrink position ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * theoretical_shrink_position_loss) / self.model.criteria_list.criteria[6].output)
+
+
+	 
+	 -- version using alternative position loss ||sqrt(P*s)*x||^2
+	 local theoretical_alt_shrink_reconstruction_loss = alpha^2 * math.pow(torch.norm(torch.cdiv(shrink_output, 
+										torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, alpha))), 2)
+	 local careful_alt_reconstruction_loss = math.pow(torch.norm(torch.add(shrink_output, -1,
+								    torch.cdiv(torch.cmul(shrink_output, self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
+									       torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, alpha)))), 2)
+	 local theoretical_alt_shrink_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 0.5)), 
+										     torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, alpha))), 2)
+
+	 print('alt shrink reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_alt_shrink_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_alt_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
+	 
+	 print('alt shrink position ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * theoretical_alt_shrink_position_loss) / self.model.criteria_list.criteria[6].output)
+
+	 
+
       end	 
       --io.read()
    end

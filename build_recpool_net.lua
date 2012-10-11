@@ -299,6 +299,22 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    construct_denominator_seq:add(nn.SafePower(2))
    construct_denominator_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio)) 
 
+   -- alternate terms used when the position loss is ||sqrt(P*s)*y||^2 rather than ||y||^2, where y is the L2-normalized position units
+   local construct_alt_pos_numerator_seq = nn.Sequential() -- z*(P*s)^0.5 
+   construct_alt_pos_numerator_seq:add(nn.SelectTable{2,3})
+   local safe_sqrt_seq = nn.Sequential()
+   safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), 1e-7)) -- ensures that we never compute the gradient of sqrt(0)
+   safe_sqrt_seq:add(nn.Sqrt())
+   safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), -math.sqrt(1e-7))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
+   local sqrt_Ps_for_alt_pos_numerator = nn.ParallelTable()
+   sqrt_Ps_for_alt_pos_numerator:add(safe_sqrt_seq) 
+   sqrt_Ps_for_alt_pos_numerator:add(nn.Identity())
+   construct_alt_pos_numerator_seq:add(sqrt_Ps_for_alt_pos_numerator)
+   construct_alt_pos_numerator_seq:add(nn.SafeCMulTable())
+   local construct_alt_denominator_seq = nn.Sequential() -- lambda_ratio + (P*s)
+   construct_alt_denominator_seq:add(nn.SelectTable{2}) 
+   construct_alt_denominator_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio)) 
+
    local construct_num_denom_parallel = nn.ParallelDistributingTable('construct_num_denom_parallel') -- put it all together
    construct_num_denom_parallel:add(nn.SelectTable{1}) -- preserve the output s = sqrt(Q*z^2) [1]
    construct_num_denom_parallel:add(nn.SelectTable{4}) -- preserve the original input x [2]
@@ -307,6 +323,9 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    construct_num_denom_parallel:add(construct_orig_rec_numerator_seq) -- compute the original input reconstruction numerator z*(P*s)^2 [5]
    construct_num_denom_parallel:add(construct_orig_pos_numerator_seq) -- compute the original input position numerator D^t*x*(P*s) [6]
    construct_num_denom_parallel:add(construct_denominator_seq) -- compute the denominator lambda_ratio + (P*s)^2 [7]
+
+   construct_num_denom_parallel:add(construct_alt_pos_numerator_seq) -- compute the shrink position numerator with modified L2 position loss z*(P*s)^0.5 [8]
+   construct_num_denom_parallel:add(construct_alt_denominator_seq) -- compute the denominator with modified L2 position loss lambda_ratio + (P*s) [9]
    pooling_L2_loss_seq:add(construct_num_denom_parallel)
    
 
@@ -314,7 +333,8 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
 
    -- compute the shrink reconstruction loss ||z - (z*(P*s)^2)/(lambda_ratio + (P*s)^2)||^2 = ||lambda_ratio * z / (lambda_ratio + (P*s)^2)||^2
    local compute_shrink_reconstruction_loss_seq = nn.Sequential()
-   compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,7})
+   --compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,7}) -- NORMAL VERSION!!!
+   compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,9}) -- DEBUG ONLY!!! SHOULD BE {3,7} to use normal losses
    compute_shrink_reconstruction_loss_seq:add(nn.CDivTable())
    if DEBUG_OUTPUT then 
       compute_shrink_reconstruction_loss_seq:add(nn.ZeroModule())
@@ -359,7 +379,8 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
 
    -- compute the shrink position loss ||z*(P*s) / (lambda_ratio + (P*s)^2)||^2
    local compute_shrink_position_loss_seq = nn.Sequential()
-   compute_shrink_position_loss_seq:add(nn.SelectTable{4,7})
+   --compute_shrink_position_loss_seq:add(nn.SelectTable{4,7}) -- NORMAL VERSION
+   compute_shrink_position_loss_seq:add(nn.SelectTable{8,9}) -- DEBUG ONLY!!!
    local compute_shrink_position_units = nn.CDivTable()
    compute_shrink_position_loss_seq:add(compute_shrink_position_units)
    if DEBUG_OUTPUT then 
