@@ -283,11 +283,11 @@ CONSIDER doing a divisive normalization *before* pooling.  Or after pooling, jus
 
 CONSIDER sanity check with no reconstruction pooling.
 
-cassio
 
 iago
-duncan
 othello
-macbeth
 
+cassio
+duncan
+macbeth
 banquo

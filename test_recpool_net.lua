@@ -695,8 +695,8 @@ function rec_pool_test.full_network_test()
       test_module('explaining away bias', model.layers[i].module_list.explaining_away, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
       test_module('shrink shrink_val', model.layers[i].module_list.shrink, 'shrink_val', 'grad_shrink_val', parameter_list, model, input, jac, precision)
       -- element 8 of the parameter_list is negative_shrink_val
-      test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
-      test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
+      test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
       
       -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
       test_module('encoding pooling dictionary weight', model.layers[i].module_list.encoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)

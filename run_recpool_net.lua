@@ -53,7 +53,7 @@ local L1_scaling_layer_2 = 0.3 --0.05
 
 ---[[
 --sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
-sl_mag = 0
+sl_mag = 1e-2
 --sl_mag = 4e-2
 --pooling_sl_mag = 0
 --mask_mag = 0
@@ -62,10 +62,10 @@ pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.1
 --pooling_shrink_position_L2_mag = 0.01 --0.001
-pooling_shrink_position_L2_mag = 1e-3 --1e-3 --0.0001 --0.01 --0.005 --0
+pooling_shrink_position_L2_mag = 1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
 --local pooling_reconstruction_scaling = 1.5 --2.5 --1.5 --0.85 --0.5 --0.25
-local pooling_reconstruction_scaling = 200
+local pooling_reconstruction_scaling = 1200 --40 --140
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
@@ -80,7 +80,7 @@ L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 -- GROUP SPARSITY TEST
 rec_mag = 5 --4 --5 --4
 --L1_scaling = 0.25 --5 --3 --0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
-L1_scaling = 4
+L1_scaling = 4 --3 --4
 --]]
 
 --[[

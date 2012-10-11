@@ -303,9 +303,10 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local construct_alt_pos_numerator_seq = nn.Sequential() -- z*(P*s)^0.5 
    construct_alt_pos_numerator_seq:add(nn.SelectTable{2,3})
    local safe_sqrt_seq = nn.Sequential()
-   safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), 1e-7)) -- ensures that we never compute the gradient of sqrt(0)
+   local safe_sqrt_const = 1e-7
+   safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0)
    safe_sqrt_seq:add(nn.Sqrt())
-   safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), -math.sqrt(1e-7))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
+   safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
    local sqrt_Ps_for_alt_pos_numerator = nn.ParallelTable()
    sqrt_Ps_for_alt_pos_numerator:add(safe_sqrt_seq) 
    sqrt_Ps_for_alt_pos_numerator:add(nn.Identity())
@@ -686,6 +687,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
    encoding_pooling_dictionary.weight:mul(1) -- 1.25 --DEBUG ONLY!!!
+   --encoding_pooling_dictionary.weight:add(torch.mul(torch.rand(encoding_pooling_dictionary.weight:size()), 0.3))
    encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
    --]]
 
