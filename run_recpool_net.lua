@@ -53,7 +53,7 @@ local L1_scaling_layer_2 = 0.3 --0.05
 
 ---[[
 --sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
-sl_mag = 1e-2
+sl_mag = 0.05e-2
 --sl_mag = 4e-2
 --pooling_sl_mag = 0
 --mask_mag = 0
@@ -65,7 +65,7 @@ pooling_orig_rec_mag = 0 --1 --0.05 --1
 pooling_shrink_position_L2_mag = 1e-3 --1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
 --local pooling_reconstruction_scaling = 1.5 --2.5 --1.5 --0.85 --0.5 --0.25
-local pooling_reconstruction_scaling = 400 --1400 --40 --140
+local pooling_reconstruction_scaling = 180 --1400 --40 --140
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
@@ -80,7 +80,11 @@ L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
 -- GROUP SPARSITY TEST
 rec_mag = 5 --4 --5 --4
 --L1_scaling = 0.25 --5 --3 --0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
-L1_scaling = 3 --4
+L1_scaling = 2.5
+
+--L1_scaling = 2
+L1_scaling_layer_2 = 0.1
+pooling_rec_layer_2 = 0.5
 --]]
 
 --[[
@@ -100,11 +104,11 @@ local num_ista_iterations = 3
 local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
 
 -- reduce lambda scaling to 0.15; still too sparse
-local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
-local lambdas_2 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_2 = {ista_L2_reconstruction_lambda = 0.5* rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_layer_2 * pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_rec_layer_2 * pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_rec_layer_2 * pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_rec_layer_2 * pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- targets a multiplied by layer_size to produce the final value, since the L1 loss increases linear with the number of units; it represents the desired value for each unit
@@ -174,7 +178,7 @@ end
 require 'mnist'
 local data_set_size, data
 if params.data_set == 'train' then
-   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or 5000
+   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or 500
    data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
 else
    data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000

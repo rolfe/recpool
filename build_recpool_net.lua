@@ -676,7 +676,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    --base_shrink.shrink_val:fill(1e-2) -- this is only necessary when we preload the feature extraction dictionary with elements from the data set
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
       
-   --[[
+   ---[[
    decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
    for i = 1,layer_size[2] do -- for each unpooled row entry, find the corresponding pooled column entry, plus those beyond it (according to the loop over j)
       --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
@@ -684,6 +684,11 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 decoding_pooling_dictionary.weight[{i, math.min(layer_size[3], j + math.ceil(i * layer_size[3] / layer_size[2]))}] = 1
       end
    end
+
+   for i = 1,layer_size[3] do
+      decoding_pooling_dictionary.weight[{math.random(decoding_pooling_dictionary.weight:size(1)), i}] = 1
+   end
+
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
    encoding_pooling_dictionary.weight:mul(1) -- 1.25 --DEBUG ONLY!!!
@@ -708,7 +713,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       --decoding_pooling_dictionary:repair(true)
    end
 
-   this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
+   --this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
 
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
