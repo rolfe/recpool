@@ -189,7 +189,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
 
 print('Using opt.learning_rate = ' .. opt.learning_rate)
 
-torch.manualSeed(10934783) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
+torch.manualSeed(23827602) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
 
 
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas) -- layered_lambdas is required for debugging purposes only
@@ -219,7 +219,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 501 --201
+num_epochs_no_classification = 200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
@@ -230,15 +230,15 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(0.4)
-num_epochs = 0
+model:reset_classification_lambda(0.1)
+num_epochs = 500
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
-   trainer:train(data)
-   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
-
    if (i % 20 == 1) and (i > 1) then
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
+
+   trainer:train(data)
+   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
 end
 
 

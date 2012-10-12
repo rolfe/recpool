@@ -721,6 +721,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
 
    this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
+   --decoding_pooling_dictionary.weight:zero():add(torch.rand(decoding_pooling_dictionary.weight:size()))
+   --decoding_pooling_dictionary:repair(true)
+
 
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
