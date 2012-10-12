@@ -13,27 +13,43 @@ local function plot_training_error(t)
 end
 
 function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)
-   for i = 1,#filter_list do
-      local current_image, current_filter
-      if filter_enc_dec_list[i] == 'encoder' then
-	 current_filter = filter_list[i]:transpose(1,2)
-	 --print('processing ' .. filter_name_list[i] .. ' as a encoder', current_filter:size())
-      elseif filter_enc_dec_list[i] == 'decoder' then
-	 current_filter = filter_list[i]
-	 --print('processing ' .. filter_name_list[i] .. ' as a decoder', current_filter:size())
-      else
-	 error('filter_enc_dec_list[' .. i .. '] was incorrectly set to ' .. filter_enc_dec_list[i])
-      end
+
+   function save_filter(current_filter, filter_name, log_directory)
       local current_filter_side_length = math.sqrt(current_filter:size(1))
       current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
       local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=10,symmetric=true}
-      
+
+      -- ideally, the pdf viewer should refresh automatically.  This 
+      image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
+   end
+
+   for i = 1,#filter_list do
+      local current_filter
+      if filter_enc_dec_list[i] == 'encoder' then
+	 current_filter = filter_list[i]:transpose(1,2)
+	 --print('processing ' .. filter_name_list[i] .. ' as a encoder', current_filter:size())
+	 if filter_name_list[i] == 'encoding pooling dictionary_1' then
+	    --print('combining ' .. filter_name_list[i-2] .. ' with ' .. filter_name_list[i])
+	    --print(filter_list[i-2]:size(), filter_list[i]:transpose(1,2):size())
+	    save_filter(torch.mm(filter_list[i-2], filter_list[i]:transpose(1,2)), 'encoder reconstruction', opt.log_directory)
+	 end
+      elseif filter_enc_dec_list[i] == 'decoder' then
+	 current_filter = filter_list[i]
+	 --print('processing ' .. filter_name_list[i] .. ' as a decoder', current_filter:size())
+	 if filter_name_list[i] == 'decoding pooling dictionary_1' then
+	    print('combining ' .. filter_name_list[i-3] .. ' with ' .. filter_name_list[i])
+	    --print(filter_list[i-2]:size(), filter_list[i]:transpose(1,2):size())
+	    save_filter(torch.mm(filter_list[i-3], filter_list[i]), 'decoder reconstruction', opt.log_directory)
+	 end
+      else
+	 error('filter_enc_dec_list[' .. i .. '] was incorrectly set to ' .. filter_enc_dec_list[i])
+      end
+      save_filter(current_filter, filter_name_list[i], opt.log_directory)
+
       --gnuplot.figure(i)
       --gnuplot.imagesc(current_image)
       --gnuplot.title(filter_name_list[i])
       
-      -- ideally, the pdf viewer should refresh automatically.  This 
-      image.savePNG(paths.concat(opt.log_directory, filter_name_list[i] .. '.png'), current_image)
       if time_index % 1 == 0 then
 	 --image.savePNG(paths.concat(opt.log_directory, filter_name_list[i] .. '_' .. time_index .. '.png'), current_image)
       end

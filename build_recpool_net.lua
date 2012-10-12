@@ -661,8 +661,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1.25/num_ista_iterations))
-   base_explaining_away.weight:mul(-math.max(0.1, 1.25/num_ista_iterations))
+   encoding_feature_extraction_dictionary.weight:mul(math.max(0.01, 1.25/num_ista_iterations))
+   base_explaining_away.weight:mul(-math.max(0.01, 1.25/num_ista_iterations))
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
@@ -685,9 +685,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
    end
 
-   for i = 1,layer_size[3] do
-      decoding_pooling_dictionary.weight[{math.random(decoding_pooling_dictionary.weight:size(1)), i}] = 1
-   end
+   --for i = 1,layer_size[3] do
+   --   decoding_pooling_dictionary.weight[{math.random(decoding_pooling_dictionary.weight:size(1)), i}] = 1
+   --end
+   --]]
 
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
@@ -802,7 +803,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter % 5 == 0 then
-	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/num_ista_iterations))
+	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.01, 1.25/num_ista_iterations))
 	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       end
       repair_counter = (repair_counter + 1) % 5

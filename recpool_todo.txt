@@ -253,19 +253,12 @@ A small alpha (ratio of L2 position loss to pooling reconstruction loss) may be 
 It seems like the real difficulty is posed by making the encoding_pooling_dictionary trainable.  This quickly learns to be sparse, eliminating connections from some feature extraction units entirely, presumably reducing the L1 pooling norm.  Counterintively, the only resolution appears to be reducing the pooling L1 norms, which is equivalent to increasing the reconstruction norms (and scaling down the learning rate), and puts more pressure on the network not to cheat by using a pooling output that is insufficient to reconstruct the input.  It seems plausible that the relative importance of feature extraction reconstruction should be reduced along with that of pooling sparsity, since it is the pooling reconstruction alone that is being contravened by a poor encoding_pooling_dictionary.  Consider using the parameters that worked well with fixed pooling, and just increasing the scaling of pooling reconstruction, possibly while simultaneously reducing alpha.  A simple increase of pooling reconstruction loss should be sufficient so long as only the encoding_pooling_dictionary is trained; when the decoding_pooling_dictionary is also trained, alpha reduction will be more important to avoid vicious positive feedback cycles that disable relatively bad feature extraction units.  
 
 
-PRESENTLY TRYING scaling up the decoding_pooling_dictionary columns
-
-
-
 
 Be careful about the L2 position loss; if alpha is much larger than the squared reconstruction, it increases linearly with the reconstruction.  
 
 With the switch to full pooling reconstruction from shrink pooling reconstruction, the encoding_feature_extraction_dictionary has come to closely resember the decoding_feature_extraction_dictionary, rather than having weird diffuse elements with strongly negative regions.  
 
 What happens if we initialize the decoding pooling dictionary to be uniform?
-
-
-After training stops due to multiple calls to getParameters(), gradients grow linearly, since accGradParameters continues to update the gradients, but they are not zeroed on each iteration by the trainer, which no longer points to the actual parameters.
 
 
 
@@ -277,17 +270,17 @@ Pure group sparsity does not appear to be as good as on the last attempt.  What 
 
 
 
-CONSIDER doing a divisive normalization *before* pooling.  Or after pooling, just before the L1 norm.  Equivalently, use an L1/L2 norm, rather than a straight L1 norm.  Note that this reduces the problem of the L1 norm decreasing the magnitude of the sparse representation, since the L2 component is factored out.
+
+Need to use 0.5e-3 rather than 5e-3 when training with classification loss alone
 
 
-
-CONSIDER sanity check with no reconstruction pooling.
 
 
 iago
 othello
-
 cassio
 duncan
 macbeth
+ceres
+
 banquo

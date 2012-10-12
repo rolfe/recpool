@@ -15,49 +15,29 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
+local quick_train_learning_rate = 0.5*5e-3
+local quick_train_epoch_size = 5000
+
 local params = cmd:parse(arg)
 
-local sl_mag = 5e-2 --1.5e-2 --5e-2 --4e-2 --0.5e-2 --5e-2 --2e-3 --5e-3 -- 1e-2 -- 2e-2 --5e-2 --1e-2 --1e-1 --5e-2 -- sparsifying l1 magnitude (4e-2)
-local rec_mag = 4 -- reconstruction L2 magnitude
-local pooling_rec_mag = 1 --4 --2 --10e-1 --0 --0.25 --8 -- pooling reconstruction L2 magnitude
-local pooling_orig_rec_mag = 0 --2 --10e-1 --0 --4 --8 -- pooling reconstruction L2 magnitude
-local pooling_shrink_position_L2_mag = 1 --4 --4 --20e-1 --0 --1.5e-2 --16e-2 --8e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
-local pooling_orig_position_L2_mag = 0
-local pooling_sl_mag = 1e-2 --0 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --5e-2 --4e-1 -- 1e-1 --5e-2
-local mask_mag = 0.1e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+local sl_mag = nil
+local rec_mag = nil
+local pooling_rec_mag = nil
+local pooling_orig_rec_mag = nil
+local pooling_shrink_position_L2_mag = nil
+local pooling_orig_position_L2_mag = nil
+local pooling_sl_mag = nil
+local mask_mag = nil
+
+local num_ista_iterations = 5 --3 --7 --3
 
 
----[[
--- no classification loss
---pooling_sl_mag = 0.4e-2 --0.25e-2 --2e-2 --5e-2
---local mask_mag = 0.5e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
-
--- with classification loss
--- one layers
---pooling_sl_mag = 0.25e-2 --0.25e-2 --2e-2 --5e-2
--- two layers (CURRENTLY USED)
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
 mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
--- experiment to train all feature extraciton filters
---pooling_sl_mag = 0 --0.5e-2 
---mask_mag = 0.4e-2 --0.2e-2 
-
-
-local pooling_rec_mag = 20 -- this can be scaled up freely, and only affects alpha; for some reason, though, when I make it very large, I get nans
-local pooling_shrink_position_L2_mag = 0.1 -- this can be scaled down to reduce alpha, but will simultaneously scale down the pooling reconstruction and position position unit losses.  It should not be too large, since the pooling unit loss can be made small by making the pooling reconstruction anticorrelated with the input
-local num_ista_iterations = 5 --3 --7 --3
-local L1_scaling = 1.0 --1.5 --0.001 --0.4 --1.5 --1.2 --1.5 
-local L1_scaling_layer_2 = 0.3 --0.05
---]]
-
----[[
 --sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
 sl_mag = 0.05e-2
---sl_mag = 4e-2
---pooling_sl_mag = 0
---mask_mag = 0
-rec_mag = 2
+--sl_mag = 0
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.1
@@ -65,39 +45,33 @@ pooling_orig_rec_mag = 0 --1 --0.05 --1
 pooling_shrink_position_L2_mag = 1e-3 --1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
 --local pooling_reconstruction_scaling = 1.5 --2.5 --1.5 --0.85 --0.5 --0.25
-local pooling_reconstruction_scaling = 180 --1400 --40 --140
+local pooling_reconstruction_scaling = 140 --400 --180 --1400 --40 --140
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
 pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_position_L2_mag
 
--- when not using pooling reconstruction, 4 seems too small; 8 seems too large
-L1_scaling = 2 --1.5 --1.0 --0.5 --1.5 --5 --2.5 --2 --0.4 --0.1 --0.75
-L1_scaling_layer_2 = 0.125 --0.06 --0.12 --0.03
---]]
-
----[[
 -- GROUP SPARSITY TEST
-rec_mag = 5 --4 --5 --4
+rec_mag = 7.5 --4 --5 --4
 --L1_scaling = 0.25 --5 --3 --0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
-L1_scaling = 2.5
+L1_scaling = 4 --3 --4 --2.5
 
 --L1_scaling = 2
 L1_scaling_layer_2 = 0.1
 pooling_rec_layer_2 = 0.5
---]]
+
 
 --[[
 rec_mag = 0
 pooling_rec_mag = 0
 pooling_orig_rec_mag = 0 
 pooling_shrink_position_L2_mag = 0
+pooling_orig_position_L2_mag = 0
 sl_mag = 0
 pooling_sl_mag = 0
 mask_mag = 0
 local L1_scaling = 0
 local L1_scaling_layer_2 = 0
-local num_ista_iterations = 3
 --]]
 
 -- Correct classification of the last few examples are is learned very slowly when we turn up the regularizers, since as the classification improves, the regularization error becomes as large as the classification error, so corrections to the classification trade off against the sparsity and reconstruction quality.  
@@ -178,7 +152,7 @@ end
 require 'mnist'
 local data_set_size, data
 if params.data_set == 'train' then
-   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or 500
+   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or quick_train_epoch_size
    data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
 else
    data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
@@ -204,7 +178,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = ((params.full_test == 'full_train') and 2e-3) or ((params.full_test == 'quick_train') and 5e-3) or 
+   learning_rate = ((params.full_test == 'full_train') and 1e-3) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
@@ -245,24 +219,24 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 201
+num_epochs_no_classification = 501 --201
 for i = 1,num_epochs_no_classification do
-   trainer:train(data)
-   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
-
-   if (i % 10 == 1) and (i > 1) then
+   if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
+
+   trainer:train(data)
+   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(1)
-num_epochs = 500
+model:reset_classification_lambda(0.4)
+num_epochs = 0
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    trainer:train(data)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
 
-   if (i % 10 == 1) and (i > 1) then
+   if (i % 20 == 1) and (i > 1) then
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 end
