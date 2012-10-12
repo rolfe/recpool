@@ -176,11 +176,12 @@ local function build_pooling(encoding_pooling_dictionary)
    --pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
    pooling_transformation_seq:add(nn.SafePower(2))
    pooling_transformation_seq:add(encoding_pooling_dictionary)
-   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), 1e-3)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
+   local safe_sqrt_const = 1e-4
+   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
 
    -- Note that backpropagating gradients through nn.Sqrt will generate NANs if any of the inputs are exactly zero.  However, this is correct behavior.  We should ensure that no input to the square root is exactly zero, perhaps by bounding the encoding_pooling_dictionary below by a number greater than zero.
    pooling_transformation_seq:add(nn.Sqrt())
-   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.sqrt(1e-3))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
+   pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
 
    pool_features_parallel:add(pooling_transformation_seq) -- s = sqrt(Q*z^2) [1]
    pool_features_parallel:add(nn.Identity()) -- preserve z [2]
@@ -482,9 +483,12 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       layer_list[layer_i] = current_layer -- this is used in a closure for model:repair()
 
       -- add this layer's filters to the collective filter lists
-      local current_filter_list = {current_layer.module_list.encoding_feature_extraction_dictionary.weight, current_layer.module_list.decoding_feature_extraction_dictionary.weight, current_layer.module_list.explaining_away.weight, current_layer.module_list.encoding_pooling_dictionary.weight, current_layer.module_list.decoding_pooling_dictionary.weight}
-      local current_filter_enc_dec_list = {'encoder', 'decoder', 'encoder', 'encoder', 'decoder'}
-      local current_filter_name_list = {'encoding feature extraction dictionary', 'decoding feature extraction dictionary', 'explaining away', 'encoding pooling dictionary', 'decoding pooling dictionary'}
+      local current_filter_list = {current_layer.module_list.encoding_feature_extraction_dictionary.weight, current_layer.module_list.decoding_feature_extraction_dictionary.weight, 
+				   current_layer.module_list.explaining_away.weight, current_layer.module_list.encoding_pooling_dictionary.weight, 
+				   current_layer.module_list.decoding_pooling_dictionary.weight, current_layer.module_list.encoding_pooling_dictionary.gradWeight
+      }
+      local current_filter_enc_dec_list = {'encoder', 'decoder', 'encoder', 'encoder', 'decoder', 'encoder'}
+      local current_filter_name_list = {'encoding feature extraction dictionary', 'decoding feature extraction dictionary', 'explaining away', 'encoding pooling dictionary', 'decoding pooling dictionary', 'encoding pooling dictionary gradient'}
       
       for i,v in ipairs(current_filter_list) do table.insert(model.filter_list, v) end
       for i,v in ipairs(current_filter_enc_dec_list) do table.insert(model.filter_enc_dec_list, v) end
@@ -582,18 +586,19 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_rows = true}, RUN_JACOBIAN_TEST) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_rows = false}, RUN_JACOBIAN_TEST) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST) 
    local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
    local explaining_away_copies = {}
    local shrink_copies = {}
 
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or 1) -- this should have zero bias
+   local pooling_dictionary_scaling_factor = 1
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
-      dpd_training_scale_factor = (disable_trainable_pooling and 0) or 1 --5 -- decoding_pooling_dictionary is trained faster than any other module
+      dpd_training_scale_factor = (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor --5 -- decoding_pooling_dictionary is trained faster than any other module
       --dpd_training_scale_factor = 0 -- DEBUG ONLY!!!
    else -- make sure that all lagrange_multiplier_scaling_factors are -1 when testing, so the update matches the gradient
       for k,v in pairs(lagrange_multiplier_learning_rate_scaling_factors) do
@@ -676,7 +681,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    --base_shrink.shrink_val:fill(1e-2) -- this is only necessary when we preload the feature extraction dictionary with elements from the data set
    base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
       
-   ---[[
+   --[[
    decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
    for i = 1,layer_size[2] do -- for each unpooled row entry, find the corresponding pooled column entry, plus those beyond it (according to the loop over j)
       --print('setting entry ' .. i .. ', ' .. math.ceil(i * layer_size[3] / layer_size[2]))
@@ -685,6 +690,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
    end
 
+   --decoding_pooling_dictionary.weight:add(torch.rand(decoding_pooling_dictionary.weight:size()):mul(0.02))
    --for i = 1,layer_size[3] do
    --   decoding_pooling_dictionary.weight[{math.random(decoding_pooling_dictionary.weight:size(1)), i}] = 1
    --end
@@ -714,7 +720,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       --decoding_pooling_dictionary:repair(true)
    end
 
-   --this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
+   this_layer:randomize_pooling(RUN_JACOBIAN_TEST)
 
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]

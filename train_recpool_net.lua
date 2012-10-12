@@ -141,8 +141,7 @@ function RecPoolTrainer:make_feval()
       -- normalize gradients and f(X)
       self.flattened_grad_parameters:div(#self.minibatch_inputs)
       total_err = total_err / #self.minibatch_inputs
-      
-
+       
       --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')
       -- return f and df/dX
       return total_err, self.flattened_grad_parameters
@@ -178,6 +177,7 @@ function RecPoolTrainer:train(train_data)
          table.insert(self.minibatch_inputs, this_input)
          table.insert(self.minibatch_targets, this_target)
       end
+
       
       -- optimize on current mini-batch
       if self.opt.optimization == 'CG' then

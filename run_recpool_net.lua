@@ -15,7 +15,7 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 0.5*5e-3
+local quick_train_learning_rate = 5e-3
 local quick_train_epoch_size = 5000
 
 local params = cmd:parse(arg)
@@ -36,8 +36,8 @@ pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- k
 mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
 --sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
-sl_mag = 0.05e-2
---sl_mag = 0
+--sl_mag = 0.025e-2
+sl_mag = 0
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.1
@@ -45,16 +45,16 @@ pooling_orig_rec_mag = 0 --1 --0.05 --1
 pooling_shrink_position_L2_mag = 1e-3 --1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
 --local pooling_reconstruction_scaling = 1.5 --2.5 --1.5 --0.85 --0.5 --0.25
-local pooling_reconstruction_scaling = 140 --400 --180 --1400 --40 --140
+local pooling_reconstruction_scaling = 400 --140 --400 --180 --1400 --40 --140
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
 pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_position_L2_mag
 
 -- GROUP SPARSITY TEST
-rec_mag = 7.5 --4 --5 --4
+rec_mag = 5 --4 --5 --4
 --L1_scaling = 0.25 --5 --3 --0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
-L1_scaling = 4 --3 --4 --2.5
+L1_scaling = 3 --4 --2.5
 
 --L1_scaling = 2
 L1_scaling_layer_2 = 0.1
