@@ -11,12 +11,12 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
-cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
+cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3
-local quick_train_epoch_size = 500
+local quick_train_epoch_size = 5000
 local fe_layer_size = 200 --400 --200
 
 local params = cmd:parse(arg)
@@ -40,6 +40,9 @@ local shrink_style = 'ParameterizedShrink'
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
 mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
+pooling_sl_mag = 1.7e-2
+mask_mag = 0
+
 --sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
 --sl_mag = 0.025e-2
 sl_mag = 0
@@ -59,8 +62,13 @@ pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_pos
 -- GROUP SPARSITY TEST
 rec_mag = 5 --4 --5 --4
 if num_layers == 1 then
-   --L1_scaling = 3 --4 --2.5
-   L1_scaling = 3/math.sqrt(2) -- for use with 400 FE units
+   if fe_layer_size == 200 then
+      L1_scaling = 3 --4 --2.5
+   elseif fe_layer_size == 400 then
+      L1_scaling = 3/math.sqrt(2) -- for use with 400 FE units
+   else
+      error('did not recognize fe_layer_size')
+   end
 elseif num_layers == 2 then
    L1_scaling = 1 --0.25 
 else
