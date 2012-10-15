@@ -42,7 +42,7 @@ local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary
    return first_ista_seq, current_shrink
 end
 
-local function duplicate_linear_explaining_away_and_shrink(base_explaining_away, base_shrink, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
+local function duplicate_linear_explaining_away(base_explaining_away, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
    local explaining_away
    if use_base_explaining_away then
       explaining_away = base_explaining_away
@@ -51,15 +51,21 @@ local function duplicate_linear_explaining_away_and_shrink(base_explaining_away,
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
+   return explaining_away
+end
+
+local function duplicate_shrink(base_shrink, layer_size, RUN_JACOBIAN_TEST)
    local shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink) -- EFFICIENCY NOTE: when using non-negative units this could be accomplished more efficiently using an unparameterized, one-sided rectification, just like Glorot, Bordes, and Bengio, along with a non-positive bias in the encoding_feature_extraction_dictionary.  However, both nn.SoftShrink and the shrinkage utility method implemented in kex are two-sided.
    shrink:share(base_shrink, 'shrink_val', 'grad_shrink_val', 'negative_shrink_val') -- SHOULD negative_shrink_val BE SHARED AS WELL!?!?!  FOR THE LOVE OF GOD!!!  FIX THIS!!!
    if (shrink.shrink_val:storage() ~= base_shrink.shrink_val:storage()) or (shrink.grad_shrink_val:storage() ~= base_shrink.grad_shrink_val:storage()) then
       print('in build_ISTA_iteration, shrink parameters are not shared properly')
       io.read()
    end
-   
-   return explaining_away, shrink
+
+   return shrink
 end
+   
+
 
 
 -- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -446,11 +452,13 @@ end
 
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
 -- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
-function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, data_set, RUN_JACOBIAN_TEST)
+function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, data_set, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_shrink_position_unit_lambda, pooling_L2_orig_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    
+   shrink_style = shrink_style or 'ParameterizedShrink'
+
    local model = nn.Sequential()
    local layer_list = {} -- an array of the component layers for easy access
    local classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
@@ -478,7 +486,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       end
 
       -- the global criteria_list is passed into each layer to be built up progressively
-      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, criteria_list, data_set, RUN_JACOBIAN_TEST) 
+      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, shrink_style, criteria_list, data_set, RUN_JACOBIAN_TEST) 
       model:add(current_layer)
       layer_list[layer_i] = current_layer -- this is used in a closure for model:repair()
 
@@ -573,7 +581,7 @@ end
 -- input is a table of one element x [1], output is a table of one element s [1]
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use RUN_JACOBIAN_TEST when testing parameter updates
-function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, criteria_list, data_set, RUN_JACOBIAN_TEST) 
+function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, criteria_list, data_set, RUN_JACOBIAN_TEST) 
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_shrink_position_unit_lambda, pooling_L2_orig_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    if not(criteria_list) then -- if we're building a multi-layer network, a common criteria list is passed in
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
@@ -586,10 +594,20 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_rows = false}, RUN_JACOBIAN_TEST) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (shrink_style == 'ParameterizedShrink'), normalized_rows = false}, RUN_JACOBIAN_TEST) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST) 
-   local base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
+   local base_shrink 
+   if shrink_style == 'ParameterizedShrink' then
+      base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
+   elseif shrink_style == 'FixedShrink' then
+      base_shrink = nn.FixedShrink(layer_size[2])
+   elseif shrink_style == 'SoftPlus' then
+      base_shrink = nn.SoftPlus()
+   else
+      error('shrink style ' .. shrink_style .. ' was not recognized')
+   end
+
    local explaining_away_copies = {}
    local shrink_copies = {}
 
@@ -666,8 +684,12 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
-   encoding_feature_extraction_dictionary.weight:mul(math.max(0.01, 1.25/num_ista_iterations))
-   base_explaining_away.weight:mul(-math.max(0.01, 1.25/num_ista_iterations))
+   if shrink_style == 'SoftPlus' then
+      encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(num_ista_iterations + 1)))
+   else
+      encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1.25/(num_ista_iterations + 1))) -- the first ista iteration doesn't count towards num_ista_iterations
+   end
+   base_explaining_away.weight:mul(-math.max(0.1, 1.25/(num_ista_iterations + 1)))
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
@@ -677,9 +699,13 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
    end
    
-   base_shrink.shrink_val:fill(1e-5) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
-   --base_shrink.shrink_val:fill(1e-2) -- this is only necessary when we preload the feature extraction dictionary with elements from the data set
-   base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
+   if shrink_style == 'ParameterizedShrink' then
+      base_shrink.shrink_val:fill(1e-5) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
+      --base_shrink.shrink_val:fill(1e-2) -- this is only necessary when we preload the feature extraction dictionary with elements from the data set
+      base_shrink.negative_shrink_val:mul(base_shrink.shrink_val, -1)
+   else
+      encoding_feature_extraction_dictionary.bias:fill(-1e-5)
+   end
       
    --[[
    decoding_pooling_dictionary.weight:zero() -- initialize to be roughly diagonal
@@ -734,7 +760,18 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    for i = 1,num_ista_iterations do
       --calculate the sparse code z [1]; preserve the transformed input W*x [2], and the untransformed input x [3]
       local use_base_explaining_away = (i == 1) -- the base_explaining_away must be used once directly for parameter flattening in nn.Module to work properly; base_shrink is already used by build_ISTA_first_iteration
-      local this_explaining_away, this_shrink = duplicate_linear_explaining_away_and_shrink(base_explaining_away, base_shrink, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
+      local this_explaining_away = duplicate_linear_explaining_away(base_explaining_away, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
+      local this_shrink 
+      if shrink_style == 'ParameterizedShrink' then
+	 this_shrink = duplicate_shrink(base_shrink, {layer_size[1], layer_size[2]}, RUN_JACOBIAN_TEST)
+      elseif shrink_style == 'FixedShrink' then
+	 this_shrink = nn.FixedShrink(layer_size[2])
+      elseif shrink_style == 'SoftPlus' then
+	 this_shrink = nn.SoftPlus()
+      else
+	 error('shrink style ' .. shrink_style .. ' was not recognized')
+      end
+
       explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = this_explaining_away, this_shrink
       ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST)
       this_layer:add(ista_seq)
@@ -812,13 +849,15 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter % 5 == 0 then
-	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.01, 1.25/num_ista_iterations))
+	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/(num_ista_iterations + 1)))
 	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       end
       repair_counter = (repair_counter + 1) % 5
       
       base_explaining_away:repair()
-      base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
+      if shrink_style == 'ParameterizedShrink' then
+	 base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
+      end
       if not(disable_trainable_pooling) then
 	 encoding_pooling_dictionary:repair() --true) -- force full normalization of rows -- DEBUG ONLY!!!  FOR THE LOVE OF GOD!!  RECONSIDER THIS!!!
 	 decoding_pooling_dictionary:repair(true) -- force full normalization of columns

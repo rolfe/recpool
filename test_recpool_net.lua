@@ -139,6 +139,22 @@ function rec_pool_test.LogSoftMax()
 end
 
 
+function rec_pool_test.FixedShrink()
+   local ini = math.random(10,20)
+   --local inj = math.random(10,20)
+   local input = torch.Tensor(ini):zero()
+   local module = nn.FixedShrink(ini)
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ') 
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+
 function rec_pool_test.AddConstant()
    local input = torch.rand(10,20)
    local random_addend = math.random()
@@ -607,6 +623,10 @@ end
 function rec_pool_test.full_network_test()
    --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
 
+   --local shrink_style = 'ParameterizedShrink'
+   local shrink_style = 'FixedShrink' --'ParameterizedShrink'
+   --local shrink_style = 'SoftPlus'
+
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
@@ -637,7 +657,7 @@ function rec_pool_test.full_network_test()
    --]]
 
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, shrink_style, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
    print('finished building recpool net')
 
    -- create a list of all the parameters of all modules, so they can be held constant when doing Jacobian tests
@@ -687,13 +707,17 @@ function rec_pool_test.full_network_test()
    for i = 1,#model.layers do
       test_module('decoding dictionary weight', model.layers[i].module_list.decoding_feature_extraction_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
       test_module('decoding dictionary bias', model.layers[i].module_list.decoding_feature_extraction_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+
+      -- problem here!!!
       test_module('encoding dictionary weight', model.layers[i].module_list.encoding_feature_extraction_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
       test_module('encoding dictionary bias', model.layers[i].module_list.encoding_feature_extraction_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
-      
+
       -- don't allow large weights, or the messages exhibit exponential growth
       test_module('explaining away weight', model.layers[i].module_list.explaining_away, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, -0.6, 0.6)
       test_module('explaining away bias', model.layers[i].module_list.explaining_away, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
-      test_module('shrink shrink_val', model.layers[i].module_list.shrink, 'shrink_val', 'grad_shrink_val', parameter_list, model, input, jac, precision)
+      if shrink_style == 'ParameterizedShrink' then
+	 test_module('shrink shrink_val', model.layers[i].module_list.shrink, 'shrink_val', 'grad_shrink_val', parameter_list, model, input, jac, precision)
+      end
       -- element 8 of the parameter_list is negative_shrink_val
       test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
       test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
@@ -721,6 +745,10 @@ end
 
 function rec_pool_test.ISTA_reconstruction()
    -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
+   --local shrink_style = 'ParameterizedShrink'
+   local shrink_style = 'FixedShrink' --'ParameterizedShrink'
+   --local shrink_style = 'SoftPlus'
+
    local layer_size = {10, 60, 10, 10}
    local target = math.random(layer_size[4])
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
@@ -748,7 +776,7 @@ function rec_pool_test.ISTA_reconstruction()
 
 
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50, nil) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50, shrink_style, nil) -- final true -> NORMALIZATION IS DISABLED!!!
 
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
@@ -775,17 +803,18 @@ function rec_pool_test.ISTA_reconstruction()
    model:updateGradInput(test_input, test_gradInput)
 
 
-
-   -- confirm that parameter sharing is working properly
-   for i = 1,#shrink_copies do
-      if (shrink_copies[i].shrink_val:storage() ~= shrink.shrink_val:storage()) or (shrink_copies[i].grad_shrink_val:storage() ~= shrink.grad_shrink_val:storage()) then
-	 print('ERROR!!!  shrink_copies[' .. i .. '] does not share parameters with base shrink!!!')
-	 io.read()
+   if shrink_style == 'ParameterizedShrink' then
+      -- confirm that parameter sharing is working properly
+      for i = 1,#shrink_copies do
+	 if (shrink_copies[i].shrink_val:storage() ~= shrink.shrink_val:storage()) or (shrink_copies[i].grad_shrink_val:storage() ~= shrink.grad_shrink_val:storage()) then
+	    print('ERROR!!!  shrink_copies[' .. i .. '] does not share parameters with base shrink!!!')
+	    io.read()
+	 end
+	 --print('shrink_copies[' .. i .. '] gradInput', shrink_copies[i].gradInput)
+	 --print('shrink_copies[' .. i .. '] output', shrink_copies[i].output)
       end
-      --print('shrink_copies[' .. i .. '] gradInput', shrink_copies[i].gradInput)
-      --print('shrink_copies[' .. i .. '] output', shrink_copies[i].output)
    end
-
+   
    for i = 1,#explaining_away_copies do
       if (explaining_away_copies[i].weight:storage() ~= explaining_away.weight:storage()) or (explaining_away_copies[i].bias:storage() ~= explaining_away.bias:storage()) then
 	 print('ERROR!!!  explaining_away_copies[' .. i .. '] does not share parameters with base explaining_away!!!')

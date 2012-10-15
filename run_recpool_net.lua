@@ -16,9 +16,11 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3
-local quick_train_epoch_size = 5000
+local quick_train_epoch_size = 500
+local fe_layer_size = 400 --200
 
 local params = cmd:parse(arg)
+local num_layers = tonumber(params.num_layers)
 
 local sl_mag = nil
 local rec_mag = nil
@@ -29,7 +31,10 @@ local pooling_orig_position_L2_mag = nil
 local pooling_sl_mag = nil
 local mask_mag = nil
 
-local num_ista_iterations = 5 --3 --7 --3
+local num_ista_iterations = 5 --5 --3
+local shrink_style = 'ParameterizedShrink'
+--local shrink_style = 'FixedShrink'
+--local shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
 
 
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
@@ -53,12 +58,19 @@ pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_pos
 
 -- GROUP SPARSITY TEST
 rec_mag = 5 --4 --5 --4
---L1_scaling = 0.25 --5 --3 --0.5 --1 --7.5 --5.5 --7.5 --6 is not too large; 9 is too large
-L1_scaling = 3 --4 --2.5
+if num_layers == 1 then
+   --L1_scaling = 3 --4 --2.5
+   L1_scaling = 3/math.sqrt(2) --4 --2.5
+elseif num_layers == 2 then
+   L1_scaling = 1 --0.25 
+else
+   error('L1_scaling not specified for num_layers')
+end
+
 
 --L1_scaling = 2
-L1_scaling_layer_2 = 0.1
-pooling_rec_layer_2 = 0.5
+L1_scaling_layer_2 = 0.05 --0.1
+pooling_rec_layer_2 = 0.2 --0.5
 
 
 --[[
@@ -82,7 +94,7 @@ local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
-local lambdas_2 = {ista_L2_reconstruction_lambda = 0.5* rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_layer_2 * pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_rec_layer_2 * pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_rec_layer_2 * pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_rec_layer_2 * pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_2 = {ista_L2_reconstruction_lambda = pooling_rec_layer_2 * rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_layer_2 * pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_rec_layer_2 * pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_rec_layer_2 * pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_rec_layer_2 * pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- targets a multiplied by layer_size to produce the final value, since the L1 loss increases linear with the number of units; it represents the desired value for each unit
@@ -100,7 +112,6 @@ for k,v in pairs(lambdas) do
 end
 
 local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors
-local num_layers = tonumber(params.num_layers)
 if false and (num_layers == 1) then
    print(lambdas)
    layer_size = {28*28, 200, 50, 10}
@@ -119,12 +130,12 @@ else
    layered_lagrange_multiplier_learning_rate_scaling_factors = {}
    for i = 1,num_layers do
       if i == 1 then
-	 table.insert(layer_size, 200)
+	 table.insert(layer_size, fe_layer_size) --200)
 	 table.insert(layer_size, 50)
 	 table.insert(layered_lambdas, lambdas_1)
       else
 	 table.insert(layer_size, 100)
-	 table.insert(layer_size, 50)
+	 table.insert(layer_size, 25)
 	 table.insert(layered_lambdas, lambdas_2)
       end
       
@@ -171,7 +182,7 @@ data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 
 
-local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, data) -- last argument is num_ista_iterations
+local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
@@ -204,15 +215,17 @@ os.execute('rm -rf ' .. opt.log_directory)
 os.execute('mkdir -p ' .. opt.log_directory)
 
 -- confirm that shrink parameters are properly shared
-for i = 1,#model.layers do
-   print('for layer ' .. i)
-   local shrink = model.layers[i].module_list.shrink
-   local shrink_copies = model.layers[i].module_list.shrink_copies
-   for j = 1,#shrink_copies do
-      print('checking sharing for shrink copy ' .. j)
-      if shrink.shrink_val:storage() ~= shrink_copies[j].shrink_val:storage() then
-	 print('Before training, shrink storage is not the same as the shrink copy ' .. j .. ' storage!!!')
-	 io.read()
+if shrink_style == 'ParameterizedShrink' then
+   for i = 1,#model.layers do
+      print('for layer ' .. i)
+      local shrink = model.layers[i].module_list.shrink
+      local shrink_copies = model.layers[i].module_list.shrink_copies
+      for j = 1,#shrink_copies do
+	 print('checking sharing for shrink copy ' .. j)
+	 if shrink.shrink_val:storage() ~= shrink_copies[j].shrink_val:storage() then
+	    print('Before training, shrink storage is not the same as the shrink copy ' .. j .. ' storage!!!')
+	    io.read()
+	 end
       end
    end
 end
@@ -230,7 +243,7 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(0.1)
+model:reset_classification_lambda(0.5) -- 0.1 seems to small to learn good classification
 num_epochs = 500
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    if (i % 20 == 1) and (i > 1) then

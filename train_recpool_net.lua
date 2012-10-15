@@ -409,11 +409,19 @@ end
 
 function output_gradient_magnitudes(self)
    for i = 1,#self.model.layers do
-      print('layer ' .. i, 'encoding FE dict', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:norm(), 
-	    'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(),
-	    'shrink', self.model.layers[i].module_list.shrink.grad_shrink_val:norm(), 'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(),
-	    'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(), 
-	    'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
+      if self.model.layers[i].module_list.shrink.grad_shrink_val then  -- THIS IS A TOTAL HACK!!!
+	 print('layer ' .. i, 'encoding FE dict', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:norm(), 
+	       'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(),
+	       'shrink', self.model.layers[i].module_list.shrink.grad_shrink_val:norm(), 'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(),
+	       'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(), 
+	       'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
+      else
+	 print('layer ' .. i, 'encoding FE dict', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:norm(), 
+	       'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(),
+	       'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(),
+	       'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(), 
+	       'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
+      end
    end
    print('classification layer', 'class dict', self.model.module_list.classification_dictionary.gradWeight:norm())
 
