@@ -11,7 +11,7 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
-cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
+cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
@@ -40,8 +40,8 @@ local shrink_style = 'ParameterizedShrink'
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
 mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
-pooling_sl_mag = 1.7e-2
-mask_mag = 0
+--pooling_sl_mag = 1.7e-2
+--mask_mag = 0
 
 --sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
 --sl_mag = 0.025e-2
