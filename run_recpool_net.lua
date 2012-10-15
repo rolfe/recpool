@@ -11,13 +11,13 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
-cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
+cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3
 local quick_train_epoch_size = 500
-local fe_layer_size = 400 --200
+local fe_layer_size = 200 --400 --200
 
 local params = cmd:parse(arg)
 local num_layers = tonumber(params.num_layers)
@@ -60,7 +60,7 @@ pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_pos
 rec_mag = 5 --4 --5 --4
 if num_layers == 1 then
    --L1_scaling = 3 --4 --2.5
-   L1_scaling = 3/math.sqrt(2) --4 --2.5
+   L1_scaling = 3/math.sqrt(2) -- for use with 400 FE units
 elseif num_layers == 2 then
    L1_scaling = 1 --0.25 
 else
