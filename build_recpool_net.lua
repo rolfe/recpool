@@ -182,12 +182,15 @@ local function build_pooling(encoding_pooling_dictionary)
    --pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
    pooling_transformation_seq:add(nn.SafePower(2))
    pooling_transformation_seq:add(encoding_pooling_dictionary)
-   local safe_sqrt_const = 1e-4
+   local safe_sqrt_const = 1e-10
    pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
 
    -- Note that backpropagating gradients through nn.Sqrt will generate NANs if any of the inputs are exactly zero.  However, this is correct behavior.  We should ensure that no input to the square root is exactly zero, perhaps by bounding the encoding_pooling_dictionary below by a number greater than zero.
-   pooling_transformation_seq:add(nn.Sqrt())
+   pooling_transformation_seq:add(nn.Sqrt()) -- NORMAL VERSION
    pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
+
+   --pooling_transformation_seq:add(nn.SafePower(1/2)) -- EXPERIMENTAL VERSION
+   --pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.pow(safe_sqrt_const, 1/2))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
 
    pool_features_parallel:add(pooling_transformation_seq) -- s = sqrt(Q*z^2) [1]
    pool_features_parallel:add(nn.Identity()) -- preserve z [2]
@@ -243,6 +246,8 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    -- the L2 reconstruction error and the L2 position unit magnitude both depend upon the denominator lambda + (P*s)^2, so calculate them together in a single function
    --lambdas include: lambdas.pooling_L2_shrink_reconstruction_lambda, lambdas.pooling_L2_orig_reconstruction_lambda, lambdas.pooling_L2_shrink_position_unit_lambda, lambdas.pooling_L2_orig_position_unit_lambda,
 
+   local USE_SQRT_POOLING_RECONSTRUCTION = true
+
    local pooling_L2_loss_seq = nn.Sequential()
    -- split into the output from the module s = sqrt(Q*z^2) [1], the basis of the denominator of the losses s [2], the preserved shrink output z [3], the original input x [4], and the basis for the projected original input D^t*x [5]
    pooling_L2_loss_seq:add(nn.CopyTable(1, 2)) -- copy the subject of the pooling operation s [1] to [2]
@@ -271,7 +276,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    sparsifying_loss_seq:add(nn.Ignore()) -- don't pass the sparsifying loss value onto the rest of the network
    local sparsifying_loss_parallel = nn.ParallelDistributingTable() -- we could probably use a CopyTable with zero repeats here
    sparsifying_loss_parallel:add(nn.SelectTable{1}) -- s [1]
-   sparsifying_loss_parallel:add(nn.SelectTable{2}) -- P*s [2]
+   sparsifying_loss_parallel:add(nn.SelectTable{2}) -- P*s [2] -- NORMAL VERSION!!!  
+   --local double_rec_seq = nn.Sequential() -- DEBUG ONLY!!!
+   --double_rec_seq:add(nn.SelectTable{2}) -- DEBUG ONLY!!!
+   --double_rec_seq:add(nn.MulConstant(decoding_pooling_dictionary.weight:size(1), 1.5)) -- DEBUG ONLY!!!
+   --sparsifying_loss_parallel:add(double_rec_seq) -- DEBUG ONLY!!!
    sparsifying_loss_parallel:add(nn.SelectTable{3}) -- z [3]
    sparsifying_loss_parallel:add(nn.SelectTable{4}) -- x [4] 
    sparsifying_loss_parallel:add(nn.SelectTable{5}) -- D^t*x [5] 
@@ -341,8 +350,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
 
    -- compute the shrink reconstruction loss ||z - (z*(P*s)^2)/(lambda_ratio + (P*s)^2)||^2 = ||lambda_ratio * z / (lambda_ratio + (P*s)^2)||^2
    local compute_shrink_reconstruction_loss_seq = nn.Sequential()
-   --compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,7}) -- NORMAL VERSION!!!
-   compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,9}) -- DEBUG ONLY!!! SHOULD BE {3,7} to use normal losses
+   if USE_SQRT_POOLING_RECONSTRUCTION then 
+      compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,9}) -- DEBUG ONLY!!! SHOULD BE {3,7} to use normal losses
+   else
+      compute_shrink_reconstruction_loss_seq:add(nn.SelectTable{3,7}) -- NORMAL VERSION!!!
+   end
    compute_shrink_reconstruction_loss_seq:add(nn.CDivTable())
    if DEBUG_OUTPUT then 
       compute_shrink_reconstruction_loss_seq:add(nn.ZeroModule())
@@ -387,8 +399,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
 
    -- compute the shrink position loss ||z*(P*s) / (lambda_ratio + (P*s)^2)||^2
    local compute_shrink_position_loss_seq = nn.Sequential()
-   --compute_shrink_position_loss_seq:add(nn.SelectTable{4,7}) -- NORMAL VERSION
-   compute_shrink_position_loss_seq:add(nn.SelectTable{8,9}) -- DEBUG ONLY!!!
+   if USE_SQRT_POOLING_RECONSTRUCTION then
+      compute_shrink_position_loss_seq:add(nn.SelectTable{8,9}) -- DEBUG ONLY!!!
+   else
+      compute_shrink_position_loss_seq:add(nn.SelectTable{4,7}) -- NORMAL VERSION
+   end
    local compute_shrink_position_units = nn.CDivTable()
    compute_shrink_position_loss_seq:add(compute_shrink_position_units)
    if DEBUG_OUTPUT then 
@@ -588,6 +603,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    local disable_trainable_pooling = false
+   local use_swm = true
 
    -- Build the reconstruction pooling network
    local this_layer = nn.Sequential()
@@ -612,7 +628,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local shrink_copies = {}
 
    local pooling_dictionary_scaling_factor = 1
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false, squared_weight_matrix = use_swm}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
@@ -630,7 +646,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       print('SET decoding_pooling_dictionary training scale factor to 1 before testing!!!  Alternatively, turn off debug mode')
       io.read()
    end
-   local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true}, RUN_JACOBIAN_TEST, dpd_training_scale_factor) -- this should have zero bias, and columns normalized to unit magnitude
+   local decoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[3], layer_size[2], {no_bias = true, normalized_columns_pooling = true, non_negative = true, squared_weight_matrix = false}, RUN_JACOBIAN_TEST, dpd_training_scale_factor) -- this should have zero bias, and columns normalized to unit magnitude
 
    -- there's really no reason to define these here rather than where they're used
    local use_lagrange_multiplier_for_L1_regularizer = false
@@ -724,7 +740,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
    encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
-   encoding_pooling_dictionary.weight:mul(1) -- 1.25 --DEBUG ONLY!!!
+   --encoding_pooling_dictionary.weight:mul(0.2) -- 1.25 --DEBUG ONLY!!!
+   if use_swm then
+      encoding_pooling_dictionary.weight:pow(0.5)
+   end
    --decoding_pooling_dictionary.weight:add(torch.mul(torch.rand(decoding_pooling_dictionary.weight:size()), 0.3))
    --encoding_pooling_dictionary.weight:add(torch.mul(torch.rand(encoding_pooling_dictionary.weight:size()), 0.3))
    encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
@@ -738,6 +757,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       decoding_pooling_dictionary:percentage_zeros_per_column(0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
       decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
       encoding_pooling_dictionary.weight:copy(decoding_pooling_dictionary.weight:t())
+      if use_swm then
+	 encoding_pooling_dictionary.weight:pow(0.5)
+      end
       --encoding_pooling_dictionary.weight:mul(0.5) -- this helps the initial magnitude of the pooling reconstruction match the actual shrink output -- a value larger than 1 will probably bring the initial values closer to their final values; small columns in the decoding pooling dictionary yield even small reconstructions, since they cause the position units to be small as well
       encoding_pooling_dictionary:repair(true) -- remember that encoding_pooling_dictionary does not have normalized columns
 

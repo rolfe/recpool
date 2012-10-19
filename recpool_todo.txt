@@ -278,8 +278,10 @@ Need to use 0.5e-3 rather than 5e-3 when training with classification loss alone
 
 iago
 othello
-cassio
 duncan
+
+
+cassio
 macbeth
 ceres
 

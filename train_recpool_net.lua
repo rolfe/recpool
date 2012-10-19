@@ -253,8 +253,11 @@ function RecPoolTrainer:train(train_data)
 	    math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, 
 						      torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, math.sqrt(alpha))), 
 					      torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
+	 local better_combined_loss = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * 
+	    torch.sum(torch.cdiv(torch.pow(shrink_output, 2), 
+				 torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))
 	 local exact_combined_loss = self.model.criteria_list.criteria[4].output + self.model.criteria_list.criteria[6].output -- this already includes the lambdas
-	 print('combined ratio is ' .. combined_loss / exact_combined_loss .. ' careful: ' .. combined_loss_careful / exact_combined_loss)
+	 print('*combined ratio is ' .. combined_loss / exact_combined_loss .. ' better: ' .. better_combined_loss / exact_combined_loss .. ' careful: ' .. combined_loss_careful / exact_combined_loss)
 	    
 
 	 print('shrink reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_shrink_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
@@ -271,7 +274,11 @@ function RecPoolTrainer:train(train_data)
 									       torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, alpha)))), 2)
 	 local theoretical_alt_shrink_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 0.5)), 
 										     torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, alpha))), 2)
+	 local better_alt_combined_loss = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * 
+	    torch.sum(torch.cdiv(torch.pow(shrink_output, 2), 
+				 torch.add(self.model.layers[1].module_list.decoding_pooling_dictionary.output, alpha)))
 
+	 print('*alt combined ratio is ' .. better_alt_combined_loss / exact_combined_loss)
 	 print('alt shrink reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_alt_shrink_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' careful version ' .. (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * careful_alt_reconstruction_loss) / self.model.criteria_list.criteria[i].output .. ' with criteria output ' .. self.model.criteria_list.criteria[i].output)
 	 
 	 print('alt shrink position ratio is ' .. (self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * theoretical_alt_shrink_position_loss) / self.model.criteria_list.criteria[6].output)
@@ -340,7 +347,7 @@ function RecPoolTrainer:train(train_data)
       local m = self.model.layers[i].module_list.encoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(1))
       for j = 1,m:size(1) do
-	 norms[j] = m:select(1,j):norm()
+	 norms[j] = torch.pow(m:select(1,j), 2):norm()
       end
       print('P row norms are ', norms:unfold(1,10,10))
 

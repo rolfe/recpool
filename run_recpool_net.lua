@@ -11,11 +11,11 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
-cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
+cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 5e-3
+local quick_train_learning_rate = 5e-3 --2e-3 --5e-3
 local quick_train_epoch_size = 5000
 local fe_layer_size = 200 --400 --200
 
@@ -50,10 +50,17 @@ pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.1
 --pooling_shrink_position_L2_mag = 0.01 --0.001
-pooling_shrink_position_L2_mag = 1e-3 --1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
+--pooling_shrink_position_L2_mag = 1e-3 --1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
+pooling_shrink_position_L2_mag = 1e-3 -- further tests with sqrt reconstruction
+--pooling_shrink_position_L2_mag = 1e-2 -- straight L2 position, sqrt-sum-of-squares pooling
+--pooling_shrink_position_L2_mag = 1e-4 --1e-6 -- straight L2 position, cube-root-sum-of-squares pooling
+--pooling_shrink_position_L2_mag = 1e-6 -- straight L2 position, cube-root-sum-of-squares pooling
 pooling_orig_position_L2_mag = 0 --0.005 --0.1
---local pooling_reconstruction_scaling = 1.5 --2.5 --1.5 --0.85 --0.5 --0.25
-local pooling_reconstruction_scaling = 400 --140 --400 --180 --1400 --40 --140
+--local pooling_reconstruction_scaling = 3 --1.5 --2.5 --1.5 --0.85 --0.5 --0.25 -- straight L2 position, sqrt-sum-of-squares pooling
+--local pooling_reconstruction_scaling = 40 --60000 --100000 -- straight L2 position, cube-root-sum-of-squares pooling
+--local pooling_reconstruction_scaling = 20000  --200000 --100000 -- straight L2 position, cube-root-sum-of-squares pooling
+--local pooling_reconstruction_scaling = 200 --140 --400 --180 --1400 --40 --140
+local pooling_reconstruction_scaling = 400 -- further tests with sqrt reconstruction
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
@@ -63,7 +70,9 @@ pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_pos
 rec_mag = 5 --4 --5 --4
 if num_layers == 1 then
    if fe_layer_size == 200 then
-      L1_scaling = 3 --4 --2.5
+      L1_scaling = 3 --4 --2.5 -- with square root L2 position loss
+      --L1_scaling = 3 --2.5 --1.5 -- straight L2 position, sqrt-sum-of-squares pooling
+      --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
    elseif fe_layer_size == 400 then
       L1_scaling = 3/math.sqrt(2) -- for use with 400 FE units
    else
