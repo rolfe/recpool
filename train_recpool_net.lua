@@ -126,14 +126,16 @@ function RecPoolTrainer:make_feval()
 
 	 -- track the evolution of sparsity and reconstruction errors
 	 for j = 1,#(self.model.criteria_list.criteria) do
-	    self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
-	    --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
-	    if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
-	       for k = 1,#self.model.criteria_list.criteria[j].gradInput do
-		  self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
+	    if self.model.criteria_list.criteria[j].output then -- this need not be defined if we've disabled pooling or other layers
+	       self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
+	       --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
+	       if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
+		  for k = 1,#self.model.criteria_list.criteria[j].gradInput do
+		     self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
+		  end
+	       else
+		  self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
 	       end
-	    else
-	       self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
 	    end
 	 end
       end
@@ -230,7 +232,7 @@ function RecPoolTrainer:train(train_data)
       self.loss_hist[i] = 0
       self.grad_loss_hist[i] = 0
 
-      if self.model.criteria_list.names[i] == 'pooling L2 shrink reconstruction loss' then
+      if (self.model.criteria_list.names[i] == 'pooling L2 shrink reconstruction loss') and not(self.model.disable_pooling) then
 	 print('performing additional testing on ' .. self.model.criteria_list.names[i] .. ' with value ' .. self.model.criteria_list.criteria[i].output)
 	 local alpha = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda / self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda
 	 local shrink_output = self.model.layers[1].module_list.shrink_copies[#self.model.layers[1].module_list.shrink_copies].output
@@ -310,10 +312,14 @@ function RecPoolTrainer:train(train_data)
       --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
       print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
-      print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
+      if not(self.model.disable_pooling) then -- this may not be defined if we've disabled pooling
+	 print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
+      end
       -- these two outputs are from the middle of the processing chain, rather than the parameterized modules
       --print('pooling position units', self.model.layers[i].debug_module_list.compute_shrink_position_units.output:unfold(1,10,10))
-      print('pooling output', self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10))
+      if not(self.model.disable_pooling) then -- this may not be defined if we've disabled pooling
+	 print('pooling output', self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10))
+      end
       -- since the sparsifying modules can be parameterized by lagrange multipliers, they are in the main module list
       if self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
 	 print('feature extraction L1', self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight:unfold(1,10,10))

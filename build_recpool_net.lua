@@ -467,8 +467,10 @@ end
 
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
 -- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
-function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, data_set, RUN_JACOBIAN_TEST)
+function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, data_set, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_shrink_position_unit_lambda, pooling_L2_orig_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
+   -- disable_pooling specifies that the pooling layers should be created (otherwise all of the test code that depends on their existence will fail), but that they should not be added to model = nn.Sequential().  As a result, they should not slow down the running time at all.  
+
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    
@@ -476,7 +478,14 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 
    local model = nn.Sequential()
    local layer_list = {} -- an array of the component layers for easy access
-   local classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
+   -- size of the classification dictionary depends upon whether we're using pooling or not
+   local classification_dictionary
+   if not(disable_pooling) then
+      classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
+   else
+      -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
+      classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
+   end
    local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
 
    classification_dictionary.bias:zero()
@@ -489,6 +498,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    model.filter_name_list = {}
    
    model.layers = layer_list -- used in train_recpool_net to access debug information
+   model.disable_pooling = disable_pooling
 
    -- take the initial input x and wrap it in a table x [1]
    model:add(nn.IdentityTable()) -- wrap the tensor in a table
@@ -501,7 +511,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       end
 
       -- the global criteria_list is passed into each layer to be built up progressively
-      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, shrink_style, criteria_list, data_set, RUN_JACOBIAN_TEST) 
+      local current_layer = build_recpool_net_layer(layer_i, current_layer_size, lambdas[layer_i], lagrange_multiplier_targets[layer_i], lagrange_multiplier_learning_rate_scaling_factors[layer_i], num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, criteria_list, data_set, RUN_JACOBIAN_TEST) 
       model:add(current_layer)
       layer_list[layer_i] = current_layer -- this is used in a closure for model:repair()
 
@@ -560,7 +570,9 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 original_updateOutput(self, input)
 	 local summed_loss = 0
 	 for i = 1,#(criteria_list.criteria) do
-	    summed_loss = summed_loss + criteria_list.criteria[i].output
+	    if criteria_list.criteria[i].output then -- some criteria may not be defined if we've disabled pooling or other layers
+	       summed_loss = summed_loss + criteria_list.criteria[i].output
+	    end
 	 end
 	 -- the output of a tensor is necessary to maintain compatibility with ModifiedJacobian, which directly accesses the output field of the tested module
 	 model.output = torch.Tensor(1)
@@ -596,14 +608,14 @@ end
 -- input is a table of one element x [1], output is a table of one element s [1]
 -- a reconstructing-pooling network.  This is like reconstruction ICA, but with reconstruction applied to both the feature extraction and the pooling, and using shrink operators rather than linear transformations for the feature extraction.  The initial version of this network is built with simple linear transformations, but it can just as easily be used to convolutions
 -- use RUN_JACOBIAN_TEST when testing parameter updates
-function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, criteria_list, data_set, RUN_JACOBIAN_TEST) 
+function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, criteria_list, data_set, RUN_JACOBIAN_TEST) 
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_shrink_position_unit_lambda, pooling_L2_orig_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    if not(criteria_list) then -- if we're building a multi-layer network, a common criteria list is passed in
       criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    local disable_trainable_pooling = false
-   local use_swm = true
+   local use_swm = use_squared_weight_matrix
 
    -- Build the reconstruction pooling network
    local this_layer = nn.Sequential()
@@ -811,7 +823,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved input z [2], and the original input x[3]
    local pooling_seq = build_pooling(encoding_pooling_dictionary)
-   this_layer:add(pooling_seq)
+   if not(disable_pooling) then
+      this_layer:add(pooling_seq)
+   end
 
 
    --[[
@@ -841,11 +855,15 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
    local pooling_L2_loss_seq, pooling_L2_debug_module_list =
       build_pooling_L2_loss(decoding_pooling_dictionary, this_decoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary_transpose, mask_sparsifying_module, lambdas, criteria_list)
-   this_layer:add(pooling_L2_loss_seq)
+   if not(disable_pooling) then
+      this_layer:add(pooling_L2_loss_seq)
+   end
 
    -- calculate the L1 magnitude of the pooling code s [1] (also contains the original input x[2]), returning the pooling code s [1] and the original input x [2] unchanged
    local pooling_sparsifying_loss_seq = build_sparsifying_loss(pooling_sparsifying_module, criteria_list)
-   this_layer:add(pooling_sparsifying_loss_seq)
+   if not(disable_pooling) then
+      this_layer:add(pooling_sparsifying_loss_seq)
+   end
 
    local extract_pooled_output = nn.ParallelDistributingTable('remove unneeded original input x') -- ensure that the original input x [2] receives a gradOutput of zero
    extract_pooled_output:add(nn.SelectTable{1})

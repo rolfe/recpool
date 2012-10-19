@@ -35,7 +35,8 @@ local num_ista_iterations = 5 --5 --3
 local shrink_style = 'ParameterizedShrink'
 --local shrink_style = 'FixedShrink'
 --local shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
-
+local disable_pooling = true
+local use_squared_weight_matrix = true
 
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
 mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
@@ -43,9 +44,12 @@ mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0
 --pooling_sl_mag = 1.7e-2
 --mask_mag = 0
 
---sl_mag = 10e-2 --80e-2 --1e-2 --2e-2 --5e-2
---sl_mag = 0.025e-2
-sl_mag = 0
+if not(disable_pooling) then
+   sl_mag = 0
+   --sl_mag = 0.025e-2 -- used in addition to group sparsity
+else
+   sl_mag = 3e-2
+end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
 --pooling_shrink_position_L2_mag = 0.1
@@ -199,7 +203,7 @@ data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 
 
-local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, data) -- last argument is num_ista_iterations
+local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments

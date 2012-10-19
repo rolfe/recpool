@@ -704,6 +704,9 @@ function rec_pool_test.full_network_test()
    --local shrink_style = 'ParameterizedShrink'
    local shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --local shrink_style = 'SoftPlus'
+   local disable_pooling = false
+   local use_squared_weight_matrix = true
+
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
@@ -733,9 +736,9 @@ function rec_pool_test.full_network_test()
    local layered_lagrange_multiplier_targets = {lagrange_multiplier_targets, lagrange_multiplier_targets, lagrange_multiplier_targets}
    local layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors}
    --]]
-
+   
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, shrink_style, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, shrink_style, disable_pooling, use_squared_weight_matrix, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
    print('finished building recpool net')
 
    -- create a list of all the parameters of all modules, so they can be held constant when doing Jacobian tests
@@ -797,13 +800,16 @@ function rec_pool_test.full_network_test()
 	 test_module('shrink shrink_val', model.layers[i].module_list.shrink, 'shrink_val', 'grad_shrink_val', parameter_list, model, input, jac, precision)
       end
       -- element 8 of the parameter_list is negative_shrink_val
-      test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
-      test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
-      
-      -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
-      test_module('encoding pooling dictionary weight', model.layers[i].module_list.encoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
-      test_module('encoding pooling dictionary bias', model.layers[i].module_list.encoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
-      
+
+      if not(disable_pooling) then
+	 test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
+	 test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
+	 
+	 -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
+	 test_module('encoding pooling dictionary weight', model.layers[i].module_list.encoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
+	 test_module('encoding pooling dictionary bias', model.layers[i].module_list.encoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
+      end      
+
       if model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
 	 test_module('feature extraction sparsifying module', model.layers[i].module_list.feature_extraction_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
       end
@@ -826,6 +832,9 @@ function rec_pool_test.ISTA_reconstruction()
    --local shrink_style = 'ParameterizedShrink'
    local shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --local shrink_style = 'SoftPlus'
+   local disable_pooling = false
+   local use_squared_weight_matrix = true
+
 
    local layer_size = {10, 60, 10, 10}
    local target = math.random(layer_size[4])
@@ -854,7 +863,7 @@ function rec_pool_test.ISTA_reconstruction()
 
 
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50, shrink_style, nil) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50, shrink_style, disable_pooling, use_squared_weight_matrix, nil) -- final true -> NORMALIZATION IS DISABLED!!!
 
 
    --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
