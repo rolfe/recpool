@@ -35,7 +35,8 @@ local num_ista_iterations = 5 --5 --3
 local shrink_style = 'ParameterizedShrink'
 --local shrink_style = 'FixedShrink'
 --local shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
-local disable_pooling = true
+local disable_pooling = false
+local disable_pooling_losses = true
 local use_squared_weight_matrix = true
 
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
@@ -44,7 +45,7 @@ mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0
 --pooling_sl_mag = 1.7e-2
 --mask_mag = 0
 
-if not(disable_pooling) then
+if not(disable_pooling) and not(disable_pooling_losses) then
    sl_mag = 0
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
@@ -65,6 +66,11 @@ pooling_orig_position_L2_mag = 0 --0.005 --0.1
 --local pooling_reconstruction_scaling = 20000  --200000 --100000 -- straight L2 position, cube-root-sum-of-squares pooling
 --local pooling_reconstruction_scaling = 200 --140 --400 --180 --1400 --40 --140
 local pooling_reconstruction_scaling = 400 -- further tests with sqrt reconstruction
+if disable_pooling_losses then
+   pooling_reconstruction_scaling = 0
+   pooling_sl_mag = 0
+   mask_mag = 0
+end
 pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
 pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
 pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
@@ -264,7 +270,7 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(0.5) -- 0.1 seems to small to learn good classification
+model:reset_classification_lambda(0.5) -- 0.1 seems too small to learn good classification
 num_epochs = 500
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    if (i % 20 == 1) and (i > 1) then
