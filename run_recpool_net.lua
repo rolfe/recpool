@@ -89,7 +89,7 @@ if num_layers == 1 then
       --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
    elseif fe_layer_size == 400 then
       -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
-      L1_scaling = 3/math.sqrt(2) -- for use with 400 FE units
+      L1_scaling = 3 --3/math.sqrt(2) -- for use with 400 FE units
    else
       error('did not recognize fe_layer_size')
    end
