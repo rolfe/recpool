@@ -275,14 +275,17 @@ Need to use 0.5e-3 rather than 5e-3 when training with classification loss alone
 
 
 
+TRY ONLY NORMALIZING BEFORE THE CLASSIFICATION LOSS
+TRY ONLY ADJUSTING THE SECOND LAYER L1 LOSS WHEN ADDING A SECOND LAYER
+TRY ADJUSTING SPARSITY RATHER THAN THE L1 LOSS SCALING WHEN INCREASING THE NUMBER OF UNITS
 
-iago
 othello
 duncan
-
-
 cassio
+banquo
+
+iago
 macbeth
 ceres
 
-banquo
+

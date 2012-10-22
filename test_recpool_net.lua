@@ -701,11 +701,15 @@ end
 function rec_pool_test.full_network_test()
    --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
 
-   --local shrink_style = 'ParameterizedShrink'
-   local shrink_style = 'FixedShrink' --'ParameterizedShrink'
-   --local shrink_style = 'SoftPlus'
-   local disable_pooling = false
-   local use_squared_weight_matrix = true
+   -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
+   local recpool_config_prefs = {}
+   recpool_config_prefs.num_ista_iterations = 5
+   --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
+   recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
+   --recpool_config_prefs.shrink_style = 'SoftPlus'
+   recpool_config_prefs.disable_pooling = false
+   recpool_config_prefs.use_squared_weight_matrix = true
+   recpool_config_prefs.normalize_each_layer = false
 
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
@@ -738,7 +742,7 @@ function rec_pool_test.full_network_test()
    --]]
    
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 5, shrink_style, disable_pooling, use_squared_weight_matrix, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, nil, true) -- final true -> NORMALIZATION IS DISABLED!!!
    print('finished building recpool net')
 
    -- create a list of all the parameters of all modules, so they can be held constant when doing Jacobian tests
@@ -829,11 +833,16 @@ end
 
 function rec_pool_test.ISTA_reconstruction()
    -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
-   --local shrink_style = 'ParameterizedShrink'
-   local shrink_style = 'FixedShrink' --'ParameterizedShrink'
-   --local shrink_style = 'SoftPlus'
-   local disable_pooling = false
-   local use_squared_weight_matrix = true
+
+   -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
+   local recpool_config_prefs = {}
+   recpool_config_prefs.num_ista_iterations = 50
+   --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
+   recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
+   --recpool_config_prefs.shrink_style = 'SoftPlus'
+   recpool_config_prefs.disable_pooling = false
+   recpool_config_prefs.use_squared_weight_matrix = true
+   recpool_config_prefs.normalize_each_layer = false
 
 
    local layer_size = {10, 60, 10, 10}
@@ -863,12 +872,7 @@ function rec_pool_test.ISTA_reconstruction()
 
 
    local model =
-      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, 50, shrink_style, disable_pooling, use_squared_weight_matrix, nil) -- final true -> NORMALIZATION IS DISABLED!!!
-
-
-   --local model, criteria_list, encoding_dictionary, decoding_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, classification_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, explaining_away, shrink, explaining_away_copies, shrink_copies = 
-   --   build_recpool_net(layer_size, lambdas, 1, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, 50) -- normalization is not disabled
-
+      build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, nil) -- final true -> NORMALIZATION IS DISABLED!!!
 
    -- convenience names for easy access
    local shrink_copies = model.layers[1].module_list.shrink_copies
