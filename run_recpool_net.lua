@@ -16,8 +16,8 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3 --2e-3 --5e-3
-local quick_train_epoch_size = 500
-local fe_layer_size = 200 --400 --200
+local quick_train_epoch_size = 5000
+local fe_layer_size = 400 --400 --200
 local p_layer_size = 50 --50
 
 local params = cmd:parse(arg)
@@ -90,7 +90,8 @@ if num_layers == 1 then
       --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
    elseif fe_layer_size == 400 then
       -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
-      L1_scaling = 2 --3/math.sqrt(2) -- for use with 400 FE units
+      L1_scaling = 3.05 --2 --3/math.sqrt(2) -- for use with 400 FE units
+      mask_mag = mask_mag * math.sqrt(200/50) / math.sqrt(400/50)
    else
       error('did not recognize fe_layer_size')
    end
