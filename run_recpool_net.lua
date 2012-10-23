@@ -18,6 +18,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 local quick_train_learning_rate = 5e-3 --2e-3 --5e-3
 local quick_train_epoch_size = 500
 local fe_layer_size = 200 --400 --200
+local p_layer_size = 50 --50
 
 local params = cmd:parse(arg)
 local num_layers = tonumber(params.num_layers)
@@ -89,7 +90,7 @@ if num_layers == 1 then
       --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
    elseif fe_layer_size == 400 then
       -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
-      L1_scaling = 3 --3/math.sqrt(2) -- for use with 400 FE units
+      L1_scaling = 2 --3/math.sqrt(2) -- for use with 400 FE units
    else
       error('did not recognize fe_layer_size')
    end
@@ -100,6 +101,7 @@ else
    error('L1_scaling not specified for num_layers')
 end
 
+print('Using group sparsity scaling ' .. L1_scaling)
 
 --L1_scaling = 2
 L1_scaling_layer_2 = 0.05 --0.1
@@ -164,7 +166,7 @@ else
    for i = 1,num_layers do
       if i == 1 then
 	 table.insert(layer_size, fe_layer_size) --200)
-	 table.insert(layer_size, 50)
+	 table.insert(layer_size, p_layer_size)
 	 table.insert(layered_lambdas, lambdas_1)
       else
 	 table.insert(layer_size, 100)
@@ -222,7 +224,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = ((params.full_test == 'full_train') and 1e-3) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
+   learning_rate = ((params.full_test == 'full_train') and 2e-3) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)

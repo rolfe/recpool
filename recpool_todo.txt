@@ -273,6 +273,9 @@ Pure group sparsity does not appear to be as good as on the last attempt.  What 
 
 Need to use 0.5e-3 rather than 5e-3 when training with classification loss alone
 
+Jia, Huang, Darrell (CVPR 2012) Beyond Spatial Pyramids: Receptive Field Learning for Pooled Image Features
+
+
 
 
 TRY ONLY NORMALIZING BEFORE THE CLASSIFICATION LOSS
