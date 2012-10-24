@@ -287,9 +287,9 @@ othello
 duncan
 cassio
 banquo
-
 iago
 macbeth
+
 ceres
 
 

@@ -16,8 +16,9 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3 --2e-3 --5e-3
-local quick_train_epoch_size = 5000
-local fe_layer_size = 400 --400 --200
+local full_train_learning_rate = 4e-3
+local quick_train_epoch_size = 500
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --50
 
 local params = cmd:parse(arg)
@@ -41,7 +42,7 @@ recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.disable_pooling = false
 local disable_pooling_losses = false
 recpool_config_prefs.use_squared_weight_matrix = true
-recpool_config_prefs.normalize_each_layer = false
+recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
@@ -90,7 +91,7 @@ if num_layers == 1 then
       --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
    elseif fe_layer_size == 400 then
       -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
-      L1_scaling = 3.05 --2 --3/math.sqrt(2) -- for use with 400 FE units
+      L1_scaling = 3.1 --2 --3/math.sqrt(2) -- for use with 400 FE units
       mask_mag = mask_mag * math.sqrt(200/50) / math.sqrt(400/50)
    else
       error('did not recognize fe_layer_size')
@@ -225,7 +226,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   learning_rate = ((params.full_test == 'full_train') and 2e-3) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
+   learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = 1, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
