@@ -179,8 +179,8 @@ local function build_pooling(encoding_pooling_dictionary)
 
    local pool_features_parallel = nn.ParallelTable() -- compute s = sqrt(Q*z^2)
    local pooling_transformation_seq = nn.Sequential()
-   --pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
-   pooling_transformation_seq:add(nn.SafePower(2))
+   pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
+   --pooling_transformation_seq:add(nn.SafePower(2))
    pooling_transformation_seq:add(encoding_pooling_dictionary)
    local safe_sqrt_const = 1e-10
    pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
@@ -302,7 +302,8 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local construct_orig_rec_numerator_seq = nn.Sequential() -- z*(P*s)^2 
    construct_orig_rec_numerator_seq:add(nn.SelectTable{2,3})
    local square_Ps_for_orig_rec_numerator = nn.ParallelTable()
-   square_Ps_for_orig_rec_numerator:add(nn.SafePower(2)) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
+   --square_Ps_for_orig_rec_numerator:add(nn.SafePower(2)) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
+   square_Ps_for_orig_rec_numerator:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
    square_Ps_for_orig_rec_numerator:add(nn.Identity())
    construct_orig_rec_numerator_seq:add(square_Ps_for_orig_rec_numerator)
    construct_orig_rec_numerator_seq:add(nn.SafeCMulTable())
@@ -312,7 +313,8 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local construct_denominator_seq = nn.Sequential() -- lambda_ratio + (P*s)^2
    construct_denominator_seq:add(nn.SelectTable{2}) 
    --construct_denominator_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, if fails to multiply the gradInput by two
-   construct_denominator_seq:add(nn.SafePower(2))
+   --construct_denominator_seq:add(nn.SafePower(2))
+   construct_denominator_seq:add(nn.Square())
    construct_denominator_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio)) 
 
    -- alternate terms used when the position loss is ||sqrt(P*s)*y||^2 rather than ||y||^2, where y is the L2-normalized position units
@@ -896,6 +898,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- the constraints on the parameters of these modules cannot be enforced by updateParameters when used in conjunction with the optim package, since it adjusts the parameters directly
    -- THIS IS A HACK!!!
    local repair_counter = 0
+   --function this_layer:repair()
+   --end
+   
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter % 5 == 0 then
@@ -913,7 +918,6 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 decoding_pooling_dictionary:repair(true) -- force full normalization of columns
       end
    end
-
    
    --return this_layer, criteria_list, encoding_feature_extraction_dictionary, base_decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
    return this_layer

@@ -36,8 +36,8 @@ local mask_mag = nil
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
 local recpool_config_prefs = {}
 recpool_config_prefs.num_ista_iterations = 5 --5 --3
-recpool_config_prefs.shrink_style = 'ParameterizedShrink'
---recpool_config_prefs.shrink_style = 'FixedShrink'
+--recpool_config_prefs.shrink_style = 'ParameterizedShrink'
+recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
 recpool_config_prefs.disable_pooling = false
 local disable_pooling_losses = false
@@ -89,6 +89,9 @@ if num_layers == 1 then
       L1_scaling = 3 --4 --2.5 -- with square root L2 position loss
       --L1_scaling = 3 --2.5 --1.5 -- straight L2 position, sqrt-sum-of-squares pooling
       --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
+      if p_layer_size == 200 then
+	 L1_scaling = 3 * 3/4
+      end
    elseif fe_layer_size == 400 then
       -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
       L1_scaling = 3.1 --2 --3/math.sqrt(2) -- for use with 400 FE units
@@ -240,7 +243,8 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 torch.manualSeed(23827602) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
 
 
-local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas) -- layered_lambdas is required for debugging purposes only
+local track_criteria_outputs = not((params.full_test == 'full_train') or (params.full_test == 'full_test'))
+local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs) -- layered_lambdas is required for debugging purposes only
 
 -- load parameters from file if desired
 if params.load_file ~= '' then

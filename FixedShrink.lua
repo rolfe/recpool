@@ -9,18 +9,21 @@ function FixedShrink:__init(size)
    --self.output:resize(size)
    self.gradInput:resize(size)
 
+   --[[
    self.max_output = torch.Tensor(size,1)
    self.selected_index = torch.LongTensor(size)
 
    self.input_and_threshold = torch.Tensor(size, 2):zero()
    self.just_input = self.input_and_threshold:select(2,1)
+   --]]
 end
 
 
 function FixedShrink:updateOutput(input)
    self.output:resizeAs(input)
    self.output:copy(input)
-   self.output[torch.lt(input, 0)] = 0
+   --self.output[torch.lt(input, 0)] = 0
+   self.output:maxZero()
    return self.output
 end
 
@@ -28,14 +31,15 @@ function FixedShrink:updateGradInput(input, gradOutput)
    self.gradInput:resizeAs(gradOutput)
    self.gradInput:copy(gradOutput)
    -- this assumes that updateOutput was called before updateGradInput
-   self.gradInput[torch.lt(input, 0)] = 0 -- The second index always holds 0, so if it is selected by max, the output was clipped
-
+   --self.gradInput[torch.lt(input, 0)] = 0 -- The second index always holds 0, so if it is selected by max, the output was clipped
+   self.gradInput:maxZero2(input)
+   
    return self.gradInput
 end
 
 
 -- Koray's shrinkage implementation in kex is two-sided, whereas we want a one-sided operation, to parallel soft_plus.
-
+--[[
 function FixedShrink:updateOutputCareful(input)
    if input:dim() ~= 1 then
       error('FixedShrink expects one-dimensional inputs')
@@ -71,7 +75,8 @@ function FixedShrink:updateGradInputCareful(input, gradOutput)
    self.gradInput[torch.eq(self.selected_index, 2)] = 0 -- The second index always holds 0, so if it is selected by max, the output was clipped
 
    return self.gradInput
-end
+   end
+--]]
 
 function FixedShrink:repair()
    -- does nothing, since FixedShrink is not parameterized

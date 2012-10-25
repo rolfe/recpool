@@ -281,7 +281,10 @@ Jia, Huang, Darrell (CVPR 2012) Beyond Spatial Pyramids: Receptive Field Learnin
 TRY ONLY NORMALIZING BEFORE THE CLASSIFICATION LOSS
 TRY ONLY ADJUSTING THE SECOND LAYER L1 LOSS WHEN ADDING A SECOND LAYER
 TRY ADJUSTING INIT POOLING SPARSITY RATHER THAN THE L1 LOSS SCALING WHEN INCREASING THE NUMBER OF UNITS (the problem with this is that it seems to generate feature extraction units that aren't connected to any pooling units, especially if the number of pooling units isn't also increased.  
-CONSIDER using overcomplete pooling, as suggested by Jia, Huang, Darrell (2012)
+
+CONSIDER using overcomplete pooling, as suggested by Jia, Huang, Darrell (2012); scale down L1 loss appropriately
+Identify the slowest component of the network.  If it is still repair of the matrices after training, write C code to do this
+How many times should repair be called?
 
 othello
 duncan

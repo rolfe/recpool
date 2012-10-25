@@ -70,22 +70,30 @@ function ConstrainedLinear:percentage_zeros_per_column(percentage)
 end
 
 function ConstrainedLinear:updateOutput(input)
-   if self.squared_weight_matrix then
-      self.output:resize(self.bias:size(1))
+   -- this needs to be extended to allow two-dimensional inputs
+   self.output:resize(self.bias:size(1))
+   local current_output_scaling_value = 0
+   if not(self.no_bias) then
       self.output:copy(self.bias)
+      current_output_scaling_value = 1
+   end
+   
+   if self.squared_weight_matrix then
       self.weight_squared:resizeAs(self.weight)
-      self.weight_squared:pow(self.weight, 2)
-      self.output:addmv(1, self.weight_squared, input)
+      --self.weight_squared:pow(self.weight, 2)
+      self.weight_squared:cmul(self.weight, self.weight)
+      self.output:addmv(current_output_scaling_value, 1, self.weight_squared, input)
       
       if self.RUN_JACOBIAN_TEST then -- this is necessary to correctly perform the test all accUpdateGradParameters [shared], which does two accUpdateGradParameters in a row.  If we don't store a copy of the weights, then the first accUpdateGradParameters alters the operation performed by the second, which the test code doesn't expect, even thought it is correct
 	 self.stored_weight:resizeAs(self.weight):copy(self.weight) -- DEBUG ONLY!!!
       end
-      
-      return self.output
    else
-      return parent.updateOutput(self, input)
+      self.output:addmv(current_output_scaling_value, 1, self.weight, input)
    end
    
+   return self.output
+   
+   --return parent.updateOutput(self, input)
 end
 
 
@@ -94,7 +102,8 @@ function ConstrainedLinear:updateGradInput(input, gradOutput)
       if self.gradInput then
 	 self.gradInput:resizeAs(input)
 	 self.weight_squared:resizeAs(self.weight)
-	 self.weight_squared:pow(self.weight, 2)
+	 --self.weight_squared:pow(self.weight, 2)
+	 self.weight_squared:cmul(self.weight, self.weight)
 	 self.gradInput:addmv(0, 1, self.weight_squared:t(), gradOutput)
 	 
 	 return self.gradInput
@@ -184,7 +193,8 @@ end
 
 function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- after any sort of update or initialization, enforce the desired constraints
    if self.non_negative then
-      self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
+      --self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
+      self.weight:maxZero()
    elseif self.non_negative_diag then
       if self.weight:dim() ~= 2 then
 	 error('expected two dimensions in tensor to enforce non_negative_diag constraint')
@@ -225,7 +235,8 @@ function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- aft
    if self.no_bias then
       self.bias:zero()
    elseif self.non_negative then -- we only need to enforce non-negativity on the bias if it is not already set to zero
-      self.bias[torch.lt(self.bias,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
+      --self.bias[torch.lt(self.bias,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
+      self.bias:maxZero()
    end
    
    -- DEBUG ONLY!!!

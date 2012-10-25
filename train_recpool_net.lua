@@ -22,8 +22,9 @@ local RecPoolTrainer = torch.class('nn.RecPoolTrainer')
 local check_for_nans
 local output_gradient_magnitudes
 
-function RecPoolTrainer:__init(model, opt, layered_lambdas)
+function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outputs)
    self.layered_lambdas = layered_lambdas
+   self.track_criteria_outputs = track_criteria_outputs or false
 
    -- set default options
    if not opt then
@@ -125,24 +126,28 @@ function RecPoolTrainer:make_feval()
 	 self.confusion:add(output, self.minibatch_targets[i])
 
 	 -- track the evolution of sparsity and reconstruction errors
-	 for j = 1,#(self.model.criteria_list.criteria) do
-	    if self.model.criteria_list.criteria[j].output then -- this need not be defined if we've disabled pooling or other layers
-	       self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
-	       --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
-	       if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
-		  for k = 1,#self.model.criteria_list.criteria[j].gradInput do
-		     self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
+	 if self.track_criteria_outputs then
+	    for j = 1,#(self.model.criteria_list.criteria) do
+	       if self.model.criteria_list.criteria[j].output then -- this need not be defined if we've disabled pooling or other layers
+		  self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
+		  --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
+		  if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
+		     for k = 1,#self.model.criteria_list.criteria[j].gradInput do
+			self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
+		     end
+		  else
+		     self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
 		  end
-	       else
-		  self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
-	       end
-	    end
-	 end
+	       end -- if critera output exists
+	    end -- for all criteria
+	 end --if track_criteria_outputs
       end
       
       -- normalize gradients and f(X)
-      self.flattened_grad_parameters:div(#self.minibatch_inputs)
-      total_err = total_err / #self.minibatch_inputs
+      if #self.minibatch_inputs ~= 1 then
+	 self.flattened_grad_parameters:div(#self.minibatch_inputs)
+	 total_err = total_err / #self.minibatch_inputs
+      end
        
       --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')
       -- return f and df/dX
@@ -165,19 +170,29 @@ function RecPoolTrainer:train(train_data)
    -- do one epoch
    print('==> doing epoch on training data:')
    print("==> online epoch # " .. self.epoch .. ' [batch_size = ' .. self.opt.batch_size .. ']')
+   self.minibatch_inputs = {}
+   self.minibatch_targets = {}
+
    for t = 1, train_data:size(), self.opt.batch_size do
       -- disp progress
-      xlua.progress(t, train_data:size())
+      if (t % 20 == 1) or (t == train_data:size()) then
+	 xlua.progress(t, train_data:size())
+      end
       
       -- create mini batch.  The minibatch_inputs and minibatch_targets elements of a RecPoolTrainer are viewed directly by the feval made by make_feval()
-      self.minibatch_inputs = {}
-      self.minibatch_targets = {}
-      for i = t,math.min(t+self.opt.batch_size-1,train_data:size()) do
-         -- load new sample
-         local this_input = train_data.data[shuffle[i]]:double()
-         local this_target = train_data.labels[shuffle[i]]
-         table.insert(self.minibatch_inputs, this_input)
-         table.insert(self.minibatch_targets, this_target)
+      if self.opt.batch_size == 1 then
+	 self.minibatch_inputs[1] = train_data.data[shuffle[t]]:double() -- This doesn't copy memory if the type is already correct
+	 self.minibatch_targets[1] = train_data.labels[shuffle[t]]
+      else
+	 self.minibatch_inputs = {}
+	 self.minibatch_targets = {}
+	 for i = t,math.min(t+self.opt.batch_size-1,train_data:size()) do
+	    -- load new sample
+	    local this_input = train_data.data[shuffle[i]]:double()
+	    local this_target = train_data.labels[shuffle[i]]
+	    table.insert(self.minibatch_inputs, this_input)
+	    table.insert(self.minibatch_targets, this_target)
+	 end
       end
 
       
@@ -228,9 +243,11 @@ function RecPoolTrainer:train(train_data)
 
    self.confusion:zero()
    for i = 1,#self.model.criteria_list.criteria do
-      print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:size() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:size())
-      self.loss_hist[i] = 0
-      self.grad_loss_hist[i] = 0
+      if self.track_criteria_outputs then
+	 print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:size() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:size())
+	 self.loss_hist[i] = 0
+	 self.grad_loss_hist[i] = 0
+      end
 
       if (self.model.criteria_list.names[i] == 'pooling L2 shrink reconstruction loss') and not(self.model.disable_pooling) then
 	 print('performing additional testing on ' .. self.model.criteria_list.names[i] .. ' with value ' .. self.model.criteria_list.criteria[i].output)
