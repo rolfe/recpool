@@ -16,7 +16,7 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3 --2e-3 --5e-3
-local full_train_learning_rate = 4e-3
+local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 500
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --50
@@ -284,7 +284,7 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(0.5) -- 0.1 seems too small to learn good classification
+model:reset_classification_lambda(1) -- 0.1 seems too small to learn good classification
 num_epochs = 500
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    if (i % 20 == 1) and (i > 1) then
