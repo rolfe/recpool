@@ -285,6 +285,20 @@ TRY ADJUSTING INIT POOLING SPARSITY RATHER THAN THE L1 LOSS SCALING WHEN INCREAS
 CONSIDER using overcomplete pooling, as suggested by Jia, Huang, Darrell (2012); scale down L1 loss appropriately
 Identify the slowest component of the network.  If it is still repair of the matrices after training, write C code to do this
 How many times should repair be called?
+Are square and sqrt actually slow on the server?
+
+Large learning rates after classification loss is enabled seem to initially bounce the network out of a local minimum, leading to large learning rates.  This occurs even if we simply fail to account for the effect of learning rate decay, which decreases the learning rate by a factor of 6 with the current default parameters.  The network resettles into a new local optimum fairly quickly.  Interestingly, the largest gradients are seen in the encoding feature extraction dictionary and the parameterized shrink; explaining away also develops large gradients.  The new local optimum looks very similar to the original one.  The biggest differences seem to be in the encoding feature extraction dictionary elements that are heavily changed by the classification loss.
+
+The good run on 10/11 had normalized rows in encoding_feature_extraction_dictionary.  However, this is a heuristic and unmotivated mechanism to keep the encoding_feature_extraction_dictionary from exploding.  It would be cleaner to decrease the strength of the classification loss relative to the reconstruction losses, thereby forcing the network to solve classification given the constraint that reconstruction remains good.
+Perhaps encoding feature extraction dictionary elements distort because otherwise the output is insufficiently nonlinear.  Note that the pooling output is generally not very sparse, and the classification dictionary tends to be dense, indicating that most pooling units are associated with every digit.
+The previous test in which I conlcuded that a classification loss scaling of 0.1 was insufficient seems to have only been run on the quick training set (500 elements)!
+
+10/11 random_init run - 220 epochs, 97.77% - 280 epochs, 98.38% - 320 epochs, 98.28% - 380 epochs, 98.37%
+
+10/22 1en5_learning_rate run - 280 epochs, 97.90% (99.66% on training set) - 340 epochs, 97.88% (99.88% on training set) - 380 epochs, 97.93% - 400 epochs, 96.17% (97.92% on training set) - seems to overfit
+10/23 2en5_leaning_rate run - 260 epochs, 97.34% - 280 epochs, 97.95% - 300 epochs, 97.77% correct (99.90% on training set) - CONFIRM that this also overfits
+
+Redo a run with normalized rows to see if I can repeate 98.4% correct
 
 othello
 duncan

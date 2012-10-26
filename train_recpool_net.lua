@@ -378,6 +378,16 @@ function RecPoolTrainer:train(train_data)
 	 print('Pooling normalization is ', self.model.layers[i].debug_module_list.normalize_pooled_output.norm)
       end
 
+
+      local m = self.model.module_list.classification_dictionary.weight
+      local norms = torch.Tensor(m:size(1))
+      for j = 1,m:size(1) do
+	 norms[j] = m:select(1,j):norm()
+      end
+      print('C row norms are ', norms:unfold(1,10,10))
+
+      
+
       --[[
       print('shrink values', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('shrink values', torch.add(self.model.layers[i].module_list.shrink.shrink_val, -1e-5):unfold(1,10,10))

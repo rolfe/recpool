@@ -7,6 +7,7 @@ DEBUG_shrink = false -- don't require that the shrink value be non-negative, to 
 DEBUG_L2 = false
 DEBUG_L1 = false
 DEBUG_OUTPUT = false
+DEBUG_RF_TRAINING_SCALE = nil
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
 
 -- the input is x [1] (already wrapped in a table)
@@ -47,7 +48,7 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST)
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
@@ -229,10 +230,10 @@ end
 
 
 local function duplicate_decoding_feature_extraction_dictionary(base_decoding_feature_extraction_dictionary, layer_size, RUN_JACOBIAN_TEST)
-   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
+   local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
    decoding_feature_extraction_dictionary_copy:share(base_decoding_feature_extraction_dictionary, 'weight', 'bias', 'gradWeight', 'gradBias')
 
-   local decoding_feature_extraction_dictionary_transpose = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST)
+   local decoding_feature_extraction_dictionary_transpose = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE)
    --decoding_feature_extraction_dictionary_transpose:share(base_decoding_feature_extraction_dictionary, 'weight', 'gradWeight') -- this doesn't work, since it needs to be the transpose
    decoding_feature_extraction_dictionary_transpose.weight:set(base_decoding_feature_extraction_dictionary.weight:t())
    decoding_feature_extraction_dictionary_transpose.gradWeight:set(base_decoding_feature_extraction_dictionary.gradWeight:t())
@@ -617,6 +618,12 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    end
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
    local disable_trainable_pooling = false
+   if DEBUG_RF_TRAINING_SCALE == 0 then
+      disable_trainable_pooling = true
+      print('Disabling trainable pooling!')
+      io.read()
+   end
+   
    if recpool_config_prefs.use_squared_weight_matrix == nil then
       error('recpool_config_prefs.use_squared_weight_matrix was not defined')
    end
@@ -627,9 +634,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = false}, RUN_JACOBIAN_TEST) 
-   local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
+   local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
    local base_shrink 
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
       base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
@@ -883,7 +890,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- THIS SHOULD PROBABLY ONLY BE DONE BEFORE THE CLASSIFICATION LOSS!!!
    -- normalize the output of each layer; output is normalized s [1]
    local normalize_output = nn.NormalizeTable()
-   this_layer:add(normalize_output) -- this is undefined if all outputs are zero
+   this_layer:add(normalize_output) -- this is undefined if all outputs are zero 
 
 
    this_layer.module_list = module_list

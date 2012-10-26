@@ -98,6 +98,7 @@ function load_parameters(flattened_parameters, file_name)
    print('loading flattened parameters from ' .. file_name)
    local mf = torch.DiskFile(file_name,'r'):binary()
    local saved_parameters = mf:readObject()
+   print('current parameters have size ' .. flattened_parameters:nElement() .. '; loaded parameters have size ' .. saved_parameters:nElement())
    flattened_parameters:copy(saved_parameters)
    mf:close()
 
