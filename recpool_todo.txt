@@ -299,6 +299,7 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 10/23 2en5_leaning_rate run - 260 epochs, 97.34% - 280 epochs, 97.95% - 300 epochs, 97.77% correct (99.90% on training set) - CONFIRM that this also overfits
 
 Redo a run with normalized rows to see if I can repeate 98.4% correct
+Consider the possibility that this works so well because, with normalized rows of encoding_feature_extraction_dictionary, all units contribute; none are ignored.  Without this normalization, the ratio of magnitudes starts at around 4 after pretraining, and grows to around 8 once the classification loss is activated.  
 
 othello
 duncan
