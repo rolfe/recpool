@@ -17,7 +17,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
-local quick_train_epoch_size = 500
+local quick_train_epoch_size = 5000
 
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
@@ -89,6 +89,7 @@ rec_mag = 5 --4 --5 --4
 if num_layers == 1 then
    if fe_layer_size == 200 then
       L1_scaling = 3 --4 --2.5 -- with square root L2 position loss
+      --L1_scaling = 6 -- with classification loss added in
       --L1_scaling = 3 --2.5 --1.5 -- straight L2 position, sqrt-sum-of-squares pooling
       --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
       if p_layer_size == 200 then
@@ -208,6 +209,7 @@ local data_set_size, data
 if params.data_set == 'train' then
    data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or quick_train_epoch_size
    data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
+   --data = mnist.loadTrainSet(data_set_size, 'recpool_net_L2_classification') -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
 else
    data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
    if params.data_set == 'validation' then
@@ -254,7 +256,7 @@ local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_ou
 if params.load_file ~= '' then
    load_parameters(trainer:get_flattened_parameters(), params.load_file)
    --model:randomize_pooling()
-   --model.module_list.classification_dictionary.weight:mul(0)
+   --model.module_list.classification_dictionary.weight:mul(10)
 end
 
 os.execute('rm -rf ' .. opt.log_directory)
@@ -279,7 +281,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 200 --501 --201
+num_epochs_no_classification = 1 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
@@ -291,10 +293,26 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(0.2) -- 0.2 seems to strike an even balance between reconstruction and classification
-trainer.config.evalCounter = 0 -- reset counter for learning rate decay
+model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
+trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
+trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
+model:reset_learning_scale_factor(0) -- turn off learning for all ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
 num_epochs = 500
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
+   -- Train the entire network with a very low learning rate for a few epochs, to resolve mismatches between the sparse coding layer and the classification layer.  Remember that, since the classification dictionary is now so large, the backpropagated gradients are correspondingly scaled up
+   if i == 7 + num_epochs_no_classification then 
+      --model:reset_learning_scale_factor(0.05) 
+      --trainer:reset_learning_rate(opt.learning_rate) 
+
+      model:reset_learning_scale_factor(1) 
+      trainer:reset_learning_rate(0.05 * opt.learning_rate) 
+      print('resetting learning rate to ' .. 0.05 * opt.learning_rate)
+   elseif i == 17 + num_epochs_no_classification then
+      --model:reset_learning_scale_factor(0.2) -- this is largely equivalent to the learning rate decay after 200 epochs, which we removed above
+      trainer:reset_learning_rate(0.15 * opt.learning_rate) 
+      print('resetting learning rate to ' .. 0.15 * opt.learning_rate)
+   end
+   
    if (i % 20 == 1) and (i > 1) then
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end

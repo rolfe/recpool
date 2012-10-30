@@ -717,6 +717,9 @@ function rec_pool_test.full_network_test()
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
    local layer_size = {10, 20, 10, 10}
    local target = math.random(layer_size[#layer_size])
+   --local target = torch.zeros(layer_size[#layer_size]) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
+   --target[math.random(layer_size[#layer_size])] = 1
+
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 
 		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
@@ -883,6 +886,8 @@ function rec_pool_test.ISTA_reconstruction()
 
    local test_input = torch.rand(layer_size[1])
    local target = math.random(layer_size[4])
+   --local target = torch.zeros(layer_size[4]) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
+   --target[math.random(layer_size[4])] = 1
    model:set_target(target)
 
    model:updateOutput(test_input)

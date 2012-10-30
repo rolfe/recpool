@@ -77,6 +77,10 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outpu
    self.epoch = 0
 end
 
+function RecPoolTrainer:reset_learning_rate(new_learning_rate)
+   self.opt.learning_rate = new_learning_rate
+end
+
 function RecPoolTrainer:get_flattened_parameters() -- flattened_parameters are more sensibly handled by the model, rather than the trainer
    return self.flattened_parameters
 end
@@ -212,6 +216,7 @@ function RecPoolTrainer:train(train_data)
                              weightDecay = self.opt.weight_decay,
                              momentum = self.opt.momentum,
                              learningRateDecay = 5e-7}
+	 self.config.learningRate = self.opt.learning_rate -- make sure that the sgd learning rate reflects any resets
          optim.sgd(self.feval, self.flattened_parameters, self.config)
 	 
       elseif self.opt.optimization == 'ASGD' then

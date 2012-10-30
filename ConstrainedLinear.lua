@@ -58,6 +58,10 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
    end
 end
 
+function ConstrainedLinear:reset_learning_scale_factor(new_scale_factor)
+   self.learning_scale_factor = new_scale_factor
+end
+
 function ConstrainedLinear:percentage_zeros_per_column(percentage)
    for i = 1,self.weight:size(2) do
       local current_column = self.weight:select(2,i)

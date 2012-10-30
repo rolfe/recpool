@@ -40,7 +40,7 @@ local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary
    first_shrink_parallel:add(nn.Identity())
    first_ista_seq:add(first_shrink_parallel)
 
-   return first_ista_seq, current_shrink
+   return first_ista_seq --, current_shrink
 end
 
 local function duplicate_linear_explaining_away(base_explaining_away, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
@@ -229,6 +229,7 @@ local function build_loss_tester(num_inputs, tested_inputs, criteria_list)
 end
 
 
+-- creates two copies of the base_decoding_feature_extraction_dictionary, the second of which has the weight matrix transposed
 local function duplicate_decoding_feature_extraction_dictionary(base_decoding_feature_extraction_dictionary, layer_size, RUN_JACOBIAN_TEST)
    local decoding_feature_extraction_dictionary_copy = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
    decoding_feature_extraction_dictionary_copy:share(base_decoding_feature_extraction_dictionary, 'weight', 'bias', 'gradWeight', 'gradBias')
@@ -485,11 +486,13 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    local classification_dictionary
    if not(recpool_config_prefs.disable_pooling) then
       classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
+      --classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], {normalized_rows = true})
    else
       -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
       classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
    end
    local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
+   --local classification_criterion = nn.L1CriterionModule(nn.MSECriterion(), classification_criterion_lambda) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
 
    classification_dictionary.bias:zero()
 
@@ -539,6 +542,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
    model:add(classification_dictionary)
    model:add(nn.LogSoftMax())
+   --model:add(nn.SoftMax()) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
    
    model.module_list = {classification_dictionary = classification_dictionary}
 
@@ -558,6 +562,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       end
 
       function model:set_target(new_target) 
+	 --print('setting classification criterion target to ', new_target)
 	 classification_criterion:setTarget(new_target) 
       end 
 
@@ -590,6 +595,13 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       function model:repair()  -- repair each layer; classification dictionary is a normal linear, and so does not need to be repaired
 	 for i = 1,#layer_list do
 	    layer_list[i]:repair()
+	 end
+	 --classification_dictionary:repair()
+      end
+
+      function model:reset_learning_scale_factor(new_scale_factor)  -- reset the learning scale factor for each layer; classification dictionary is left unchanged
+	 for i = 1,#layer_list do
+	    layer_list[i]:reset_learning_scale_factor(new_scale_factor)
 	 end
       end
 
@@ -692,7 +704,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
    end
 
-   local this_decoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary_transpose = 
+   local copied_decoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary_transpose = 
       duplicate_decoding_feature_extraction_dictionary(base_decoding_feature_extraction_dictionary, {layer_size[1], layer_size[2]}, RUN_JACOBIAN_TEST)
    
    
@@ -806,7 +818,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- take the input x [1] and calculate the sparse code z [1], the transformed input W*x [2], and the untransformed input x [3]
    local ista_seq
-   ista_seq, shrink_copies[#shrink_copies + 1] = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink)
+   --ista_seq, shrink_copies[#shrink_copies + 1] = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink)
+   ista_seq = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink) -- this function does not actually copy shrink, so a shrink_copy does not need to be returned
    this_layer:add(ista_seq)
 
    for i = 1,recpool_config_prefs.num_ista_iterations do
@@ -872,7 +885,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- calculate the L2 reconstruction and position loss for pooling; return the pooled code s [1] and the original input x [2]
    local pooling_L2_loss_seq, pooling_L2_debug_module_list =
-      build_pooling_L2_loss(decoding_pooling_dictionary, this_decoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary_transpose, mask_sparsifying_module, lambdas, criteria_list)
+      build_pooling_L2_loss(decoding_pooling_dictionary, copied_decoding_feature_extraction_dictionary, decoding_feature_extraction_dictionary_transpose, mask_sparsifying_module, lambdas, criteria_list)
    if not(recpool_config_prefs.disable_pooling) then
       this_layer:add(pooling_L2_loss_seq)
    end
@@ -890,7 +903,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- THIS SHOULD PROBABLY ONLY BE DONE BEFORE THE CLASSIFICATION LOSS!!!
    -- normalize the output of each layer; output is normalized s [1]
    local normalize_output = nn.NormalizeTable()
-   this_layer:add(normalize_output) -- this is undefined if all outputs are zero 
+   this_layer:add(normalize_output) -- this is undefined if all outputs are zero -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
 
 
    this_layer.module_list = module_list
@@ -925,6 +938,21 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 decoding_pooling_dictionary:repair(true) -- force full normalization of columns
       end
    end
+
+   function this_layer:reset_learning_scale_factor(new_scale_factor)
+      -- ALSO NEED TO RESET ALL OF THE COPIES!!!
+      encoding_feature_extraction_dictionary:reset_learning_scale_factor(new_scale_factor)
+      base_decoding_feature_extraction_dictionary:reset_learning_scale_factor(new_scale_factor)
+      copied_decoding_feature_extraction_dictionary:reset_learning_scale_factor(new_scale_factor)
+      decoding_feature_extraction_dictionary_transpose:reset_learning_scale_factor(new_scale_factor)
+      base_explaining_away:reset_learning_scale_factor(new_scale_factor)
+      for i = 1,#explaining_away_copies do
+	 explaining_away_copies[i]:reset_learning_scale_factor(new_scale_factor)
+      end
+      encoding_pooling_dictionary:reset_learning_scale_factor(new_scale_factor)
+      decoding_pooling_dictionary:reset_learning_scale_factor(new_scale_factor)
+   end
+
    
    --return this_layer, criteria_list, encoding_feature_extraction_dictionary, base_decoding_feature_extraction_dictionary, encoding_pooling_dictionary, decoding_pooling_dictionary, feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module, base_explaining_away, base_shrink, explaining_away_copies, shrink_copies
    return this_layer

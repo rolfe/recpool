@@ -295,11 +295,26 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 
 10/11 random_init run - 220 epochs, 97.77% - 280 epochs, 98.38% - 320 epochs, 98.28% - 380 epochs, 98.37%
 
-10/22 1en5_learning_rate run - 280 epochs, 97.90% (99.66% on training set) - 340 epochs, 97.88% (99.88% on training set) - 380 epochs, 97.93% - 400 epochs, 96.17% (97.92% on training set) - seems to overfit
-10/23 2en5_leaning_rate run - 260 epochs, 97.34% - 280 epochs, 97.95% - 300 epochs, 97.77% correct (99.90% on training set) - CONFIRM that this also overfits
+10/22 1en5_learning_rate run - 280 epochs, 97.90% (99.66% on training set) - 340 epochs, 97.88% (99.88% on training set) - 380 epochs, 97.93% - 400 epochs, 96.17% (97.92% on training set) - 420 epochs, 97.97% - 440 epochs, 97.97% (99.96% on training set)
+10/23 2en5_leaning_rate run - 260 epochs, 97.34% - 280 epochs, 97.95% - 300 epochs, 97.77% correct (99.90% on training set) - 420 epochs, 97.97% - 440 epochs, 97.97% (99.96% on training set)
+10/23 2en5_learning rate, fixed_shrink, 1 classification scaling run - 440 epochs, 98% - 480 epochs, 97.93% - 520 epochs, 97.97% - 680 epochs, 97.95%
+
+10/25 2en5_learning_rate, 200 pooling units, fixed_shrink, 1 classification scaling run - 340 epochs, 97.98% - 360 epochs, 97.76%
+10/25 2en5_learning_rate normalized encoding_feature_extraction_dictionary rows, ista sparsity 1, fixed_shrink - 260 epochs, 96.57% - 280 epochs, 98.08% - 300 epochs, 97.62% - 320 epochs, 98.17% - 340 epochs, 98.32% - 360 epochs, 98.35% (99.9% on training set) - 380 epochs, 98.34% - 400 epochs, 98.52% - 460 epochs, 98.52% - 480 epochs, 98.43% - 500 epochs, 98.53%
+
+10/26 2en5_learning_rate, 0.2 classification scaling, fixed_shrink run - 340 epochs, 97.76% (99.8% on training set) - 360 epochs, 97.72% - 380 epochs, 97.72% (99.82% on training set) - 500 epochs, 97.66% - 540 epochs, 97.62%
 
 Redo a run with normalized rows to see if I can repeate 98.4% correct
 Consider the possibility that this works so well because, with normalized rows of encoding_feature_extraction_dictionary, all units contribute; none are ignored.  Without this normalization, the ratio of magnitudes starts at around 4 after pretraining, and grows to around 8 once the classification loss is activated.  
+It seems as if, once we start training witht he classification loss, the feature encoding dynamics move out of the (group-)sparse reconstruction regime.  Presumably, this is due to the pressure to increase the magnitude of the output.  Encoding pooling dictionary magnitudes also shoot up.  Note though that this occurs even though the output is normalized before classification.
+The problem may be the max operation which the L2 norm roughly performs.  Only the largest input matters, and so it is trained disproportionately.  If the loss function benefits from increasing the magnitude of the output, this will develop into a positive feedback loop, in contrast to the normal operation of group sparsity, which favors all elements of a group being activated equally.  The difference is whether the unit activities or the pooled activities are used as the output.  But why would large outputs be desirable, given that outputs are normalized before the classification layer?  This may be the only way to silence units corresponding to the wrong classes, which otherwise will tend to be at least weakly active.  We go from penalizing the group sparsity to rewarding it!  Large group sparsity corresponds to large output to the next layer.  We can reestablish a penalty rather than a reward on group sparsity by shifting the balance between the L1 group sparsity penalty and the classification loss away from the classification loss.  
+This is consistent with the behavior observed when the sign of the ClassNLLCriterion is flipped.
+
+A certain magnitude output is necessary to satisfy the classification loss.  If this is not immediately achieved using the classification dictionary, the increase in output magnitude will be effected by increasing outputs throughout the processing chain.  We may be able to avoid the corruption of the sparse coding layer by initializing the classification dictionary to be huge.  Alternatively, pretrain the classification dictionary alone before training everything together.  After the sparse coding layer is corrupted to produce larger outputs, it is hard to learn the original correct dynamics, since the classification dictionary needs to be increased in register with decrease in output magnitude from the sparse coding layer.  After the classification dictionary is trained by itself to set the row magnitudes to a reasonable range, training of the full network at the usual rate seems to be unstable, and leads to the corruption of the sparse coding stage.  It seems to be necessary to use a very small global learning rate immediately after learning is enabled in the entire network, and keep the learning rate low even after the initial burn-in.  Keep in mind that larger values of the classification dictionary will lead to larger backpropagated gradients in the rest of the network.
+
+Normalizing the rows of the classification dictionary and scaling the classification loss by 0.2 doen't seem to work too badly.  This seems to induce each row of the classification dictionary to have exaclty one large element, which implies that most pooling units go unused.
+Consider just increase the group sparsity to balance out the classification loss.
+Consider normalizing the rows of both encoding feature extraction and encoding pooling dictionaries
 
 othello
 duncan

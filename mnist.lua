@@ -105,6 +105,22 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
       setmetatable(dataset.labels, {__index = function(self, index)
                                                 return tensor[index][dim]+1
                                              end})
+   elseif alternative_access_method == 'recpool_net_L2_classification' then
+      --print('using L2 classification')
+      --io.read()
+      dataset.data = {}
+      dataset.labels = {}
+      local label_vector = torch.zeros(10)
+      setmetatable(dataset.data, {__index = function(self, index)
+				     return tensor[index]:narrow(1, 1, dim-1)
+      end})
+      setmetatable(dataset.labels, {__index = function(self, index)
+				       label_vector:zero()
+				       local class = tensor[index][dim]+1
+				       label_vector[class] = 1
+				       --print('mnist access will return ', label_vector)
+				       return label_vector
+      end})
    else
       local labelvector = torch.zeros(10)
       setmetatable(dataset, {__index = function(self, index)
