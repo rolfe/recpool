@@ -391,6 +391,17 @@ function RecPoolTrainer:train(train_data)
       end
       print('C row norms are ', norms:unfold(1,10,10))
 
+      --[[
+      local m = self.model.layers[i].module_list.explaining_away.weight
+      local norms = torch.Tensor(m:size(1))
+      for j = 1,m:size(1) do
+	 norms[j] = m:select(1,j):norm()
+      end
+      print('EXP row norms are ', norms:unfold(1,10,10))
+
+      print(m:select(1,5):unfold(1,10,10))
+      --]]
+
       
 
       --[[

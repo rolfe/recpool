@@ -839,7 +839,7 @@ function rec_pool_test.ISTA_reconstruction()
 
    -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
    local recpool_config_prefs = {}
-   recpool_config_prefs.num_ista_iterations = 50
+   recpool_config_prefs.num_ista_iterations = 5
    --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
    recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --recpool_config_prefs.shrink_style = 'SoftPlus'

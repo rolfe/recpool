@@ -296,21 +296,24 @@ end
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
 trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
+print('resetting learning rate to ' .. 20 * (5000 / data_set_size) * opt.learning_rate)
 model:reset_learning_scale_factor(0) -- turn off learning for all ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
 num_epochs = 1000
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    -- Train the entire network with a very low learning rate for a few epochs, to resolve mismatches between the sparse coding layer and the classification layer.  Remember that, since the classification dictionary is now so large, the backpropagated gradients are correspondingly scaled up
-   if i == 5 + 7 + num_epochs_no_classification then 
+   if i == 5 + 7 + num_epochs_no_classification then
       --model:reset_learning_scale_factor(0.05) 
       --trainer:reset_learning_rate(opt.learning_rate) 
 
       model:reset_learning_scale_factor(1) 
-      trainer:reset_learning_rate(0.05 * opt.learning_rate) 
-      print('resetting learning rate to ' .. 0.05 * opt.learning_rate)
+      local slow_burn_in_scale_factor = 0.1 -- 0.05
+      trainer:reset_learning_rate(slow_burn_in_scale_factor * opt.learning_rate) 
+      print('resetting learning rate to ' .. slow_burn_in_scale_factor * opt.learning_rate)
    elseif i == 5 + 17 + num_epochs_no_classification then
       --model:reset_learning_scale_factor(0.2) -- this is largely equivalent to the learning rate decay after 200 epochs, which we removed above
-      trainer:reset_learning_rate(0.15 * opt.learning_rate) 
-      print('resetting learning rate to ' .. 0.15 * opt.learning_rate)
+      local final_scale_factor = 1 -- 0.15
+      trainer:reset_learning_rate(final_scale_factor * opt.learning_rate) 
+      print('resetting learning rate to ' .. final_scale_factor * opt.learning_rate)
    end
    
    if (i % 20 == 1) and (i > 1) then

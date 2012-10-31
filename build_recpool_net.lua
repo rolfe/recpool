@@ -43,12 +43,13 @@ local function build_ISTA_first_iteration(encoding_feature_extraction_dictionary
    return first_ista_seq --, current_shrink
 end
 
-local function duplicate_linear_explaining_away(base_explaining_away, layer_size, use_base_explaining_away, RUN_JACOBIAN_TEST)
+local function duplicate_linear_explaining_away(base_explaining_away, layer_size, num_ista_iterations, use_base_explaining_away, RUN_JACOBIAN_TEST)
    local explaining_away
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE)
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
+					     (RUN_JACOBIAN_TEST and 1) or 1/num_ista_iterations)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
@@ -646,9 +647,11 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = false}, 
+								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, (RUN_JACOBIAN_TEST and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
+						     (RUN_JACOBIAN_TEST and 1) or 1/recpool_config_prefs.num_ista_iterations) 
    local base_shrink 
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
       base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
@@ -664,7 +667,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local shrink_copies = {}
 
    local pooling_dictionary_scaling_factor = 1
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = true, squared_weight_matrix = use_swm}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false, squared_weight_matrix = use_swm}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
@@ -739,9 +742,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    if recpool_config_prefs.shrink_style == 'SoftPlus' then
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(recpool_config_prefs.num_ista_iterations + 1)))
    else
+      -- WAS 1.25 rather than 2
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- the first ista iteration doesn't count towards num_ista_iterations
    end
-   base_explaining_away.weight:mul(-math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1)))
+   base_explaining_away.weight:mul(-math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
@@ -825,7 +829,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    for i = 1,recpool_config_prefs.num_ista_iterations do
       --calculate the sparse code z [1]; preserve the transformed input W*x [2], and the untransformed input x [3]
       local use_base_explaining_away = (i == 1) -- the base_explaining_away must be used once directly for parameter flattening in nn.Module to work properly; base_shrink is already used by build_ISTA_first_iteration
-      local this_explaining_away = duplicate_linear_explaining_away(base_explaining_away, {layer_size[1], layer_size[2]}, use_base_explaining_away, RUN_JACOBIAN_TEST)
+      local this_explaining_away = duplicate_linear_explaining_away(base_explaining_away, {layer_size[1], layer_size[2]}, recpool_config_prefs.num_ista_iterations, use_base_explaining_away, 
+								    RUN_JACOBIAN_TEST)
       local this_shrink 
       if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
 	 this_shrink = duplicate_shrink(base_shrink, {layer_size[1], layer_size[2]}, RUN_JACOBIAN_TEST)
@@ -924,7 +929,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter % 5 == 0 then
-	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1)))
+	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
 	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       end
       repair_counter = (repair_counter + 1) % 5

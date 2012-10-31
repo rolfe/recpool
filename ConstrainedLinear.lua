@@ -6,11 +6,12 @@ local ConstrainedLinear, parent = torch.class('nn.ConstrainedLinear', 'nn.Linear
 
 local check_for_nans
 
-function ConstrainedLinear:__init(input_size, output_size, desired_constraints, disable_normalized_updates, learning_scale_factor, RUN_JACOBIAN_TEST)
+function ConstrainedLinear:__init(input_size, output_size, desired_constraints, disable_normalized_updates, learning_scale_factor, RUN_JACOBIAN_TEST, learning_scale_factor_scale_factor)
    parent.__init(self, input_size, output_size)
 
    --disable_normalized_updates = false -- THIS AVOIDS NANS!!!
-   self.learning_scale_factor = learning_scale_factor or 1
+   self.learning_scale_factor_scale_factor = learning_scale_factor_scale_factor or 1
+   self.learning_scale_factor = self.learning_scale_factor_scale_factor * (learning_scale_factor or 1)
    self.RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST
    
    local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'normalized_rows', 'normalized_rows_pooling', 'threshold_normalized_rows', 
@@ -59,7 +60,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
 end
 
 function ConstrainedLinear:reset_learning_scale_factor(new_scale_factor)
-   self.learning_scale_factor = new_scale_factor
+   self.learning_scale_factor = self.learning_scale_factor_scale_factor * new_scale_factor
 end
 
 function ConstrainedLinear:percentage_zeros_per_column(percentage)
