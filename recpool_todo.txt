@@ -300,9 +300,12 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 10/23 2en5_learning rate, fixed_shrink, 1 classification scaling run - 440 epochs, 98% - 480 epochs, 97.93% - 520 epochs, 97.97% - 680 epochs, 97.95%
 
 10/25 2en5_learning_rate, 200 pooling units, fixed_shrink, 1 classification scaling run - 340 epochs, 97.98% - 360 epochs, 97.76%
-10/25 2en5_learning_rate normalized encoding_feature_extraction_dictionary rows, ista sparsity 1, fixed_shrink - 260 epochs, 96.57% - 280 epochs, 98.08% - 300 epochs, 97.62% - 320 epochs, 98.17% - 340 epochs, 98.32% - 360 epochs, 98.35% (99.9% on training set) - 380 epochs, 98.34% - 400 epochs, 98.52% - 460 epochs, 98.52% - 480 epochs, 98.43% - 500 epochs, 98.53%
+10/25 2en5_learning_rate normalized encoding_feature_extraction_dictionary rows, ista sparsity 1, fixed_shrink - 260 epochs, 96.57% - 280 epochs, 98.08% - 300 epochs, 97.62% - 320 epochs, 98.17% - 340 epochs, 98.32% - 360 epochs, 98.35% (99.9% on training set) - 380 epochs, 98.34% - 400 epochs, 98.52% - 460 epochs, 98.52% - 480 epochs, 98.43% - 500 epochs, 98.53% - 600 epochs, 98.5% - 641 epochs, 98.49%
 
 10/26 2en5_learning_rate, 0.2 classification scaling, fixed_shrink run - 340 epochs, 97.76% (99.8% on training set) - 360 epochs, 97.72% - 380 epochs, 97.72% (99.82% on training set) - 500 epochs, 97.66% - 540 epochs, 97.62%
+
+10/30 2en5_learning_rate, short classifier pretraining, restart from 10/23 fixed shrink 1 classification - 60 epochs, 97.88% - 80 epochs, 97.89% - 100 epochs, 97.89%
+10/30 2en5_learning_rate, long classifier pretraining, restart from 10/23 fixed shrink 1 classification - 40 epochs; 97.58% - 60 epochs, 97.84% - 80 epochs, 97.77% - 100 epochs, 97.9%
 
 Redo a run with normalized rows to see if I can repeate 98.4% correct
 Consider the possibility that this works so well because, with normalized rows of encoding_feature_extraction_dictionary, all units contribute; none are ignored.  Without this normalization, the ratio of magnitudes starts at around 4 after pretraining, and grows to around 8 once the classification loss is activated.  
