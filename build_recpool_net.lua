@@ -664,7 +664,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local shrink_copies = {}
 
    local pooling_dictionary_scaling_factor = 1
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false, squared_weight_matrix = use_swm}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = true, squared_weight_matrix = use_swm}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 
