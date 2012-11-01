@@ -650,7 +650,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = false}, 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = true}, 
 								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, (RUN_JACOBIAN_TEST and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
