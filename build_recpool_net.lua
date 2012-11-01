@@ -540,12 +540,14 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    table.insert(model.filter_enc_dec_list, 'encoder')
    table.insert(model.filter_name_list, 'classification dictionary')
 
+   local logsoftmax_module = nn.LogSoftMax()
    model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
    model:add(classification_dictionary)
-   model:add(nn.LogSoftMax())
+   model:add(logsoftmax_module)
    --model:add(nn.SoftMax()) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
    
-   model.module_list = {classification_dictionary = classification_dictionary}
+   model.module_list = {classification_dictionary = classification_dictionary, 
+			logsoftmax = logsoftmax_module}
 
    if DEBUG_OUTPUT then
       function model:set_target(new_target) print('WARNING: set_target does nothing when using DEBUG_OUTPUT') end
@@ -564,6 +566,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 
       function model:set_target(new_target) 
 	 --print('setting classification criterion target to ', new_target)
+	 self.current_target = new_target -- FOR DEBUG ONLY!!!
 	 classification_criterion:setTarget(new_target) 
       end 
 

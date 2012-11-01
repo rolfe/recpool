@@ -281,7 +281,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 200 --200 --501 --201
+num_epochs_no_classification = 1 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
@@ -301,17 +301,21 @@ model:reset_learning_scale_factor(0) -- turn off learning for all ConstrainedLin
 num_epochs = 1000
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    -- Train the entire network with a very low learning rate for a few epochs, to resolve mismatches between the sparse coding layer and the classification layer.  Remember that, since the classification dictionary is now so large, the backpropagated gradients are correspondingly scaled up
-   if i == 5 + 7 + num_epochs_no_classification then
+   local num_epochs_classification_pretraining = 7 -- 12
+   local num_epochs_classification_slow_burn_in = 10
+   if i == num_epochs_classification_pretraining + num_epochs_no_classification then
       --model:reset_learning_scale_factor(0.05) 
       --trainer:reset_learning_rate(opt.learning_rate) 
 
+      model:reset_classification_lambda(0.1)
       model:reset_learning_scale_factor(1) 
       local slow_burn_in_scale_factor = 0.1 -- 0.05
       trainer:reset_learning_rate(slow_burn_in_scale_factor * opt.learning_rate) 
       print('resetting learning rate to ' .. slow_burn_in_scale_factor * opt.learning_rate)
-   elseif i == 5 + 17 + num_epochs_no_classification then
+   elseif i == num_epochs_classification_slow_burn_in + num_epochs_classification_pretraining + num_epochs_no_classification then
       --model:reset_learning_scale_factor(0.2) -- this is largely equivalent to the learning rate decay after 200 epochs, which we removed above
-      local final_scale_factor = 1 -- 0.15
+      model:reset_classification_lambda(0.1)
+      local final_scale_factor = 5 --0.25 -- 0.15
       trainer:reset_learning_rate(final_scale_factor * opt.learning_rate) 
       print('resetting learning rate to ' .. final_scale_factor * opt.learning_rate)
    end

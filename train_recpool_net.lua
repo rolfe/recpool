@@ -391,6 +391,11 @@ function RecPoolTrainer:train(train_data)
       end
       print('C row norms are ', norms:unfold(1,10,10))
 
+      print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
+      print('target is ' .. self.model.current_target)
+      
+
+
       --[[
       local m = self.model.layers[i].module_list.explaining_away.weight
       local norms = torch.Tensor(m:size(1))
