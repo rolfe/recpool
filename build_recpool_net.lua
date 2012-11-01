@@ -9,6 +9,9 @@ DEBUG_L1 = false
 DEBUG_OUTPUT = false
 DEBUG_RF_TRAINING_SCALE = nil
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
+USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = true
+FULLY_NORMALIZE_ENC_FE_DICT = true
+NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -49,7 +52,7 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
       explaining_away = base_explaining_away
    else
       explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
-					     (RUN_JACOBIAN_TEST and 1) or 1/num_ista_iterations)
+					     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/num_ista_iterations)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
 
@@ -650,11 +653,13 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the exact range for the initialization of weight matrices by nn.Linear doesn't matter, since they are rescaled by the normalized_columns constraint
    -- threshold-normalized rows are a bad idea for the encoding feature extraction dictionary, since if a feature is not useful, it will be turned off via the shrinkage, and will be extremely difficult to reactivate later.  It's better to allow the encoding dictionary to be reduced in magnitude.
-   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), normalized_rows = false}, 
-								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, (RUN_JACOBIAN_TEST and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
+   local encoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[1],layer_size[2], {no_bias = (recpool_config_prefs.shrink_style == 'ParameterizedShrink'), 
+												     normalized_rows = NORMALIZE_ROWS_OF_ENC_FE_DICT}, 
+								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
+								       ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
-						     (RUN_JACOBIAN_TEST and 1) or 1/recpool_config_prefs.num_ista_iterations) 
+						     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/recpool_config_prefs.num_ista_iterations) 
    local base_shrink 
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
       base_shrink = nn.ParameterizedShrink(layer_size[2], FORCE_NONNEGATIVE_SHRINK_OUTPUT, DEBUG_shrink)
@@ -932,7 +937,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter % 5 == 0 then
-	 encoding_feature_extraction_dictionary:repair(nil, math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
+	 encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
 	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       end
       repair_counter = (repair_counter + 1) % 5

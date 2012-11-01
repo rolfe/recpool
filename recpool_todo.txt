@@ -307,7 +307,7 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 10/30 2en5_learning_rate, short classifier pretraining, restart from 10/23 fixed shrink 1 classification - 60 epochs, 97.88% - 80 epochs, 97.89% - 100 epochs, 97.89% - 120 epochs, 97.93% - 140 epochs, 97.9% - 160 epochs, 97.96% - 240 epochs, 97.9%
 10/30 2en5_learning_rate, long classifier pretraining, restart from 10/23 fixed shrink 1 classification - 40 epochs, 97.58% - 60 epochs, 97.84% - 80 epochs, 97.77% - 100 epochs, 97.9% - 120 epochs, 97.98% - 140 epochs, 97.93% - 240 epochs, 97.87% - 280 epochs, 97.9%
 
-10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99%
+10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98%
 
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, 0.1 classification after pretraining - 
 

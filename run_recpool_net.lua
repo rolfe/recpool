@@ -17,7 +17,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
-local quick_train_epoch_size = 5000
+local quick_train_epoch_size = 500
 
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
@@ -36,7 +36,7 @@ local mask_mag = nil
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 1 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -53,8 +53,8 @@ mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0
 --mask_mag = 0
 
 if not(disable_pooling) and not(disable_pooling_losses) then
-   sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
-   --sl_mag = 1e-2 -- attempt to duplicate good run on 10/11
+   --sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
+   sl_mag = 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
    sl_mag = 3e-2
@@ -134,8 +134,8 @@ local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_ma
 
 -- reduce lambda scaling to 0.15; still too sparse
 -- FOR THE LOVE OF GOD!!!  DEBUG ONLY!!!  L1_scaling should also scale sl_mag, but this has been removed to reconstruct the good run on 10/11
---local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
-local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+--local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
@@ -295,25 +295,29 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
-trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
-trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
-print('resetting learning rate to ' .. 20 * (5000 / data_set_size) * opt.learning_rate)
-model:reset_learning_scale_factor(0) -- turn off learning for all ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
+local perform_classifier_pretraining = false
+local num_epochs_classification_pretraining = 7 -- 12
+local num_epochs_classification_slow_burn_in = 10
+local slow_burn_in_scale_factor = 0.1 -- 0.05
+
+if perform_classifier_pretraining then
+   trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
+   trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
+   print('resetting learning rate to ' .. 20 * (5000 / data_set_size) * opt.learning_rate)
+   model:reset_learning_scale_factor(0) -- turn off learning for all ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
+end
 num_epochs = 1000
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    -- Train the entire network with a very low learning rate for a few epochs, to resolve mismatches between the sparse coding layer and the classification layer.  Remember that, since the classification dictionary is now so large, the backpropagated gradients are correspondingly scaled up
-   local num_epochs_classification_pretraining = 7 -- 12
-   local num_epochs_classification_slow_burn_in = 10
-   if i == num_epochs_classification_pretraining + num_epochs_no_classification then
+   if perform_classifier_pretraining and (i == num_epochs_classification_pretraining + num_epochs_no_classification) then
       --model:reset_learning_scale_factor(0.05) 
       --trainer:reset_learning_rate(opt.learning_rate) 
 
       model:reset_classification_lambda(0.1)
       model:reset_learning_scale_factor(1) 
-      local slow_burn_in_scale_factor = 0.1 -- 0.05
       trainer:reset_learning_rate(slow_burn_in_scale_factor * opt.learning_rate) 
       print('resetting learning rate to ' .. slow_burn_in_scale_factor * opt.learning_rate)
-   elseif i == num_epochs_classification_slow_burn_in + num_epochs_classification_pretraining + num_epochs_no_classification then
+   elseif perform_classifier_pretraining and (i == num_epochs_classification_slow_burn_in + num_epochs_classification_pretraining + num_epochs_no_classification) then
       --model:reset_learning_scale_factor(0.2) -- this is largely equivalent to the learning rate decay after 200 epochs, which we removed above
       model:reset_classification_lambda(0.1)
       local final_scale_factor = 5 --0.25 -- 0.15
