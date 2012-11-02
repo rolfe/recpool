@@ -10,8 +10,9 @@ DEBUG_OUTPUT = false
 DEBUG_RF_TRAINING_SCALE = nil
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = true
-FULLY_NORMALIZE_ENC_FE_DICT = true
+FULLY_NORMALIZE_ENC_FE_DICT = false
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
+NORMALIZE_ROWS_OF_P_FE_DICT = true
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -675,7 +676,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local shrink_copies = {}
 
    local pooling_dictionary_scaling_factor = 1
-   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], {no_bias = true, non_negative = true, normalized_rows_pooling = false, squared_weight_matrix = use_swm}, RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
+   local encoding_pooling_dictionary = nn.ConstrainedLinear(layer_size[2], layer_size[3], 
+							    {no_bias = true, non_negative = true, normalized_rows_pooling = NORMALIZE_ROWS_OF_P_FE_DICT, squared_weight_matrix = use_swm}, 
+							    RUN_JACOBIAN_TEST, (disable_trainable_pooling and 0) or pooling_dictionary_scaling_factor) -- this should have zero bias
 
    local dpd_training_scale_factor = 1 -- factor by which training of decoding_pooling_dictionary is accelerated
    if not(RUN_JACOBIAN_TEST) then 

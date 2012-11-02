@@ -307,9 +307,21 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 10/30 2en5_learning_rate, short classifier pretraining, restart from 10/23 fixed shrink 1 classification - 60 epochs, 97.88% - 80 epochs, 97.89% - 100 epochs, 97.89% - 120 epochs, 97.93% - 140 epochs, 97.9% - 160 epochs, 97.96% - 240 epochs, 97.9%
 10/30 2en5_learning_rate, long classifier pretraining, restart from 10/23 fixed shrink 1 classification - 40 epochs, 97.58% - 60 epochs, 97.84% - 80 epochs, 97.77% - 100 epochs, 97.9% - 120 epochs, 97.98% - 140 epochs, 97.93% - 240 epochs, 97.87% - 280 epochs, 97.9%
 
-10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98%
+10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98% - 260 epochs, 97.96%
+10/31 - both encoding feature extraction rows and encoding pooling rows normalized, trained from scratch WITH classification pretraining - 240 epochs, 97.85%
+10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55%
 
-11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, 0.1 classification after pretraining - 
+11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
+11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1%
+11/1 only two ista iterations WITH classification pretraining (from scratch)
+11/1 encoding FE rows fully normalized, no classification pretraining (from scratch)
+
+
+RESTART normalized FE and P from 200, without classification pretraining!!!
+RESTART ista rep 1 from 200 without classification pretraining!!!
+All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
+
+
 
 Redo a run with normalized rows to see if I can repeate 98.4% correct
 Consider the possibility that this works so well because, with normalized rows of encoding_feature_extraction_dictionary, all units contribute; none are ignored.  Without this normalization, the ratio of magnitudes starts at around 4 after pretraining, and grows to around 8 once the classification loss is activated.  
@@ -330,9 +342,9 @@ othello
 duncan
 cassio
 banquo
-iago
-macbeth
-
+iago - 
+macbeth - 10/31 enc and p rows normalized
 ceres
+iris
 
 
