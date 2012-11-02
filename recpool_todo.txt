@@ -342,8 +342,8 @@ othello
 duncan
 cassio
 banquo
-iago - 
-macbeth - 10/31 enc and p rows normalized
+iago - 11/2 enc and p rows normalized, restart without classification pretraining
+macbeth - 10/31 enc and p rows normalized, classification pretraining
 ceres
 iris
 
