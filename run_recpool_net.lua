@@ -19,7 +19,7 @@ local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 5000
 
-local fe_layer_size = 300 --400 --200
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -280,7 +280,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 200 --200 --501 --201
+num_epochs_no_classification = 1 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
@@ -294,6 +294,10 @@ end
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
+if num_epochs_no_classification == 1 then
+   trainer.config.evalCounter = 200 * 50000
+   --trainer:reset_learning_rate(0.5 * opt.learning_rate)
+end
 local perform_classifier_pretraining = false
 local num_epochs_classification_pretraining = 7 -- 12
 local num_epochs_classification_slow_burn_in = 10

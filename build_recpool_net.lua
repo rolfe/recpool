@@ -328,7 +328,7 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local construct_alt_pos_numerator_seq = nn.Sequential() -- z*(P*s)^0.5 
    construct_alt_pos_numerator_seq:add(nn.SelectTable{2,3})
    local safe_sqrt_seq = nn.Sequential()
-   local safe_sqrt_const = 1e-7
+   local safe_sqrt_const = 1e-10 --1e-7
    safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0)
    safe_sqrt_seq:add(nn.Sqrt())
    safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100

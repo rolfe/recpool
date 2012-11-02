@@ -308,13 +308,15 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 10/30 2en5_learning_rate, long classifier pretraining, restart from 10/23 fixed shrink 1 classification - 40 epochs, 97.58% - 60 epochs, 97.84% - 80 epochs, 97.77% - 100 epochs, 97.9% - 120 epochs, 97.98% - 140 epochs, 97.93% - 240 epochs, 97.87% - 280 epochs, 97.9%
 
 10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98% - 260 epochs, 97.96%
-10/31 - both encoding feature extraction rows and encoding pooling rows normalized, trained from scratch WITH classification pretraining - 240 epochs, 97.85%
-10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55% - 240 epochs, 97.94%
+10/31 - both encoding feature extraction rows and encoding pooling rows normalized, trained from scratch WITH classification pretraining - 240 epochs, 97.85% - 260 epochs, 97.53% - 280 epochs, 98.26%
+10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55% - 240 epochs, 97.94% - 260 epochs, 97.76%
 
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
-11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1%
+11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1% - 120 epochs, 97.11%
 11/1 only two ista iterations WITH classification pretraining (from scratch)
 11/1 encoding FE rows fully normalized, no classification pretraining (from scratch)
+
+RESTART RUNS ALMOST CERTAINLY HAVE A LEARNING RATE THAT IS TOO LARGE!!!  This may explain their lack of success
 
 
 RESTART ista rep 1 from 200 without classification pretraining!!!
@@ -337,13 +339,21 @@ Try initializing a run with unnormalized encoding_feature_extraction_dictionary 
 
 Merely normalizing the rows of the encoding_feature_extraction_dictionary does not ensure that the sparse coding layer will remain uncorrupted by the classification loss.  When used with classification loss pretraining and full learning rate, the encoder receptive fields grow large.  It seems as if this is mostly a result of the learning rate being too large.  The encoder changes extremely rapidly, and classification loss doubles.  This is surprising, since the gradient magnitudes aren't any larger than they are during unsupervised pretraining.  There seem to be occasional inputs that yield very poor classifications, since all the gradients on the feedforward pathway increase by a factor of about 10.  We don't want to turn down the training due to the classification loss too much, or classification trains very slowly.  At the same time, a large classification-induced gradient tends to disrupt sparse coding/reconstruction, since the classification gradient consists of a few large instances when inputs are classified incorrectly, interspersed amidst many small instances.  Try scaling down the classification loss and complementarily scaling up the learning rate, so that the reconstruction loss is effectively increased, and can quickly correct disruptions induced by large corrections to incorrect classifications.
 
+It probably makes sense that classification pretraining leads to poor final performance.  During the pretraining, the network will lock itself into a sub-optimal local minimum.  The large classification dictionary weights learned during pretraining will fix the interpretation of each pooling unit, so their overall mapping cannot be changed afterwards.  However, it might be profitable to have a "classification pretraining" interval during which the scaling factor on the classification loss is 0.1 or 0.2, before increasing it to 1.  This might allow the classification dictionary to gradually change in concert with the reconstruction loss, rather than performing alternating minimization between the two.  The 10/25 run seemed to use no more than half of the pooling units in constructing the classification.  The 10/11 run seemed to do better, but that may be an artifact of its early termination.  
+
+The real issue is to keep the reconstruction gradients comparable to the classification gradients.  Whenever the classification gradients dominate learning, the sparse coding layer degenerates.  Suddenly introducing the classification loss will generally induce very large classification gradients, which will tend to disrupt existing learning.  Pretraining the classification dictionary reduces the magnitude of the classification gradients, at the expense of reducing the coordination between the feature extraction and the classification stages.  
+
+It seems likely that the real problem is the nonlinearity of the encoder.  With six iterations of ISTA, the encoder is highly nonlinear.  Even when used purely for sparse coding, and ISTA encoder can exhibit rapid changes in output code in response to small changes in the input.  This instability is probably coopted by the classification loss; so long as each element of the training set induces a sufficiently different code, it's easy to train the classification dictionary to produce the correct output.  Training with the classification loss probably increases the instability of the deep ISTA encoder, reducing the loss on the training set, but failing to generalize to the test set.  Normalizing the encoding_feature_extraction_dictionary rows may reduce this tendency by making it harder to drive the ISTA encoder to instability.  Note though that increasing the magnitude of a row of the encoder_feature_extraction_dictionary is very similar to increasing the corresponding element on the diagonal of the explaining_away matrix.  Note further that the gradient of a row of the encoder_feature_extraction_dictionary will tend to be parallel to its current value, since in a sparse coder, the unit driven by a row will tend to be active only when the input is aligned with the current value of the row, and the gradient is proportional to the input.  
+
+Incorrect classifications induce massive gradients.  This suggests that the classification loss really should be smaller.  However, I've observed massive gradients even with a classification loss scaling of 0.05.
+
 othello - 11/2 enc rows normalized; 300 fe units
 duncan - 10/31 ista mods, classification pretraining
 cassio - 11/2 enc rows normalized; from scratch; learning rate decay *IS NOT* reset, to duplicate the successful run on 10/25 as faithfully as possible
 banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay *is* reset)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining
 macbeth - 10/31 enc and p rows normalized, classification pretraining
-ceres
-iris
+ceres - 11/1 only two ista iterations, with ista modules learning rates scaled down proportional to number of repeats (but this isn't too important, given the small number of repeats) and classification pretraining with low classification loss scaling and global learning scaled up
+iris - 11/1 fe enc rows fully normalized
 
 
