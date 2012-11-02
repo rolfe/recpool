@@ -317,7 +317,6 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 11/1 encoding FE rows fully normalized, no classification pretraining (from scratch)
 
 
-RESTART normalized FE and P from 200, without classification pretraining!!!
 RESTART ista rep 1 from 200 without classification pretraining!!!
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
 
@@ -340,8 +339,8 @@ Merely normalizing the rows of the encoding_feature_extraction_dictionary does n
 
 othello
 duncan
-cassio
-banquo
+cassio - 10/30 fe enc rows normalized, classification pretraining
+banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay *is* reset)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining
 macbeth - 10/31 enc and p rows normalized, classification pretraining
 ceres
