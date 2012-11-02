@@ -350,8 +350,8 @@ Incorrect classifications induce massive gradients.  This suggests that the clas
 othello - 11/2 enc rows normalized; 300 fe units
 duncan - 10/31 ista mods, classification pretraining
 cassio - 11/2 enc rows normalized; from scratch; learning rate decay *IS NOT* reset, to duplicate the successful run on 10/25 as faithfully as possible
-banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay *is* reset)
-iago - 11/2 enc and p rows normalized, restart without classification pretraining
+banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay is not reset)
+iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 10/31 enc and p rows normalized, classification pretraining
 ceres - 11/1 only two ista iterations, with ista modules learning rates scaled down proportional to number of repeats (but this isn't too important, given the small number of repeats) and classification pretraining with low classification loss scaling and global learning scaled up
 iris - 11/1 fe enc rows fully normalized
