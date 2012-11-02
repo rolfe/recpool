@@ -19,7 +19,7 @@ local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 5000
 
-local fe_layer_size = 200 --400 --200
+local fe_layer_size = 300 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)

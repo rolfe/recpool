@@ -309,7 +309,7 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 
 10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98% - 260 epochs, 97.96%
 10/31 - both encoding feature extraction rows and encoding pooling rows normalized, trained from scratch WITH classification pretraining - 240 epochs, 97.85%
-10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55%
+10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55% - 240 epochs, 97.94%
 
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1%
@@ -337,9 +337,9 @@ Try initializing a run with unnormalized encoding_feature_extraction_dictionary 
 
 Merely normalizing the rows of the encoding_feature_extraction_dictionary does not ensure that the sparse coding layer will remain uncorrupted by the classification loss.  When used with classification loss pretraining and full learning rate, the encoder receptive fields grow large.  It seems as if this is mostly a result of the learning rate being too large.  The encoder changes extremely rapidly, and classification loss doubles.  This is surprising, since the gradient magnitudes aren't any larger than they are during unsupervised pretraining.  There seem to be occasional inputs that yield very poor classifications, since all the gradients on the feedforward pathway increase by a factor of about 10.  We don't want to turn down the training due to the classification loss too much, or classification trains very slowly.  At the same time, a large classification-induced gradient tends to disrupt sparse coding/reconstruction, since the classification gradient consists of a few large instances when inputs are classified incorrectly, interspersed amidst many small instances.  Try scaling down the classification loss and complementarily scaling up the learning rate, so that the reconstruction loss is effectively increased, and can quickly correct disruptions induced by large corrections to incorrect classifications.
 
-othello
-duncan
-cassio - 10/30 fe enc rows normalized, classification pretraining
+othello - 11/2 enc rows normalized; 300 fe units
+duncan - 10/31 ista mods, classification pretraining
+cassio - 11/2 enc rows normalized; from scratch; learning rate decay *IS NOT* reset, to duplicate the successful run on 10/25 as faithfully as possible
 banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay *is* reset)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining
 macbeth - 10/31 enc and p rows normalized, classification pretraining
