@@ -313,8 +313,9 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1% - 120 epochs, 97.11%
-11/1 only two ista iterations WITH classification pretraining (from scratch) - 300 epochs, 97% - 400 epochs, 97.19%
-11/1 encoding FE rows fully normalized, no classification pretraining (from scratch) - 321 epochs, 98.18% - 341 epochs, 97.44% - 361 epochs, 98.01%
+11/1 only two ista iterations WITH classification pretraining (from scratch) - 300 epochs, 97% - 400 epochs, 97.19% - 440 epochs, 97.11% - 520 epochs, 97.24%
+11/1 encoding FE rows fully normalized, no classification pretraining (from scratch) - 321 epochs, 98.18% - 341 epochs, 97.44% - 361 epochs, 98.01% - 460 epochs, 98.44% - 480 epochs, 98.35% - 500 epochs, 98.51%
+
 
 RESTART RUNS ALMOST CERTAINLY HAVE A LEARNING RATE THAT IS TOO LARGE!!!  This may explain their lack of success
 Even with the learning rate decay set properly, the validation loss is unstable.  This strongly suggests that the learning rate is too large, and should be reduced.  This is despite the fact that receptive fields do not visually appear to change significantly over the course of 20 epochs of training, and the fact that it takes on the order of 100 epochs of supervised training before the validation error plateaus.  
@@ -354,9 +355,9 @@ It seems likely that the real problem is the nonlinearity of the encoder.  With 
 
 Incorrect classifications induce massive gradients.  This suggests that the classification loss really should be smaller.  However, I've observed massive gradients even with a classification loss scaling of 0.05.
 
+rose2 - 11/5 restart 11/2 fresh normalized encoding FE run with 5e-3 learning rate
 othello - 11/2 enc rows normalized; 300 fe units
 duncan - 10/31 ista mods, classification pretraining
-cassio - 11/2 enc rows normalized; from scratch; learning rate decay *IS NOT* reset, to duplicate the successful run on 10/25 as faithfully as possible
 banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay is not reset)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 10/31 enc and p rows normalized, classification pretraining
