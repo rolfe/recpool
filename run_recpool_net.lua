@@ -16,7 +16,7 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 1e-3
+local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 5000
 
 local fe_layer_size = 200 --400 --200
@@ -40,7 +40,7 @@ recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
-recpool_config_prefs.disable_pooling = false
+recpool_config_prefs.disable_pooling = true
 local disable_pooling_losses = false
 recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
@@ -55,12 +55,12 @@ mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0
 --pooling_sl_mag = 1.7e-2
 --mask_mag = 0
 
-if not(disable_pooling) and not(disable_pooling_losses) then
+if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) then
    --sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
    sl_mag = 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
-   sl_mag = 3e-2
+   sl_mag = 9e-2 --3e-2
 end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
@@ -283,7 +283,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 1 --200 --501 --201
+num_epochs_no_classification = 200 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net

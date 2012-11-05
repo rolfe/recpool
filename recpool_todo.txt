@@ -314,7 +314,7 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1% - 120 epochs, 97.11%
 11/1 only two ista iterations WITH classification pretraining (from scratch) - 300 epochs, 97% - 400 epochs, 97.19% - 440 epochs, 97.11% - 520 epochs, 97.24%
-11/1 encoding FE rows fully normalized, no classification pretraining (from scratch) - 321 epochs, 98.18% - 341 epochs, 97.44% - 361 epochs, 98.01% - 460 epochs, 98.44% - 480 epochs, 98.35% - 500 epochs, 98.51%
+11/1 encoding FE rows fully normalized, no classification pretraining (from scratch) - 321 epochs, 98.18% - 341 epochs, 97.44% - 361 epochs, 98.01% - 460 epochs, 98.44% - 480 epochs, 98.35% - 500 epochs, 98.51% - 520 epochs, 97.83% (!!!) - 540 epochs, 98.45%
 
 
 RESTART RUNS ALMOST CERTAINLY HAVE A LEARNING RATE THAT IS TOO LARGE!!!  This may explain their lack of success
@@ -360,13 +360,16 @@ It seems likely that the real problem is the nonlinearity of the encoder.  With 
 Incorrect classifications induce massive gradients.  This suggests that the classification loss really should be smaller.  However, I've observed massive gradients even with a classification loss scaling of 0.05.  
 Based upon restarted runs, it seems as if, regardless of the global learning rate, the backgrounds of receptive fields are unstable until the traning set classification rate draws very near to 100%.  Before this, massive gradients induced by incorrect or ambiguous classifications perturb the receptive fields.  This seems like an unreasonable setting for learning.  What if we scale the classification loss down by 0.2, but with normalization of the encoding_feature_extraction_dictionary rows and without classification pretraining?  I've never tried this combination before.
 
-rose2 - 11/5 restart 11/2 fresh normalized encoding FE run with 5e-3 learning rate
+It's probably important the the unsupervised pretraining not be disrupted by the initial bout of supervised training.  I suspect that reduced learning rates/classification loss scaling will only help if present from the beginning of supervised training.  It's easy to satisfy the supervised classification objective; it's important to retain the regularization implicit in the supervised pretraining to ensure generalization.  This would explain why restart runs that failed to properly set the learning rate decay performed so poorly.
+Redo untrained pooling test runs with normalized encoding_feature_extraction dictionary
+
+rose2 - 11/5 restart 11/2 fresh normalized encoding FE run with 5e-4 learning rate
 othello - 11/2 enc rows normalized; 300 fe units
 duncan - 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
-banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay is not reset)
+banquo - 11/5 restart 10/25 normalized encoding FE run with 2e-3 learning rate
 iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 11/5 restart 10/25 with 0.5 classification loss (normalized encoding FE)
-ceres - 11/5 2 ista iterations enc rows normalized
+ceres - 11/5 two ista iterations enc rows normalized
 iris - 11/1 fe enc rows fully normalized
 
 
