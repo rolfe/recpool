@@ -309,7 +309,7 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 
 10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) with classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98% - 260 epochs, 97.96%
 10/31 - both encoding feature extraction rows and encoding pooling rows normalized, trained from scratch WITH classification pretraining - 240 epochs, 97.85% - 260 epochs, 97.53% - 280 epochs, 98.26% - 460 epochs, 98.28% - 480 epochs, 98.15% - 500 epochs, 98.24%
-10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55% - 240 epochs, 97.94% - 260 epochs, 97.76%
+10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55% - 240 epochs, 97.94% - 260 epochs, 97.76% - 660 epochs, 97.81% - 680 epochs, 97.76%
 
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1% - 120 epochs, 97.11%
@@ -322,8 +322,8 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 
 11/2 restart from 10.25, normalized encoding FE - 100 epochs, 97.97% - 200 epochs, 98.39% - 220 epochs, 98.33% - 240 epochs, 98% - 280 epochs, 98.28% - 300 epochs, 98.42%
 11/2 duplicate 10.25 from scratch, normalized encoding FE - 240 epochs, 96.54% - 260 epochs, 97.27% - 280 epochs, 98.35% - 340 epochs, 98.01% - 360 epochs, 98.51% - 380 epochs, 98.31%
-11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 320 epochs, 98.15%
-11/2 300 FE units, normalized encoding FE
+11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15%
+11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37%
 
 
 
@@ -353,11 +353,12 @@ The real issue is to keep the reconstruction gradients comparable to the classif
 
 It seems likely that the real problem is the nonlinearity of the encoder.  With six iterations of ISTA, the encoder is highly nonlinear.  Even when used purely for sparse coding, and ISTA encoder can exhibit rapid changes in output code in response to small changes in the input.  This instability is probably coopted by the classification loss; so long as each element of the training set induces a sufficiently different code, it's easy to train the classification dictionary to produce the correct output.  Training with the classification loss probably increases the instability of the deep ISTA encoder, reducing the loss on the training set, but failing to generalize to the test set.  Normalizing the encoding_feature_extraction_dictionary rows may reduce this tendency by making it harder to drive the ISTA encoder to instability.  Note though that increasing the magnitude of a row of the encoder_feature_extraction_dictionary is very similar to increasing the corresponding element on the diagonal of the explaining_away matrix.  Note further that the gradient of a row of the encoder_feature_extraction_dictionary will tend to be parallel to its current value, since in a sparse coder, the unit driven by a row will tend to be active only when the input is aligned with the current value of the row, and the gradient is proportional to the input.  
 
-Incorrect classifications induce massive gradients.  This suggests that the classification loss really should be smaller.  However, I've observed massive gradients even with a classification loss scaling of 0.05.
+Incorrect classifications induce massive gradients.  This suggests that the classification loss really should be smaller.  However, I've observed massive gradients even with a classification loss scaling of 0.05.  
+Based upon restarted runs, it seems as if, regardless of the global learning rate, the backgrounds of receptive fields are unstable until the traning set classification rate draws very near to 100%.  Before this, massive gradients induced by incorrect or ambiguous classifications perturb the receptive fields.  This seems like an unreasonable setting for learning.  What if we scale the classification loss down by 0.2, but with normalization of the encoding_feature_extraction_dictionary rows and without classification pretraining?  I've never tried this combination before.
 
 rose2 - 11/5 restart 11/2 fresh normalized encoding FE run with 5e-3 learning rate
 othello - 11/2 enc rows normalized; 300 fe units
-duncan - 10/31 ista mods, classification pretraining
+duncan - 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
 banquo - 11/2 enc rows normalized; restart without classification pretraining (test to make sure everything still works; note that learning rate decay is not reset)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 10/31 enc and p rows normalized, classification pretraining

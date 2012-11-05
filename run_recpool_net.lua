@@ -15,7 +15,7 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local quick_train_learning_rate = 2e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 5000
 
@@ -46,18 +46,18 @@ recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 
---pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
---mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
+pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
+mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
 
-pooling_sl_mag = 0.1e-2
-mask_mag = 0.375e-2 --0.35e-2 --0.325e-2
+--pooling_sl_mag = 0.1e-2
+--mask_mag = 0.375e-2 --0.35e-2 --0.325e-2
 
 --pooling_sl_mag = 1.7e-2
 --mask_mag = 0
 
 if not(disable_pooling) and not(disable_pooling_losses) then
-   sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
-   --sl_mag = 1e-2 -- attempt to duplicate good run on 10/11
+   --sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
+   sl_mag = 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
    sl_mag = 3e-2
@@ -135,8 +135,8 @@ local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_ma
 
 -- reduce lambda scaling to 0.15; still too sparse
 -- FOR THE LOVE OF GOD!!!  DEBUG ONLY!!!  L1_scaling should also scale sl_mag, but this has been removed to reconstruct the good run on 10/11
---local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
-local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+--local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
@@ -283,7 +283,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 200 --200 --501 --201
+num_epochs_no_classification = 1 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
@@ -295,7 +295,7 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
+model:reset_classification_lambda(0.5) -- 0.2 seems to strike an even balance between reconstruction and classification
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 if num_epochs_no_classification == 1 then
    trainer.config.evalCounter = 200 * 50000
