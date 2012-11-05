@@ -325,7 +325,8 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15%
 11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37%
 
-11/5 restart (11/2 fresh normalized encoding FE run) with 5e-3 learning rate
+11/5 restart (11/2 fresh normalized encoding FE run) with 5e-4 learning rate
+11/5 restart 10/25 with 1e-3 learning rate
 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch
 11/5 restart 10/25 with 0.5 classification loss (normalized encoding FE)
 11/5 only two ista iterations, normalized encoding FE from scratch
