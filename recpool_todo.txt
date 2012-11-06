@@ -326,8 +326,8 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37% - 280 epochs, 97.44% - 300 epochs, 98.38% - 320 epochs, 98.33% - 340 epochs, 98.38% - 360 epochs, 98.41%
 
 11/5 restart (from end of 11/2 fresh normalized encoding FE run) with 5e-4 learning rate - 0 epochs, 98.44% - 80 epochs, 98.4% - 100 epochs, 98.4% - 120 epochs, 98.39% - 140 epochs, 98.39% - 160 epochs, 98.4% - 180 epochs, 98.39% - changes to the encoding_feature_extraction_dictionary are minimal, especially after the first 20 epochs
-11/5 restart 10/25 (after unsupervised pretraining) with 1e-3 learning rate
-11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch
+11/5 restart 10/25 (after unsupervised pretraining) with 1e-3 learning rate - killed since machine was hosed
+11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch - looked good before the server died.  If the 0.35e-2 mask mag run doesn't produce encoder reconstructions that all look even and full, try redoing this run
 11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - 120 epochs, 98.11% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves
 11/5 only two ista iterations, normalized encoding FE from scratch
 11/5 no pooling, enc rows normalized, 9e-2 sparsity
@@ -372,9 +372,11 @@ Units with seemingly disordered encoding_feature_extraction_dictionary receptive
 rose1 - 11/6 restart 11/2 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
 rose2 - 11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE) 
 rose4 - 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
+rose5 - 11/6 300 fe units, 75 p units, init pooling spread 40 (normalized encoding FE)
+rose6 - 11/6 learning rate 4e-2
 othello - 11/2 enc rows normalized; 300 fe units
-duncan - DEAD - 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
-banquo (hosed) - 11/5 restart 10/25 normalized encoding FE run with 2e-3 learning rate
+duncan - (file system died)
+banquo (hosed)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 11/5 restart 10/25 with 0.5 classification loss (normalized encoding FE)
 ceres - 11/5 two ista iterations enc rows normalized

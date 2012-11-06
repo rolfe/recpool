@@ -821,7 +821,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
       -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
       -- on average, initially pool over 40 feature extraction untis, regardless of the size of the feature extraction layer
-      decoding_pooling_dictionary:percentage_zeros_per_column(1 - (1 - 0.8) * 200/layer_size[2]) --0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
+      local desired_percentage_zeros = 1 - (1 - 0.8) * 200/layer_size[2]
+      decoding_pooling_dictionary:percentage_zeros_per_column(desired_percentage_zeros) --0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
       --decoding_pooling_dictionary:percentage_zeros_per_column(0.8)
       decoding_pooling_dictionary:repair(true) -- make sure that the norm of each column of decoding_pooling_dictionary is 1, even after it is thinned out
       --print('num ones is ' .. decoding_pooling_dictionary.weight:nElement() - torch.eq(decoding_pooling_dictionary.weight, 0):sum())
