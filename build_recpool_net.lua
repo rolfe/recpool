@@ -8,6 +8,7 @@ DEBUG_L2 = false
 DEBUG_L1 = false
 DEBUG_OUTPUT = false
 DEBUG_RF_TRAINING_SCALE = nil
+DEBUG_FORCE_SAFE_POWER = false
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = true
 FULLY_NORMALIZE_ENC_FE_DICT = false
@@ -185,18 +186,22 @@ local function build_pooling(encoding_pooling_dictionary)
 
    local pool_features_parallel = nn.ParallelTable() -- compute s = sqrt(Q*z^2)
    local pooling_transformation_seq = nn.Sequential()
-   pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
-   --pooling_transformation_seq:add(nn.SafePower(2))
+   if DEBUG_FORCE_SAFE_POWER then
+      pooling_transformation_seq:add(nn.SafePower(2))
+   else
+      pooling_transformation_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, it fails to multiply the gradInput by two.  This can and should be corrected, but doing so will require modifying c code.
+   end
    pooling_transformation_seq:add(encoding_pooling_dictionary)
    local safe_sqrt_const = 1e-10
    pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
 
    -- Note that backpropagating gradients through nn.Sqrt will generate NANs if any of the inputs are exactly zero.  However, this is correct behavior.  We should ensure that no input to the square root is exactly zero, perhaps by bounding the encoding_pooling_dictionary below by a number greater than zero.
-   pooling_transformation_seq:add(nn.Sqrt()) -- NORMAL VERSION
+   if DEBUG_FORCE_SAFE_POWER then
+      pooling_transformation_seq:add(nn.SafePower(1/2)) -- EXPERIMENTAL VERSION
+   else
+      pooling_transformation_seq:add(nn.Sqrt()) -- NORMAL VERSION
+   end
    pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
-
-   --pooling_transformation_seq:add(nn.SafePower(1/2)) -- EXPERIMENTAL VERSION
-   --pooling_transformation_seq:add(nn.AddConstant(encoding_pooling_dictionary.weight:size(1), -math.pow(safe_sqrt_const, 1/2))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
 
    pool_features_parallel:add(pooling_transformation_seq) -- s = sqrt(Q*z^2) [1]
    pool_features_parallel:add(nn.Identity()) -- preserve z [2]
@@ -309,8 +314,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local construct_orig_rec_numerator_seq = nn.Sequential() -- z*(P*s)^2 
    construct_orig_rec_numerator_seq:add(nn.SelectTable{2,3})
    local square_Ps_for_orig_rec_numerator = nn.ParallelTable()
-   --square_Ps_for_orig_rec_numerator:add(nn.SafePower(2)) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
-   square_Ps_for_orig_rec_numerator:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
+   if DEBUG_FORCE_SAFE_POWER then
+      square_Ps_for_orig_rec_numerator:add(nn.SafePower(2)) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
+   else
+      square_Ps_for_orig_rec_numerator:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is more efficient, but computes gradInput incorrectly on 1-D inputs
+   end
    square_Ps_for_orig_rec_numerator:add(nn.Identity())
    construct_orig_rec_numerator_seq:add(square_Ps_for_orig_rec_numerator)
    construct_orig_rec_numerator_seq:add(nn.SafeCMulTable())
@@ -320,8 +328,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local construct_denominator_seq = nn.Sequential() -- lambda_ratio + (P*s)^2
    construct_denominator_seq:add(nn.SelectTable{2}) 
    --construct_denominator_seq:add(nn.Square()) -- EFFICIENCY NOTE: nn.Square is almost certainly more efficient than Power(2), but it computes gradInput incorrectly on 1-D inputs; specifically, if fails to multiply the gradInput by two
-   --construct_denominator_seq:add(nn.SafePower(2))
-   construct_denominator_seq:add(nn.Square())
+   if DEBUG_FORCE_SAFE_POWER then
+      construct_denominator_seq:add(nn.SafePower(2))
+   else
+      construct_denominator_seq:add(nn.Square())
+   end
    construct_denominator_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), lambda_ratio)) 
 
    -- alternate terms used when the position loss is ||sqrt(P*s)*y||^2 rather than ||y||^2, where y is the L2-normalized position units
@@ -330,7 +341,11 @@ local function build_pooling_L2_loss(decoding_pooling_dictionary, decoding_featu
    local safe_sqrt_seq = nn.Sequential()
    local safe_sqrt_const = 1e-10 --1e-7
    safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0)
-   safe_sqrt_seq:add(nn.Sqrt())
+   if DEBUG_FORCE_SAFE_POWER then
+      safe_sqrt_seq:add(nn.SafePower(1/2))
+   else
+      safe_sqrt_seq:add(nn.Sqrt())
+   end
    safe_sqrt_seq:add(nn.AddConstant(decoding_pooling_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
    local sqrt_Ps_for_alt_pos_numerator = nn.ParallelTable()
    sqrt_Ps_for_alt_pos_numerator:add(safe_sqrt_seq) 
