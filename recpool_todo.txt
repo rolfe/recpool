@@ -335,6 +335,7 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 11/6 restart 10/25 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
 11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE)
 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
+11/6 300 FE units, 75 P units, normalized encoding FE
 
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
 

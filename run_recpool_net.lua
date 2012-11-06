@@ -19,8 +19,8 @@ local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 5000
 
-local fe_layer_size = 200 --400 --200
-local p_layer_size = 50 --200 --50
+local fe_layer_size = 300 --400 --200
+local p_layer_size = 75 --200 --50
 
 local params = cmd:parse(arg)
 local num_layers = tonumber(params.num_layers)
@@ -101,7 +101,7 @@ if num_layers == 1 then
    else
       -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
       L1_scaling = 3 --3.1 --2 --3/math.sqrt(2) -- for use with 400 FE units
-      mask_mag = mask_mag * math.sqrt(200/50) / math.sqrt(fe_layer_size/50)
+      mask_mag = mask_mag * math.sqrt(200/50) / math.sqrt(fe_layer_size/p_layer_size)
    end
 elseif num_layers == 2 then
    -- TRY ONLY ADJUSTING THE LAYER 2 SCALING WHEN ADDING A SECOND LAYER!!!
