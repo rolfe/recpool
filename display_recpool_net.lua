@@ -32,6 +32,9 @@ function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_
 	    --print('combining ' .. filter_name_list[i-2] .. ' with ' .. filter_name_list[i])
 	    --print(filter_list[i-2]:size(), filter_list[i]:transpose(1,2):size())
 	    save_filter(torch.mm(filter_list[i-2], filter_list[i]:transpose(1,2)), 'encoder reconstruction', opt.log_directory)
+	 elseif filter_name_list[i] == 'explaining away_1' then
+	    save_filter(torch.mm(filter_list[i-2]:transpose(1,2), filter_list[i]:transpose(1,2)), 'explaining away reconstruction', opt.log_directory)
+	    --save_filter(torch.mm(filter_list[i-2]:transpose(1,2), torch.add(filter_list[i]:transpose(1,2), -1, torch.diag(torch.diag(filter_list[i]:transpose(1,2))))), 'explaining away reconstruction', opt.log_directory)
 	 end
       elseif filter_enc_dec_list[i] == 'decoder' then
 	 current_filter = filter_list[i]

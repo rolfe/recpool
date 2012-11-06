@@ -322,21 +322,23 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 
 11/2 restart from 10.25, normalized encoding FE - 100 epochs, 97.97% - 200 epochs, 98.39% - 220 epochs, 98.33% - 240 epochs, 98% - 280 epochs, 98.28% - 300 epochs, 98.42%
 11/2 duplicate 10.25 from scratch, normalized encoding FE - 240 epochs, 96.54% - 260 epochs, 97.27% - 280 epochs, 98.35% - 340 epochs, 98.01% - 360 epochs, 98.51% - 380 epochs, 98.31%
-11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15%
-11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37%
+11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15% - 440 epochs, 98.08% (!!!) - 460 epochs, 98.43%
+11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37% - 280 epochs, 97.44% - 300 epochs, 98.38% - 320 epochs, 98.33% - 340 epochs, 98.38%
 
-11/5 restart (11/2 fresh normalized encoding FE run) with 5e-4 learning rate
-11/5 restart 10/25 with 1e-3 learning rate
+11/5 restart (from end of 11/2 fresh normalized encoding FE run) with 5e-4 learning rate - 0 epochs, 98.44% - 80 epochs, 98.4% - 100 epochs, 98.4% - 120 epochs, 98.39% - 140 epochs, 98.39% - 160 epochs, 98.4% - 180 epochs, 98.39% - changes to the encoding_feature_extraction_dictionary are minimal, especially after the first 20 epochs
+11/5 restart 10/25 (after unsupervised pretraining) with 1e-3 learning rate
 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch
-11/5 restart 10/25 with 0.5 classification loss (normalized encoding FE)
+11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves
 11/5 only two ista iterations, normalized encoding FE from scratch
+11/5 no pooling, enc rows normalized, 9e-2 sparsity
 
-RESTART ista rep 1 from 200 without classification pretraining!!!
+11/6 restart 10/25 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
+11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE)
+
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
 
 
 
-Redo a run with normalized rows to see if I can repeate 98.4% correct
 Consider the possibility that this works so well because, with normalized rows of encoding_feature_extraction_dictionary, all units contribute; none are ignored.  Without this normalization, the ratio of magnitudes starts at around 4 after pretraining, and grows to around 8 once the classification loss is activated.  
 It seems as if, once we start training witht he classification loss, the feature encoding dynamics move out of the (group-)sparse reconstruction regime.  Presumably, this is due to the pressure to increase the magnitude of the output.  Encoding pooling dictionary magnitudes also shoot up.  Note though that this occurs even though the output is normalized before classification.
 The problem may be the max operation which the L2 norm roughly performs.  Only the largest input matters, and so it is trained disproportionately.  If the loss function benefits from increasing the magnitude of the output, this will develop into a positive feedback loop, in contrast to the normal operation of group sparsity, which favors all elements of a group being activated equally.  The difference is whether the unit activities or the pooled activities are used as the output.  But why would large outputs be desirable, given that outputs are normalized before the classification layer?  This may be the only way to silence units corresponding to the wrong classes, which otherwise will tend to be at least weakly active.  We go from penalizing the group sparsity to rewarding it!  Large group sparsity corresponds to large output to the next layer.  We can reestablish a penalty rather than a reward on group sparsity by shifting the balance between the L1 group sparsity penalty and the classification loss away from the classification loss.  
@@ -363,13 +365,17 @@ Based upon restarted runs, it seems as if, regardless of the global learning rat
 It's probably important the the unsupervised pretraining not be disrupted by the initial bout of supervised training.  I suspect that reduced learning rates/classification loss scaling will only help if present from the beginning of supervised training.  It's easy to satisfy the supervised classification objective; it's important to retain the regularization implicit in the supervised pretraining to ensure generalization.  This would explain why restart runs that failed to properly set the learning rate decay performed so poorly.
 Redo untrained pooling test runs with normalized encoding_feature_extraction dictionary
 
-rose2 - 11/5 restart 11/2 fresh normalized encoding FE run with 5e-4 learning rate
+Units with seemingly disordered encoding_feature_extraction_dictionary receptive fields, and with large explaining_away fields, may actually be primarily using explaining_away to generate their encodings.  These units likley aggregate over many other sparse coding units.  That is, they're probably linear combinations of the highly nonlinear sparse coding units.  Projective fields based upon the encoding_feature_extraction_dictionary are largely similar to the encoding_feature_extraction_dictionary, but tend to have more prominent inhibitory regions.   These units only seem to appear after we start classification training, suggesting that a linear combination of sparse coding units is more useful than a L2 norm, which is closer to a max.  However, further note that many of these connections are negative, and the linear combination is passed through a shrink before passing onto pooling, so these units could be implementing AND-NOT operations, which are not possible with the non-negative encoding_pooling_dictionary.  Before classification training (using just unsupervised pretraining) the projective fields of explaining_away look like contrast-normalized versions of the encoding_feature_extraction_dictionary fields.  
+
+rose1 - 11/6 restart 11/2 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
+rose2 - 11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE) 
+rose4 - 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
 othello - 11/2 enc rows normalized; 300 fe units
-duncan - 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
-banquo - 11/5 restart 10/25 normalized encoding FE run with 2e-3 learning rate
+duncan - DEAD - 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
+banquo (hosed) - 11/5 restart 10/25 normalized encoding FE run with 2e-3 learning rate
 iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 11/5 restart 10/25 with 0.5 classification loss (normalized encoding FE)
 ceres - 11/5 two ista iterations enc rows normalized
-iris - 11/1 fe enc rows fully normalized
+iris - 11/5 no pooling, enc rows normalized, 9e-2 sparsity
 
 
