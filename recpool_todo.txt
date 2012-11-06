@@ -323,17 +323,18 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 11/2 restart from 10.25, normalized encoding FE - 100 epochs, 97.97% - 200 epochs, 98.39% - 220 epochs, 98.33% - 240 epochs, 98% - 280 epochs, 98.28% - 300 epochs, 98.42%
 11/2 duplicate 10.25 from scratch, normalized encoding FE - 240 epochs, 96.54% - 260 epochs, 97.27% - 280 epochs, 98.35% - 340 epochs, 98.01% - 360 epochs, 98.51% - 380 epochs, 98.31%
 11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15% - 440 epochs, 98.08% (!!!) - 460 epochs, 98.43%
-11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37% - 280 epochs, 97.44% - 300 epochs, 98.38% - 320 epochs, 98.33% - 340 epochs, 98.38%
+11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37% - 280 epochs, 97.44% - 300 epochs, 98.38% - 320 epochs, 98.33% - 340 epochs, 98.38% - 360 epochs, 98.41%
 
 11/5 restart (from end of 11/2 fresh normalized encoding FE run) with 5e-4 learning rate - 0 epochs, 98.44% - 80 epochs, 98.4% - 100 epochs, 98.4% - 120 epochs, 98.39% - 140 epochs, 98.39% - 160 epochs, 98.4% - 180 epochs, 98.39% - changes to the encoding_feature_extraction_dictionary are minimal, especially after the first 20 epochs
 11/5 restart 10/25 (after unsupervised pretraining) with 1e-3 learning rate
 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch
-11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves
+11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - 120 epochs, 98.11% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves
 11/5 only two ista iterations, normalized encoding FE from scratch
 11/5 no pooling, enc rows normalized, 9e-2 sparsity
 
 11/6 restart 10/25 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
 11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE)
+11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
 
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
 

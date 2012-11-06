@@ -15,9 +15,9 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local quick_train_learning_rate = 0 --5e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
-local quick_train_epoch_size = 5000
+local quick_train_epoch_size = 500
 
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50

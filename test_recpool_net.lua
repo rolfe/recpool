@@ -762,12 +762,13 @@ function rec_pool_test.full_network_test()
    end
    
    for k,v in pairs(model.module_list) do
-      local params = v:parameters()
-      for j = 1,#params do
+      if v.parameters and v:parameters() then -- if a parameters function is defined
+	 local params = v:parameters()
+	 for j = 1,#params do
 	    table.insert(parameter_list, params[j])
+	 end
       end
    end
-
 
    model:set_target(target)
    
