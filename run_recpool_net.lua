@@ -11,12 +11,12 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
-cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
+cmd:option('-num_layers','2', 'number of reconstruction pooling layers in the network')
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 5e-3 --5e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 4e-3
+local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 2e-3
 local quick_train_epoch_size = 5000
 
 local fe_layer_size = 200 --400 --200
@@ -57,7 +57,7 @@ mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0
 
 if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) then
    --sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
-   sl_mag = 1e-2 -- attempt to duplicate good run on 10/11
+   sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
    sl_mag = 9e-2 --3e-2
@@ -105,7 +105,7 @@ if num_layers == 1 then
    end
 elseif num_layers == 2 then
    -- TRY ONLY ADJUSTING THE LAYER 2 SCALING WHEN ADDING A SECOND LAYER!!!
-   L1_scaling = 1 --0.25 
+   L1_scaling = 1.5 --1 --0.25 
 else
    error('L1_scaling not specified for num_layers')
 end
@@ -113,8 +113,8 @@ end
 print('Using group sparsity scaling ' .. L1_scaling)
 
 --L1_scaling = 2
-L1_scaling_layer_2 = 0.05 --0.1
-pooling_rec_layer_2 = 0.2 --0.5
+L1_scaling_layer_2 = 1 --0.05 --0.1
+pooling_rec_layer_2 = 1 --0.2 --0.5
 
 
 --[[
@@ -133,10 +133,9 @@ local L1_scaling_layer_2 = 0
 -- Correct classification of the last few examples are is learned very slowly when we turn up the regularizers, since as the classification improves, the regularization error becomes as large as the classification error, so corrections to the classification trade off against the sparsity and reconstruction quality.  
 local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
 
--- reduce lambda scaling to 0.15; still too sparse
 -- FOR THE LOVE OF GOD!!!  DEBUG ONLY!!!  L1_scaling should also scale sl_mag, but this has been removed to reconstruct the good run on 10/11
-local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
---local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+--local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
 
 
 -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
@@ -180,8 +179,8 @@ else
 	 table.insert(layer_size, p_layer_size)
 	 table.insert(layered_lambdas, lambdas_1)
       else
-	 table.insert(layer_size, 100)
-	 table.insert(layer_size, 25)
+	 table.insert(layer_size, 100) --100
+	 table.insert(layer_size, 25) --25
 	 table.insert(layered_lambdas, lambdas_2)
       end
       
@@ -284,7 +283,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 100 --200 --501 --201
+num_epochs_no_classification = 200 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
@@ -297,7 +296,7 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
-trainer:reset_learning_rate(2e-3)
+--trainer:reset_learning_rate(2e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 if num_epochs_no_classification == 1 then
    trainer.config.evalCounter = 200 * 50000 -- THIS NEEDS TO BE CHANGED TO REFLECT THE NUMBER OF EPOCHS USED DURING UNSUPERVISED PRETRAINING

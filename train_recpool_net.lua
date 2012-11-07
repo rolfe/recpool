@@ -383,19 +383,6 @@ function RecPoolTrainer:train(train_data)
 	 print('Pooling normalization is ', self.model.layers[i].debug_module_list.normalize_pooled_output.norm)
       end
 
-
-      local m = self.model.module_list.classification_dictionary.weight
-      local norms = torch.Tensor(m:size(1))
-      for j = 1,m:size(1) do
-	 norms[j] = m:select(1,j):norm()
-      end
-      print('C row norms are ', norms:unfold(1,10,10))
-
-      print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
-      print('target is ' .. self.model.current_target)
-      
-
-
       --[[
       local m = self.model.layers[i].module_list.explaining_away.weight
       local norms = torch.Tensor(m:size(1))
@@ -455,6 +442,18 @@ function RecPoolTrainer:train(train_data)
       end
    end
 
+   local m = self.model.module_list.classification_dictionary.weight
+   local norms = torch.Tensor(m:size(1))
+   for j = 1,m:size(1) do
+      norms[j] = m:select(1,j):norm()
+   end
+   print('C row norms are ', norms:unfold(1,10,10))
+   
+   print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
+   print('target is ' .. self.model.current_target)
+   print('classification bias is ', self.model.module_list.classification_dictionary.bias:unfold(1,10,10))
+   
+
    output_gradient_magnitudes(self)
 
    --[[
@@ -477,11 +476,17 @@ function output_gradient_magnitudes(self)
 	       'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(), 
 	       'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
       else
-	 print('layer ' .. i, 'encoding FE dict', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:norm(), 
-	       'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(),
-	       'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(),
-	       'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(), 
-	       'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm())
+	 local agg_norm = 1
+	 print('layer ' .. i, 'encoding FE dict', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:norm(agg_norm) /
+	       self.model.layers[i].module_list.encoding_feature_extraction_dictionary.gradWeight:nElement(), 
+	       'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(agg_norm) / 
+		  self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:nElement(),
+	       'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(agg_norm) / 
+		  self.model.layers[i].module_list.explaining_away.gradWeight:nElement(),
+	       'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(agg_norm) / 
+		  self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:nElement(), 
+	       'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm(agg_norm) / 
+		  self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:nElement())
       end
    end
    print('classification layer', 'class dict', self.model.module_list.classification_dictionary.gradWeight:norm())

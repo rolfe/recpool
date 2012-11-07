@@ -307,14 +307,14 @@ The previous test in which I conlcuded that a classification loss scaling of 0.1
 10/30 2en5_learning_rate, short classifier pretraining, restart from 10/23 fixed shrink 1 classification - 60 epochs, 97.88% - 80 epochs, 97.89% - 100 epochs, 97.89% - 120 epochs, 97.93% - 140 epochs, 97.9% - 160 epochs, 97.96% - 240 epochs, 97.9%
 10/30 2en5_learning_rate, long classifier pretraining, restart from 10/23 fixed shrink 1 classification - 40 epochs, 97.58% - 60 epochs, 97.84% - 80 epochs, 97.77% - 100 epochs, 97.9% - 120 epochs, 97.98% - 140 epochs, 97.93% - 240 epochs, 97.87% - 280 epochs, 97.9%
 
-10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) WITH classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98% - 260 epochs, 97.96%
+10/30 (actually 10/31) normalized encoding feature extraction run restarted (from 10/25) WITH classifier pretraining - 20 epochs, 97.37% - 40 epochs, 97.71% - 80 epochs, 97.8% - 100 epochs, 97.99% - 120 epochs, 98.06% - 140 epochs, 98.11% - 160 epochs, 97.99% - 180 epochs, 98% - 240 epochs, 98.1% - 260 epochs, 97.86% - 280 epochs, 98.04%
 10/31 - both encoding feature extraction rows and encoding pooling rows normalized, trained from scratch WITH classification pretraining - 240 epochs, 97.85% - 260 epochs, 97.53% - 280 epochs, 98.26% - 460 epochs, 98.28% - 480 epochs, 98.15% - 500 epochs, 98.24% - 620 epochs, 98.27% - 640 epochs, 98.19%
 10/31 - learning rate of ista modules scaled down in proportion to the number of repeats, trained from scratch WITH classification pretraining - 220 epochs, 96.55% - 240 epochs, 97.94% - 260 epochs, 97.76% - 660 epochs, 97.81% - 680 epochs, 97.76%
 
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, continue to normalize encoding FE rows, 0.1 classification after pretraining - 60 epochs, 96.83% - 80 epochs, 97.12% - 100 epochs, 97.11%
 11/1 short classifier pretraining, restart from 10.25 normalized encoding FE run, do not normalize encoding FE rows, 0.1 classification after pretraining - 80 epochs, 97.04% - 100 epochs, 97.1% - 120 epochs, 97.11%
 11/1 only two ista iterations WITH classification pretraining (from scratch) - 300 epochs, 97% - 400 epochs, 97.19% - 440 epochs, 97.11% - 520 epochs, 97.24%
-11/1 encoding FE rows fully normalized, no classification pretraining (from scratch) - 321 epochs, 98.18% - 341 epochs, 97.44% - 361 epochs, 98.01% - 460 epochs, 98.44% - 480 epochs, 98.35% - 500 epochs, 98.51% - 520 epochs, 97.83% (!!!) - 540 epochs, 98.45%
+11/1 encoding FE rows fully normalized, no classification pretraining (from scratch) - 321 epochs, 98.18% - 341 epochs, 97.44% - 361 epochs, 98.01% - 460 epochs, 98.44% - 480 epochs, 98.35% - 500 epochs, 98.51% - 520 epochs, 97.83% (!!!) - 540 epochs, 98.45% - at 520 epochs, many 5's are mistaken for 0's
 
 
 RESTART RUNS ALMOST CERTAINLY HAVE A LEARNING RATE THAT IS TOO LARGE!!!  This may explain their lack of success
@@ -322,20 +322,24 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 
 11/2 restart from 10.25, normalized encoding FE - 100 epochs, 97.97% - 200 epochs, 98.39% - 220 epochs, 98.33% - 240 epochs, 98% - 280 epochs, 98.28% - 300 epochs, 98.42%
 11/2 duplicate 10.25 from scratch, normalized encoding FE - 240 epochs, 96.54% - 260 epochs, 97.27% - 280 epochs, 98.35% - 340 epochs, 98.01% - 360 epochs, 98.51% - 380 epochs, 98.31%
-11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15% - 440 epochs, 98.08% (!!!) - 460 epochs, 98.43%
-11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37% - 280 epochs, 97.44% - 300 epochs, 98.38% - 320 epochs, 98.33% - 340 epochs, 98.38% - 360 epochs, 98.41%
+11/2 restart from 10.31, both encoding FE and encoding P normalized - 140 epochs, 98.45% - 160 epochs, 97.88% - 180 epochs, 98.36% - 200 epochs, 98.47% - 220 epochs, 97.99% - 260 epochs, 97.47% - 280 epochs, 98.39% - 300 epochs, 98.38% - 320 epochs, 98.15% - 440 epochs, 98.08% (!!!) - 460 epochs, 98.43% - 540 epochs, 98.32% - 560 epochs, 98.45% (98.72% on test set) - 580 epochs, 98.39% (98.65% on test set)
+11/2 300 FE units, normalized encoding FE - 240 epochs, 97.87% - 260 epochs, 97.37% - 280 epochs, 97.44% - 300 epochs, 98.38% - 320 epochs, 98.33% - 340 epochs, 98.38% - 360 epochs, 98.41% - 380 epochs, 98.45% - 400 epochs, 98.53% - 420 epochs, 98.5% - 440 epochs, 98.52% (98.54% on test set)
 
 11/5 restart (from end of 11/2 fresh normalized encoding FE run) with 5e-4 learning rate - 0 epochs, 98.44% - 80 epochs, 98.4% - 100 epochs, 98.4% - 120 epochs, 98.39% - 140 epochs, 98.39% - 160 epochs, 98.4% - 180 epochs, 98.39% - changes to the encoding_feature_extraction_dictionary are minimal, especially after the first 20 epochs
 11/5 restart 10/25 (after unsupervised pretraining) with 1e-3 learning rate - killed since machine was hosed
 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch - looked good before the server died.  If the 0.35e-2 mask mag run doesn't produce encoder reconstructions that all look even and full, try redoing this run
-11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - 120 epochs, 98.11% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves
-11/5 only two ista iterations, normalized encoding FE from scratch
-11/5 no pooling, enc rows normalized, 9e-2 sparsity
+11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - 120 epochs, 98.11% - 140 epochs, 98.1% - 160 epochs, 97.82% - 180 epochs, 93.5% (!!!?!) - 200 epochs, 97.98% - 220 epochs, 98.13% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves - at 180 epochs, there is massive bias towards returning a classification of 4, suggesting that the network made much too large of a correction in this direction!!!
+11/5 only two ista iterations, normalized encoding FE from scratch - 260 epochs, 97.47%
+11/5 no pooling, enc rows normalized, 9e-2 sparsity - 260 epochs, 95.02% - 280 epochs, 98.45% (98.26% on test set) - 300 epochs, 98.21% (98.11% on test set)
+But keep in mind that we probably shouldn't expect a huge benefit to pooling with only a single sparse coding layer, since the classification dictionary already effectively performs L1 pooling, since the sparse code is non-negative.  The real advantage would come from multiple alternating layers of sparse coding and L2 pooling.  
 
-11/6 restart 10/25 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
-11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE)
+
+11/6 restart 10/25 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE) - 60 epochs, 97.45% - 80 epochs, 97.83% - 100 epochs, 97.99% - 120 epochs, 98.17% - 140 epochs, 98.13% - 160 epochs, 97.91% - changes over the course of learning are small after the first 40 or so epochs.
+11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE) - 100 epochs, 98.04% - 120 epochs, 98.12% - 140 epochs, 98.09% - 160 epochs, 96.41% (!!! - strong bias towards 9 and 0)
+11/6 learning rate 4e-2 during pretraining, 2e-2 during supervised classification training 
 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
-11/6 300 FE units, 75 P units, normalized encoding FE
+
+11/7 300 FE units, 75 P units, normalized encoding FE
 
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
 
@@ -369,13 +373,18 @@ Redo untrained pooling test runs with normalized encoding_feature_extraction dic
 
 Units with seemingly disordered encoding_feature_extraction_dictionary receptive fields, and with large explaining_away fields, may actually be primarily using explaining_away to generate their encodings.  These units likley aggregate over many other sparse coding units.  That is, they're probably linear combinations of the highly nonlinear sparse coding units.  Projective fields based upon the encoding_feature_extraction_dictionary are largely similar to the encoding_feature_extraction_dictionary, but tend to have more prominent inhibitory regions.   These units only seem to appear after we start classification training, suggesting that a linear combination of sparse coding units is more useful than a L2 norm, which is closer to a max.  However, further note that many of these connections are negative, and the linear combination is passed through a shrink before passing onto pooling, so these units could be implementing AND-NOT operations, which are not possible with the non-negative encoding_pooling_dictionary.  Before classification training (using just unsupervised pretraining) the projective fields of explaining_away look like contrast-normalized versions of the encoding_feature_extraction_dictionary fields.  
 
+L2 norm grows linearly with error.  Log likelihood with softmax grows as?!?  Does the extra normalization before the classification dictionary cause problems?
+It seems plausible that the gradients really should be 100 times larger on incorrectly classified inputs as on correctly classified ones.  In the absence of an unsupervised reconstruction loss, the gradient should be due almost exclusively to misclassified inputs.  While the classification gradient must be balanced against the unsupervised regularizer, given that only a tiny fraction of the inputs are misclassified after the first few dozen epochs of supervised training, the classification gradient generated by misclassified inputs must be many times larger than the average reconstruction gradient.  However, the difference in gradient magnitude between feature extraction and pooling remains troubling.  But remember that we square the pooling weight matrix before using it.  ONLY the encoding pooling dictionary gradient is small; the decoding pooling dictionary gradient is as large as the gradients of the feature extraction dictionaries, suggesting that the problem really is the fact that the encoding pooling dictionary is squared.
+
+FOR TOMORROW:
+Training seems unreasonably slow.  It does not seem reasonable that hundreds of epochs should be required.  In particular, supervised training progresses unreasonably slowly.  Look at the parameters used by Glorot and Bengio, and others.  A significant amount of training appears to be necessary to increase the magnitude of the classification dictionary to the right range, yet pretraining this classification dictionary to maneuver it into the right region leads to poor performance.
+
 rose1 - 11/6 restart 11/2 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
 rose2 - 11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE) 
 rose4 - 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
-rose5 - 11/6 300 fe units, 75 p units, init pooling spread 40 (normalized encoding FE)
-rose6 - 11/6 learning rate 4e-2
+rose6 - 11/7 learning rate 4e-2
 othello - 11/2 enc rows normalized; 300 fe units
-duncan - (file system died)
+duncan - 11/7 300 fe units, 75 p units, init pooling spread 40 (normalized encoding FE)
 banquo (hosed)
 iago - 11/2 enc and p rows normalized, restart without classification pretraining; learning rate decay is not reset
 macbeth - 11/5 restart 10/25 with 0.5 classification loss (normalized encoding FE)

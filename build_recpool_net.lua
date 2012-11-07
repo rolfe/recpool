@@ -13,7 +13,7 @@ FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, 
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = true
 FULLY_NORMALIZE_ENC_FE_DICT = false
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
-NORMALIZE_ROWS_OF_P_FE_DICT = false
+NORMALIZE_ROWS_OF_P_FE_DICT = true
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -820,7 +820,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 decoding_pooling_dictionary:reset()
       end
       -- if we don't thin out the pooling dictionary a little, there is no symmetry breaking; all pooling units output about the same output for each input, so the only reliable way to decrease the L1 norm is by turning off all elements.
-      -- on average, initially pool over 40 feature extraction untis, regardless of the size of the feature extraction layer
+      -- on average, initially pool over 40 feature extraction units, regardless of the size of the feature extraction layer
       local desired_percentage_zeros = 1 - (1 - 0.8) * 200/layer_size[2]
       decoding_pooling_dictionary:percentage_zeros_per_column(desired_percentage_zeros) --0.8) -- 0.9 works well! -- keep in mind that half of the values are negative, and will be set to zero when repaired
       --decoding_pooling_dictionary:percentage_zeros_per_column(0.8)
