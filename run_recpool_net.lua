@@ -105,7 +105,7 @@ if num_layers == 1 then
    end
 elseif num_layers == 2 then
    -- TRY ONLY ADJUSTING THE LAYER 2 SCALING WHEN ADDING A SECOND LAYER!!!
-   L1_scaling = 1.5 --1 --0.25 
+   L1_scaling = 2.25 --1 --0.25 
 else
    error('L1_scaling not specified for num_layers')
 end
@@ -113,8 +113,8 @@ end
 print('Using group sparsity scaling ' .. L1_scaling)
 
 --L1_scaling = 2
-L1_scaling_layer_2 = 1 --0.05 --0.1
-pooling_rec_layer_2 = 1 --0.2 --0.5
+L1_scaling_layer_2 = 0.2*2.25 --0.05 --0.1
+pooling_rec_layer_2 = 0.2*1 --0.2 --0.5
 
 
 --[[
