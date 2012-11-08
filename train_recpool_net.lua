@@ -391,7 +391,7 @@ function RecPoolTrainer:train(train_data)
       end
       print('EXP row norms are ', norms:unfold(1,10,10))
 
-      print(m:select(1,5):unfold(1,10,10))
+      print(m:select(1,101):unfold(1,10,10))
       --]]
 
       
