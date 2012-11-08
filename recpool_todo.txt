@@ -340,6 +340,11 @@ But keep in mind that we probably shouldn't expect a huge benefit to pooling wit
 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 1 sl_mag, normalized encoding FE - 280 epochs, 98.03% - 300 epochs, 98.18% - 320 epochs, 98.11% - I suspect this works less well than with smaller mask sparsity since it forces the decoding pooling dictionary to be sparse, so the encoding pooling dictionary must be relatively non-sparse to produce good pooling reconstructions, and the pooling units cannot focus on the minority of whole-digit-classifying sparse coding units that best predict the classification
 
 11/7 300 FE units, 75 P units, normalized encoding FE
+11/7 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
+11/7 learning rate 4e-3 - 160 epochs, ?% - half of the encoding_feature_extraction_dictionary rows are not trained!  It appears as if 4e-3 is too large
+
+11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3
+11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining
 
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
 
@@ -381,10 +386,10 @@ Supervised classification training seems to make the encoding pooling dictionary
 FOR TOMORROW:
 Training seems unreasonably slow.  It does not seem reasonable that hundreds of epochs should be required.  In particular, supervised training progresses unreasonably slowly.  Look at the parameters used by Glorot and Bengio, and others.  A significant amount of training appears to be necessary to increase the magnitude of the classification dictionary to the right range, yet pretraining this classification dictionary to maneuver it into the right region leads to poor performance.
 
-rose1 - 11/6 restart 11/2 from end of unsupervised pretraining with 0.5 classification loss (normalized encoding FE)
+rose1 - 11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3
 rose2 - 11/6 restart 10/25 from end of unsupervised pretraining with 1e-3 learning rate (normalized encoding FE) 
 rose4 - 11/6 0.35e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE
-rose6 - 11/7 learning rate 4e-2
+rose6 - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining
 othello - 11/2 enc rows normalized; 300 fe units
 duncan - 11/7 300 fe units, 75 p units, init pooling spread 40 (normalized encoding FE)
 iago - 11/7 two recpool layers, 2.25 L1 scaling, 0.2 scaling of second layer
