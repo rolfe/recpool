@@ -400,7 +400,7 @@ FOR TOMORROW:
 Training seems unreasonably slow.  It does not seem reasonable that hundreds of epochs should be required.  In particular, supervised training progresses unreasonably slowly.  Look at the parameters used by Glorot and Bengio, and others.  A significant amount of training appears to be necessary to increase the magnitude of the classification dictionary to the right range, yet pretraining this classification dictionary to maneuver it into the right region leads to poor performance.
 
 rose1 - 11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3
-rose2 - 
+rose2 - 11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5)
 rose4 - 
 rose6 - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining
 othello - 
