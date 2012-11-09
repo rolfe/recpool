@@ -13,6 +13,7 @@ FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, 
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = true
 FULLY_NORMALIZE_ENC_FE_DICT = false
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
+ENC_CUMULATIVE_STEP_SIZE = 1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 
 -- the input is x [1] (already wrapped in a table)
@@ -769,9 +770,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(recpool_config_prefs.num_ista_iterations + 1)))
    else
       -- WAS 1.25 rather than 2
-      encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- the first ista iteration doesn't count towards num_ista_iterations
+      encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, ENC_CUMULATIVE_STEP_SIZE/(recpool_config_prefs.num_ista_iterations + 1))) -- the first ista iteration doesn't count towards num_ista_iterations
    end
-   base_explaining_away.weight:mul(-math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
+   base_explaining_away.weight:mul(-math.max(0.1, ENC_CUMULATIVE_STEP_SIZE/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
@@ -957,7 +958,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter % 5 == 0 then
-	 encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.1, 1.25/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
+	 encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
 	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       end
       repair_counter = (repair_counter + 1) % 5
