@@ -353,9 +353,11 @@ Dictionary elements that are poorly trained during unsupervised pretraining seem
 11/9 no pooling, enc rows normalized 1.5, 9e-2 sparsity
 11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5)
 11/9 no pooling, enc rows normalized 1.0, 9e-2 sparsity
+11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
+
 11/9 no pooling, enc rows normalized 1.25, 11e-2 sparsity
 11/9 no pooling, enc rows normalized 1.25, 7e-2 sparsity
-11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 10 ista iterations
+
 
 
 
@@ -403,7 +405,7 @@ rose1 - 11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but wi
 rose2 - 11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5)
 rose4 - 11/9 no pooling, enc rows normalized 1.5, 9e-2 sparsity
 rose6 - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining
-othello - 
+othello - 11/9 no pooling, enc rows normalized 1.0, 9e-2 sparsity
 duncan - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3
 iago - 11/7 two recpool layers, 2.25 L1 scaling, 0.2 scaling of second layer
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units

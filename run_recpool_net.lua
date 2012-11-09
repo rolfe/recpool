@@ -36,7 +36,7 @@ local mask_mag = nil
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'

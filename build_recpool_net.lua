@@ -13,7 +13,7 @@ FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, 
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = true
 FULLY_NORMALIZE_ENC_FE_DICT = false
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
-ENC_CUMULATIVE_STEP_SIZE = 1.0
+ENC_CUMULATIVE_STEP_SIZE = 1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 
 -- the input is x [1] (already wrapped in a table)
