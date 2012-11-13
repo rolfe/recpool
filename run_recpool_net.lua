@@ -15,9 +15,10 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 5e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local quick_train_learning_rate = 25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3
-local quick_train_epoch_size = 5000
+local quick_train_epoch_size = 25000
+local desired_minibatch_size = 10
 
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
@@ -36,7 +37,7 @@ local mask_mag = nil
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -237,7 +238,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
    learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
-   batch_size = 1, -- mini-batch size (1 = pure stochastic)
+   batch_size = desired_minibatch_size, -- mini-batch size (1 = pure stochastic)
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = 1, -- start averaging at t0 (ASGD only), in number (?!?) of epochs -- WHAT DOES THIS MEAN?

@@ -69,8 +69,8 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outpu
    end
    self.model = model
 
-   self.minibatch_inputs = {} -- these allow communication between the train function and the feval closure
-   self.minibatch_targets = {}
+   self.minibatch_inputs = torch.Tensor() -- these allow communication between the train function and the feval closure
+   self.minibatch_targets = torch.Tensor()
 
    -- note that feval takes only current_params as input, whereas make_feval takes self as input; the self provided to make_feval is accessible to feval through the closure
    self.feval = self:make_feval() 
@@ -113,44 +113,52 @@ function RecPoolTrainer:make_feval()
       local total_err = 0
       
       -- evaluate function for complete minibatch
-      for i = 1,#self.minibatch_inputs do
-	 -- estimate total_err
-	 self.model:set_target(self.minibatch_targets[i])
-	 local err = self.model:updateOutput(self.minibatch_inputs[i])
-	 local output = self.model:get_classifier_output() -- while the model is a nn.Sequential, it terminates in a set of criteria
-	 total_err = total_err + err[1] -- the err returned by updateOutput is a tensor with one element, to maintain compatibility with ModfifiedJacobian
-	 
-	 --check_for_nans(self, output, 'outputs')
-
-	 -- estimate the gradient of the error with respect to the parameters: d total_err / dW
-	 self.model:updateGradInput(self.minibatch_inputs[i]) -- gradOutput is not required, since all computation streams terminate in a criterion; implicitly pass nil
-	 self.model:accGradParameters(self.minibatch_inputs[i])
-	 
-	 -- update the confusion matrix.  This keeps track of the predicted output (maximum output conditional posterior probability) for each true output class
-	 self.confusion:add(output, self.minibatch_targets[i])
-
-	 -- track the evolution of sparsity and reconstruction errors
-	 if self.track_criteria_outputs then
-	    for j = 1,#(self.model.criteria_list.criteria) do
-	       if self.model.criteria_list.criteria[j].output then -- this need not be defined if we've disabled pooling or other layers
-		  self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
-		  --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
-		  if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
-		     for k = 1,#self.model.criteria_list.criteria[j].gradInput do
-			self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
-		     end
-		  else
-		     self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
-		  end
-	       end -- if critera output exists
-	    end -- for all criteria
-	 end --if track_criteria_outputs
+      --for i = 1,#self.minibatch_inputs do
+      -- estimate total_err
+      self.model:set_target(self.minibatch_targets)
+      local err = self.model:updateOutput(self.minibatch_inputs)
+      local output = self.model:get_classifier_output() -- while the model is a nn.Sequential, it terminates in a set of criteria
+      total_err = total_err + err[1] -- the err returned by updateOutput is a tensor with one element, to maintain compatibility with ModfifiedJacobian
+      
+      --check_for_nans(self, output, 'outputs')
+      
+      -- estimate the gradient of the error with respect to the parameters: d total_err / dW
+      self.model:updateGradInput(self.minibatch_inputs) -- gradOutput is not required, since all computation streams terminate in a criterion; implicitly pass nil
+      self.model:accGradParameters(self.minibatch_inputs)
+      
+      -- update the confusion matrix.  This keeps track of the predicted output (maximum output conditional posterior probability) for each true output class
+      if (self.minibatch_inputs:nDimension() == 1) and (type(self.minibatch_targets) == 'number') then -- minibatch contains a single element, so its components are of reduced dimensionality
+	 self.confusion:add(output, self.minibatch_targets) 
+      elseif (self.minibatch_inputs:nDimension() == 2) and (self.minibatch_targets:nDimension() == 1) then -- minibatch contains many elements, over which we must iterate
+	 for j = 1,self.minibatch_inputs:size(1) do
+	    self.confusion:add(output:select(1,j), self.minibatch_targets[j]) 
+	 end
+      else
+	 error('dimensions of minibatch_inputs and minibatch_targets were not consistent')
       end
       
+      -- track the evolution of sparsity and reconstruction errors
+      if self.track_criteria_outputs then
+	 for j = 1,#(self.model.criteria_list.criteria) do
+	    if self.model.criteria_list.criteria[j].output then -- this need not be defined if we've disabled pooling or other layers
+	       self.loss_hist[j] = self.model.criteria_list.criteria[j].output + self.loss_hist[j]
+	       --print(self.model.criteria_list.names[j], self.model.criteria_list.criteria[j].gradInput)
+	       if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
+		  for k = 1,#self.model.criteria_list.criteria[j].gradInput do
+		     self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput[k]:norm() + self.grad_loss_hist[j]
+		  end
+	       else
+		  self.grad_loss_hist[j] = self.model.criteria_list.criteria[j].gradInput:norm() + self.grad_loss_hist[j]
+	       end
+	    end -- if critera output exists
+	 end -- for all criteria
+      end --if track_criteria_outputs
+      --end
+      
       -- normalize gradients and f(X)
-      if #self.minibatch_inputs ~= 1 then
-	 self.flattened_grad_parameters:div(#self.minibatch_inputs)
-	 total_err = total_err / #self.minibatch_inputs
+      if self.minibatch_inputs:nDimension() == 2 then
+	 self.flattened_grad_parameters:div(self.minibatch_inputs:size(1)) -- minibatches are stored along the rows; each row is a different minibatch element
+	 total_err = total_err / self.minibatch_inputs:size(1)
       end
        
       --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')
@@ -169,33 +177,41 @@ function RecPoolTrainer:train(train_data)
    local time = sys.clock()
    
    -- shuffle at each epoch
-   local shuffle = torch.randperm(train_data:size()) --was trsize
+   local shuffle = torch.randperm(train_data:nExample()) --was trsize
 
    -- do one epoch
    print('==> doing epoch on training data:')
    print("==> online epoch # " .. self.epoch .. ' [batch_size = ' .. self.opt.batch_size .. ']')
-   self.minibatch_inputs = {}
-   self.minibatch_targets = {}
 
-   for t = 1, train_data:size(), self.opt.batch_size do
+   for t = 1, train_data:nExample(), self.opt.batch_size do
       -- disp progress
-      if (t % 20 == 1) or (t == train_data:size()) then
-	 xlua.progress(t, train_data:size())
+      if (t % 200 == 1) or (t == train_data:nExample()) then
+	 xlua.progress(t, train_data:nExample())
       end
       
       -- create mini batch.  The minibatch_inputs and minibatch_targets elements of a RecPoolTrainer are viewed directly by the feval made by make_feval()
+      -- previously, minibatches consisted of a table, the elements of which were the components of the minibatch.  However, this is not directly compatible with the torch facilities for efficiently processing minibatches.  Now, minibatches consist of tensors, with the elements along the rows.  An exception is made for minibatches of size one, which use tensors (or numbers) of reduced dimensionality, to take advantage of more efficient matrix-vector rather than matrix-matrix calculations.
       if self.opt.batch_size == 1 then
-	 self.minibatch_inputs[1] = train_data.data[shuffle[t]]:double() -- This doesn't copy memory if the type is already correct
-	 self.minibatch_targets[1] = train_data.labels[shuffle[t]]
-      else
-	 self.minibatch_inputs = {}
-	 self.minibatch_targets = {}
-	 for i = t,math.min(t+self.opt.batch_size-1,train_data:size()) do
-	    -- load new sample
-	    local this_input = train_data.data[shuffle[i]]:double()
-	    local this_target = train_data.labels[shuffle[i]]
-	    table.insert(self.minibatch_inputs, this_input)
-	    table.insert(self.minibatch_targets, this_target)
+	 self.minibatch_inputs = train_data.data[shuffle[t]]:double() -- This doesn't copy memory if the type is already correct
+	 self.minibatch_targets = train_data.labels[shuffle[t]]
+      else -- unlike with minibatches of size 1, we *ALWAYS* copy the data in forming larger minibatches.  This is necessary because tensors consist of regular strides within contiguous blocks of memory, rather than arbitrary arrays of pointers.
+	 self.minibatch_inputs:resize(self.opt.batch_size, train_data:dataSize())
+	 if train_data:labelSize() == 1 then
+	    self.minibatch_targets:resize(self.opt.batch_size)
+	 else
+	    self.minibatch_targets:resize(self.opt.batch_size, train_data:labelSize())
+	 end
+	 
+	 -- load new samples for the batch
+	 for i = 1,self.opt.batch_size do 
+	    --ensure that batches are full by wrapping around to the beginning if necessary; since the order of the dataset is reshuffled on each epoch, this shouldn't cause a big problem
+	    local shuffle_index = ((t+i-2) % train_data:nExample()) + 1
+	    self.minibatch_inputs:select(1,i):copy(train_data.data[shuffle[shuffle_index]]:double())
+	    if train_data:labelSize() == 1 then
+	       self.minibatch_targets[i] = train_data.labels[shuffle[shuffle_index]]
+	    else
+	       self.minibatch_targets:select(1,i):copy(train_data.labels[shuffle[shuffle_index]])
+	    end
 	 end
       end
 
@@ -234,7 +250,7 @@ function RecPoolTrainer:train(train_data)
    
    -- time taken for the current epoch (each call to train() only runs one epoch)
    time = sys.clock() - time
-   time = time / train_data:size()
+   time = time / train_data:nExample()
    print("==> time to learn 1 sample = " .. (time*1000) .. 'ms')
    
    print(self.confusion) -- print the confusion matrix for the current epoch
@@ -249,7 +265,7 @@ function RecPoolTrainer:train(train_data)
    self.confusion:zero()
    for i = 1,#self.model.criteria_list.criteria do
       if self.track_criteria_outputs then
-	 print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:size() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:size())
+	 print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:nExample() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:nExample())
 	 self.loss_hist[i] = 0
 	 self.grad_loss_hist[i] = 0
       end
@@ -333,14 +349,27 @@ function RecPoolTrainer:train(train_data)
       --print('shrink magnitude ', self.model.layers[i].module_list.shrink.shrink_val:norm())
       --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
-      print('final shrink output', self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:unfold(1,10,10))
+      local single_shrink_output, single_pooling_output
+      if opt.batch_size == 1 then
+	 single_shrink_output = self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output
+	 if not(self.model.disable_pooling) then 
+	    single_pooling_output = self.model.layers[i].debug_module_list.pooling_seq.output[1]
+	 end
+      else -- only display the first element of the minibatch
+	 single_shrink_output = self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:select(1,1)
+	 if not(self.model.disable_pooling) then 
+	    single_pooling_output = self.model.layers[i].debug_module_list.pooling_seq.output[1]:select(1,1)
+	 end
+      end
+
+      print('final shrink output', single_shrink_output:unfold(1,10,10))
       if not(self.model.disable_pooling) then -- this may not be defined if we've disabled pooling
 	 print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
       end
       -- these two outputs are from the middle of the processing chain, rather than the parameterized modules
       --print('pooling position units', self.model.layers[i].debug_module_list.compute_shrink_position_units.output:unfold(1,10,10))
       if not(self.model.disable_pooling) then -- this may not be defined if we've disabled pooling
-	 print('pooling output', self.model.layers[i].debug_module_list.pooling_seq.output[1]:unfold(1,10,10))
+	 print('pooling output', single_pooling_output:unfold(1,10,10))
       end
       -- since the sparsifying modules can be parameterized by lagrange multipliers, they are in the main module list
       if self.model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
@@ -435,7 +464,7 @@ function RecPoolTrainer:train(train_data)
       local plot_recs = false
       if plot_recs then
 	 if i == 1 then
-	    plot_reconstructions(self.opt, train_data.data[shuffle[train_data:size()]]:double(), self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+	    plot_reconstructions(self.opt, train_data.data[shuffle[train_data:nExample()]]:double(), self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
 	 else
 	    plot_reconstructions(self.opt, self.model.layers[i-1].debug_module_list.pooling_seq.output[1], self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
 	 end
@@ -449,12 +478,35 @@ function RecPoolTrainer:train(train_data)
    end
    print('C row norms are ', norms:unfold(1,10,10))
    
-   print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
-   print('target is ' .. self.model.current_target)
+   if self.opt.batch_size == 1 then
+      print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
+      print('target is ' .. self.model.current_target)
+   else
+      print('logsoftmax output is ', self.model.module_list.logsoftmax.output:select(1,1):unfold(1,10,10))
+      print('target is ', self.model.current_target[1])
+   end
    print('classification bias is ', self.model.module_list.classification_dictionary.bias:unfold(1,10,10))
-   
 
    output_gradient_magnitudes(self)
+
+   local index_list = {11, 12, 13, 14, 15, 16, 4, 7, 8, 10, 42, 52, 63, 64, 67, 78}
+   --local index_list = {1, 2, 3, 11, 12, 13, 4, 9, 21, 32, 72, 83, 88}
+   local num_shrink_output_tensor_elements = #index_list -- self.model.layers[1].module_list.shrink.output:size(1)
+   local shrink_output_tensor = torch.Tensor(num_shrink_output_tensor_elements, 1 + #self.model.layers[1].module_list.shrink_copies)
+
+   for j = 1,#index_list do
+      -- automatically choose whether to use 1D or 2D indexing into shrink.output, depending upon the size of the minibatch
+      shrink_output_tensor[{j, 1}] = self.model.layers[1].module_list.shrink.output[((opt.batch_size == 1) and {index_list[j]}) or {1,index_list[j]}]
+   end
+   
+   for i = 1,#self.model.layers[1].module_list.shrink_copies do
+      --shrink_output_tensor:select(2,i):copy(self.model.layers[1].module_list.shrink_copies[i].output)
+      for j = 1,#index_list do
+	 -- automatically choose whether to use 1D or 2D indexing into shrink_copies[i].output, depending upon the size of the minibatch
+	 shrink_output_tensor[{j, i+1}] = self.model.layers[1].module_list.shrink_copies[i].output[((opt.batch_size == 1) and {index_list[j]}) or {1,index_list[j]}]
+      end
+   end
+   print('evolution of selected shrink elements', shrink_output_tensor)
 
    --[[
    -- save/log current net

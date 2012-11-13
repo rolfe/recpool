@@ -128,7 +128,8 @@ end
 function rec_pool_test.ConstrainedLinearLinearWeightMatrix()
    local ini = math.random(50,70)
    local inj = math.random(50,70)
-   local input = torch.Tensor(ini):zero()
+   local ink = math.random(10,20)
+   local input = torch.Tensor(ink,ini):zero()
    local module = nn.ConstrainedLinear(ini, inj, {no_bias = true, normalized_columns = true, squared_weight_matrix = false}, true, 1, true) 
 
    local err = jac.testJacobian(module,input)
@@ -166,7 +167,8 @@ end
 function rec_pool_test.ConstrainedLinearSquaredWeightMatrix()
    local ini = math.random(50,70)
    local inj = math.random(50,70)
-   local input = torch.Tensor(ini):zero()
+   local ink = math.random(10,20)
+   local input = torch.Tensor(ink,ini):zero()
    local module = nn.ConstrainedLinear(ini, inj, {no_bias = true, normalized_columns = true, squared_weight_matrix = true}, true, 1, true) 
 
    local err = jac.testJacobian(module,input)
@@ -457,7 +459,7 @@ function rec_pool_test.NormalizeTable()
    local ini = math.random(10,20)
    local inj = math.random(10,20)
    local ink = math.random(10,20)
-   local input = {torch.Tensor(ini):zero(), torch.Tensor(ini):zero()}
+   local input = {torch.Tensor(inj,ini):zero(), torch.Tensor(ini):zero()}
    local module = nn.NormalizeTable()
 
    local err = jac.testJacobianTable(module,input)
@@ -708,6 +710,10 @@ function rec_pool_test.full_network_test()
    recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --recpool_config_prefs.shrink_style = 'SoftPlus'
    recpool_config_prefs.disable_pooling = false
+   if recpool_config_prefs.disable_pooling then
+      print('POOLING IS DISABLED!!!')
+      io.read()
+   end
    recpool_config_prefs.use_squared_weight_matrix = true
    recpool_config_prefs.normalize_each_layer = false
 
@@ -715,8 +721,17 @@ function rec_pool_test.full_network_test()
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
+   local minibatch_size = 1
    local layer_size = {10, 20, 10, 10}
-   local target = math.random(layer_size[#layer_size])
+   local target
+   if minibatch_size > 0 then
+      target = torch.Tensor(minibatch_size)
+      for i = 1,minibatch_size do
+	 target[i] = math.random(layer_size[#layer_size])
+      end
+   else
+      target = math.random(layer_size[#layer_size])
+   end
    --local target = torch.zeros(layer_size[#layer_size]) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
    --target[math.random(layer_size[#layer_size])] = 1
 
@@ -775,8 +790,12 @@ function rec_pool_test.full_network_test()
    print('Since the model contains a LogSoftMax, use precision ' .. expprecision .. ' rather than ' .. precision)
    local precision = 3*expprecision
    
-   local input = torch.Tensor(layer_size[1]):zero()
-
+   local input
+   if minibatch_size > 0 then
+      input = torch.Tensor(minibatch_size, layer_size[1]):zero()
+   else
+      input = torch.Tensor(layer_size[1]):zero()
+   end
 
    -- check that we don't always produce nans
    local check_for_non_nans = false
@@ -840,7 +859,7 @@ function rec_pool_test.ISTA_reconstruction()
 
    -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
    local recpool_config_prefs = {}
-   recpool_config_prefs.num_ista_iterations = 5
+   recpool_config_prefs.num_ista_iterations = 50
    --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
    recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --recpool_config_prefs.shrink_style = 'SoftPlus'
@@ -849,8 +868,19 @@ function rec_pool_test.ISTA_reconstruction()
    recpool_config_prefs.normalize_each_layer = false
 
 
+   local minibatch_size = 3
    local layer_size = {10, 60, 10, 10}
-   local target = math.random(layer_size[4])
+   local target
+   if minibatch_size > 0 then
+      target = torch.Tensor(minibatch_size)
+      for i = 1,minibatch_size do
+	 target[i] = math.random(layer_size[#layer_size])
+      end
+   else
+      target = math.random(layer_size[#layer_size])
+   end
+
+
    local lambdas = {ista_L2_reconstruction_lambda = math.random(), 
 		    ista_L1_lambda = math.random(), 
 		    pooling_L2_shrink_reconstruction_lambda = math.random(), 
@@ -885,16 +915,19 @@ function rec_pool_test.ISTA_reconstruction()
    local explaining_away = model.layers[1].module_list.explaining_away
    local decoding_feature_extraction_dictionary = model.layers[1].module_list.decoding_feature_extraction_dictionary
 
-   local test_input = torch.rand(layer_size[1])
-   local target = math.random(layer_size[4])
-   --local target = torch.zeros(layer_size[4]) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
-   --target[math.random(layer_size[4])] = 1
+   local test_input 
+   if minibatch_size > 0 then
+      test_input = torch.rand(minibatch_size, layer_size[1]) --torch.Tensor(minibatch_size, layer_size[1]):zero()
+   else
+      test_input = torch.rand(layer_size[1])
+   end
+
    model:set_target(target)
 
    model:updateOutput(test_input)
-   print(test_input)
-   print(model.layers[1].module_list.decoding_feature_extraction_dictionary.output)
-   print(shrink_copies[#shrink_copies].output)
+   print('test input', test_input)
+   print('reconstructed input', model.layers[1].module_list.decoding_feature_extraction_dictionary.output)
+   print('shrink output', shrink_copies[#shrink_copies].output)
 
    local test_gradInput = torch.zeros(model.output:size())
    model:updateGradInput(test_input, test_gradInput)
@@ -923,11 +956,31 @@ function rec_pool_test.ISTA_reconstruction()
 
 
    ---[[
-   local shrink_output_tensor = torch.Tensor(decoding_feature_extraction_dictionary.output:size(1), #shrink_copies)
-   for i = 1,#shrink_copies do
-      shrink_output_tensor:select(2,i):copy(decoding_feature_extraction_dictionary:updateOutput(shrink_copies[i].output))
+   if minibatch_size == 0 then
+      local shrink_output_tensor = torch.Tensor(decoding_feature_extraction_dictionary.output:size(1), #shrink_copies)
+      for i = 1,#shrink_copies do
+	 shrink_output_tensor:select(2,i):copy(decoding_feature_extraction_dictionary:updateOutput(shrink_copies[i].output))
+      end
+      print(shrink_output_tensor)
+   else
+      local index_list = {1, 2, 3, 4, 5, 6, 7}
+      local num_shrink_output_tensor_elements = #index_list -- model.layers[1].module_list.shrink.output:size(1)
+      local shrink_output_tensor = torch.Tensor(num_shrink_output_tensor_elements, 1 + #model.layers[1].module_list.shrink_copies)
+      
+      for j = 1,#index_list do
+	 shrink_output_tensor[{j, 1}] = model.layers[1].module_list.shrink.output[{1, index_list[j]}] -- minibatch_size >= 1, so we need to select the minibatch from which to draw the state
+      end
+      
+      for i = 1,#model.layers[1].module_list.shrink_copies do
+	 --shrink_output_tensor:select(2,i):copy(model.layers[1].module_list.shrink_copies[i].output)
+	 for j = 1,#index_list do
+	    shrink_output_tensor[{j, i+1}] = model.layers[1].module_list.shrink_copies[i].output[{1, index_list[j]}] -- minibatch_size >= 1, so we need to select the minibatch from which to draw the state
+	 end
+      end
+
+      print('full evolution of index_list for the first element of the minibatch', shrink_output_tensor)
    end
-   print(shrink_output_tensor)
+   
    --]]
 
 end

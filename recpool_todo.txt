@@ -330,7 +330,7 @@ Even with the learning rate decay set properly, the validation loss is unstable.
 11/5 0.375e-2 mask_mag, 0.1e-2 pooling_sl_mag, 0 sl_mag, normalized encoding FE from scratch - looked good before the server died.  If the 0.35e-2 mask mag run doesn't produce encoder reconstructions that all look even and full, try redoing this run
 11/5 restart 10/25 (after unsupervised pretraining) with 0.5 classification loss (normalized encoding FE) - 80 epochs, 97.82% - 100 epochs, 97.88% - 120 epochs, 98.11% - 140 epochs, 98.1% - 160 epochs, 97.82% - 180 epochs, 93.5% (!!!?!) - 200 epochs, 97.98% - 220 epochs, 98.13% - 240 epochs, 98.21% - 260 epochs, 97.47% - there are still noticable changes in the encoding_feature_extraction_dictionary between saves - at 180 epochs, there is massive bias towards returning a classification of 4, suggesting that the network made much too large of a correction in this direction!!!
 11/5 only two ista iterations, normalized encoding FE from scratch - 260 epochs, 97.47% - 300 epochs, 97.84% - 320 epochs, 98% - 340 epochs, 98.09% - 360 epochs, 98.05% - 460 epochs, 98.07% - 480 epochs, 98.04% - 500 epochs, 98.14%
-11/5 no pooling, enc rows normalized, 9e-2 sparsity - 260 epochs, 95.02% - 280 epochs, 98.45% (98.26% on test set) - 300 epochs, 98.21% (98.11% on test set) - 320 epochs, 98.55% (98.47% on test set) - 340 epochs, 98.18% - 360 epochs, 98.55% - 380 epochs, 98.5% - 400 epochs, 98.65% (98.74% on test set) - 420 epochs, 98.16% - 440 epochs, 98.48% - 460 epochs, 97.94% - 520 epochs, 98.39% (probably test by accident) - 540 epochs, 98.71 (98.8% on test set) - 560 epochs, 98.72% (98.75% on test set) - 580 epochs, 97.35%
+11/5 no pooling, enc rows normalized, 9e-2 sparsity - 260 epochs, 95.02% - 280 epochs, 98.45% (98.26% on test set) - 300 epochs, 98.21% (98.11% on test set) - 320 epochs, 98.55% (98.47% on test set) - 340 epochs, 98.18% - 360 epochs, 98.55% - 380 epochs, 98.5% - 400 epochs, 98.65% (98.74% on test set) - 420 epochs, 98.16% - 440 epochs, 98.48% - 460 epochs, 97.94% - 520 epochs, 98.39% (probably test by accident) - 540 epochs, 98.71 (98.8% on test set) - 560 epochs, 98.72% (98.75% on test set) - 580 epochs, 97.35% - 1020 - 98.62% - 1040 epochs, 97.81% - 1060 epochs, 98.53%
 But keep in mind that we probably shouldn't expect a huge benefit to pooling with only a single sparse coding layer, since the classification dictionary already effectively performs L1 pooling, since the sparse code is non-negative.  The real advantage would come from multiple alternating layers of sparse coding and L2 pooling.  
 Classification dictionary scaling may be increasing faster than the learning rate is decaying, leading to instability as training progresses
 Dictionary elements that are poorly trained during unsupervised pretraining seem to be kicked out of their local optimum during supervised training, and almost all develop meaningful receptive fields.
@@ -345,15 +345,19 @@ Dictionary elements that are poorly trained during unsupervised pretraining seem
 11/7 learning rate 4e-3 - half of the encoding_feature_extraction_dictionary rows are not trained!  It appears as if 4e-3 is too large
 11/7 two recpool layers, 2.25 L1 scaling, 0.2 scaling of second layer
 
-11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3 - 100 epochs, 98.41 (98.42% on test set)- 120 epochs, 98.42% (98.55% on test set) - 140 epochs, 98.11% (98.42% on test set) - 160 epochs, 98.62% (98.71% on test set) - 180 epochs, 98.11% (98.11% on test set) - 200 epochs, 98.72% (98.7% on test set)
-11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining
-11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units 
-11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3 - 140 epochs, 98.36%
+11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3 - 100 epochs, 98.41 (98.42% on test set)- 120 epochs, 98.42% (98.55% on test set) - 140 epochs, 98.11% (98.42% on test set) - 160 epochs, 98.62% (98.71% on test set) - 180 epochs, 98.11% (98.11% on test set) - 200 epochs, 98.72% (98.7% on test set) - 680 epochs, 98.56% - 700 epochs, 98.49% - 720 epochs, 98.57% - 740 epochs, 98.47% - 760 epochs, 98.45% - 780 epochs, 98.5% - 800 epochs, 98.49%
+11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining - 440 epochs, 98.52% - 460 epochs, 98.68% - 480 epochs, 98.76% (98.7% on test set) - 500 epochs, 98.57% - 520 epochs, 98.46%
+11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units - 340 epochs, 98.94% (98.78% on test set) - 360 epochs, 97.53% - 380 epochs, 97.86% (98.944% on train set) - 400 epochs, 98.82% (98.63% on test set, 99.994% (all but 3) on train set)
+11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3 - 140 epochs, 98.36% - 540 epochs, 98.38% - 560 epochs, 98.4% - 580 epochs, 98.31% - 600 epochs, 98.34%
 
-11/9 no pooling, enc rows normalized 1.5, 9e-2 sparsity
-11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5)
-11/9 no pooling, enc rows normalized 1.0, 9e-2 sparsity
-11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
+11/9 no pooling, enc rows normalized 1.5, 9e-2 sparsity - 480 epochs, 98.55% - 500 epochs, 98.67% - 520 epochs, 98.61% - 540 epochs, 98.5% - 560 epochs, 98.54% - 580 epochs, 98.48%
+11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5) - 460 epochs, 98.3% - 480 epochs, 98.83% (98.68% on test set) - 500 epochs, 98.74% - 520 epochs, 98.39% - 540 epochs, 98.59% - 560 epochs, 98.61% (99.982% (all but 9) on train set) - 580 epochs, 98.3% (99.686% on train set)
+11/9 no pooling, enc rows normalized 1.0, 9e-2 sparsity - 380 epochs, 98.44% - 400 epochs, 98.67% - 420 epochs, 98.25%
+11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations - 340 epochs, 97.18% - 360 epochs, 97.72% - 380 epochs, 98.52%
+
+Pretraining does seem to be important, but 100 epochs of pretraining seems to be sufficient.  300 hidden units probably helps, but learning is no more stable, and will need to be investigated further.  There is no obvious effect to small variations in the amount of encoding_feature_extraction_dictionary row normalization.  Increasing the scaling of the classification loss does not hurt; decreasing the scaling of the classification loss probably does hurt.  
+
+Complex cell units seem to be much less dependent than simple cell units on their direct sensory input.  Whereas simple cell units rarely develop significant positive outputs if their feedforward activation is not positive, complex cell units that grow large often have negative feedforward activation.  
 
 11/9 no pooling, enc rows normalized 1.25, 11e-2 sparsity
 11/9 no pooling, enc rows normalized 1.25, 7e-2 sparsity
@@ -398,8 +402,21 @@ It seems plausible that the gradients really should be 100 times larger on incor
 
 Supervised classification training seems to make the encoding pooling dictionary sparser.  Moreover, after supervised classification training, the encoding pooling dictionary seems to connect disproportionately strongly to sparse coding units that reconstruct whole digits, via diffuse encoding dictionary rows and strong, widespread explaining away connections.  Nevertheless, the average pooling unit receives projections from more than two sparse coding units, and each row of the classification dictionary tends to have multiple strongly positive connections.  This suggests that, classification depends on highly nonlinear and-not operations, but that these sparse features are indeed pooled to produce the classification output.  
 
-FOR TOMORROW:
-Training seems unreasonably slow.  It does not seem reasonable that hundreds of epochs should be required.  In particular, supervised training progresses unreasonably slowly.  Look at the parameters used by Glorot and Bengio, and others.  A significant amount of training appears to be necessary to increase the magnitude of the classification dictionary to the right range, yet pretraining this classification dictionary to maneuver it into the right region leads to poor performance.
+Deep convex network seem to achieve ridiculously good performance by training each hidden layer on the final classification task, and only passing this provisional classification onto the next layer (along with the original input).  They make a big deal of the fact that the top-level linear classifier can be optimized in closed form assuming that the first-layer weights are fixed; really, this seems similar to a (linear) SVM.  It's surprising that feeding a provisional classification (alone) into the next layer of a deep architecture is so effective, given that a linear combination of the provisional classification with the original input doesn't seem like an especially useful computation.  Has anyone tried training a deep (convolutional) neural network by adding in a final linear classifier (with associated loss) at each layer of the hierarchy?  Note that feeding the original input into each layer is similar to the operation performed by LISTA.  However, LISTA only applies the classification loss to the final output, and passes an arbitrary linear transformation of the hidden state onto the next layer, rather than the provisional classification alone.  Consider adding a classifier/classification loss to each ISTA iteration of LISTA.
+
+
+
+Fix confusion matrix in train_recpool_net
+Definition of targets in train_recpool_net
+
+
+Already handle minibatches
+LogSoftmax
+ClassNLLCriterion
+L1CriterionModule (seems ok, but might require modification if the lagrange multiplier functionality is used)
+ConstrainedLinear
+NormalizeTable
+
 
 rose1 - 11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3
 rose2 - 11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5)
@@ -409,9 +426,19 @@ othello - 11/9 no pooling, enc rows normalized 1.0, 9e-2 sparsity
 duncan - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3
 iago - 11/7 two recpool layers, 2.25 L1 scaling, 0.2 scaling of second layer
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
-ceres - 
+ceres - 11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
 iris - 11/5 no pooling, enc rows normalized, 9e-2 sparsity
 
 banquo (hosed)
 cassio - ceded to Nathan
 
+
+
+
+Look at averaging SGD - Leon Bottou - do SGD as usual, but then final result is average of last few iterations
+Minibatches of size 10 has a good chance of all being different classes; don't need learning rate much
+Chaituh (first name) in Eero's lab, just graduated - represent data manifold as point plus gradient
+Yann thinks number of epochs used for pretraining is larger than expected.  Try turing up learning rate during pretraining?  What happens if we only use 50 epochs of pretraining?
+
+Geoff's trick for avoiding early overconvergence: bound L2 norm of all weights.  I'm already basically doing this; L2 norm of encoder rows is bounded, L2 norm of decoder columns is fixed.
+Ask about deep convex nets.  What is a threshold for success?

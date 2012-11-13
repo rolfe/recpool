@@ -92,8 +92,16 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
 
    dataset.dim = dim-1
 
-   function dataset:size()
+   function dataset:nExample()
       return nExample
+   end
+
+   function dataset:dataSize()
+      return dim-1
+   end
+
+   function dataset:labelSize()
+      return 1
    end
 
    if alternative_access_method == 'recpool_net' then

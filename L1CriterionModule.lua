@@ -62,6 +62,7 @@ end
 function L1CriterionModule:accGradParameters(input, gradOutput, scale)
    scale = scale or 1
    
+   -- if the criterion is applied to minibatches, then the constraint enforced by the lagrange multiplier is similarly on entire minibatches, rather than on each element separately.  At the very least, this might require a modification of the desired_criterion_value
    if self.weight then
       self.gradWeight[1] = self.gradWeight[1] - scale*learning_rate_scaling_factor*(self.criterion_output - desired_criterion_value) -- minus, since we want to maximize the error with respect to the lagrange multiplier
    end

@@ -75,25 +75,50 @@ function ConstrainedLinear:percentage_zeros_per_column(percentage)
 end
 
 function ConstrainedLinear:updateOutput(input)
-   -- this needs to be extended to allow two-dimensional inputs
-   self.output:resize(self.bias:size(1))
-   local current_output_scaling_value = 0
-   if not(self.no_bias) then
-      self.output:copy(self.bias)
-      current_output_scaling_value = 1
-   end
-   
-   if self.squared_weight_matrix then
+   -- square the weight matrix, since only the weight matrix itself rather than the squared version is subject to training
+   if self.squared_weight_matrix then 
       self.weight_squared:resizeAs(self.weight)
       --self.weight_squared:pow(self.weight, 2)
       self.weight_squared:cmul(self.weight, self.weight)
-      self.output:addmv(current_output_scaling_value, 1, self.weight_squared, input)
       
       if self.RUN_JACOBIAN_TEST then -- this is necessary to correctly perform the test all accUpdateGradParameters [shared], which does two accUpdateGradParameters in a row.  If we don't store a copy of the weights, then the first accUpdateGradParameters alters the operation performed by the second, which the test code doesn't expect, even thought it is correct
 	 self.stored_weight:resizeAs(self.weight):copy(self.weight) -- DEBUG ONLY!!!
       end
+   end
+
+   if input:dim() == 1 then
+      self.output:resize(self.bias:size(1))
+      local current_output_scaling_value = 0
+      if not(self.no_bias) then
+	 self.output:copy(self.bias)
+	 current_output_scaling_value = 1
+      end
+      
+      if self.squared_weight_matrix then
+	 self.output:addmv(current_output_scaling_value, 1, self.weight_squared, input)	 
+      else
+	 self.output:addmv(current_output_scaling_value, 1, self.weight, input)
+      end
+
+   elseif input:dim() == 2 then
+      local nframe = input:size(1)
+      local nunit = self.bias:size(1)
+      
+      -- 0*nan = nan, not 0!!!  It's thus necessary to initialize the output using more than just the scaling factor in addr.  It might make sense to create a distinct resize function, and only initialize with :zero after an explicit resize.
+      self.output:resize(nframe, nunit):zero() 
+      local current_output_scaling_value = 0
+      if not(self.no_bias) then
+	 self.output:addr(0, 1, input.new(nframe):fill(1), self.bias)
+	 current_output_scaling_value = 1
+      end
+
+      if self.squared_weight_matrix then
+	 self.output:addmm(current_output_scaling_value, 1, input, self.weight_squared:t())
+      else
+	 self.output:addmm(current_output_scaling_value, 1, input, self.weight:t())
+      end
    else
-      self.output:addmv(current_output_scaling_value, 1, self.weight, input)
+      error('input must be vector or matrix')
    end
    
    return self.output
@@ -109,7 +134,13 @@ function ConstrainedLinear:updateGradInput(input, gradOutput)
 	 self.weight_squared:resizeAs(self.weight)
 	 --self.weight_squared:pow(self.weight, 2)
 	 self.weight_squared:cmul(self.weight, self.weight)
-	 self.gradInput:addmv(0, 1, self.weight_squared:t(), gradOutput)
+	 if input:dim() == 1 then
+	    self.gradInput:addmv(0, 1, self.weight_squared:t(), gradOutput)
+	 elseif input:dim() == 2 then
+	    self.gradInput:addmm(0, 1, gradOutput, self.weight_squared)
+	 else
+	    error('input must be a vector or matrix')
+	 end
 	 
 	 return self.gradInput
       end
@@ -119,26 +150,35 @@ function ConstrainedLinear:updateGradInput(input, gradOutput)
 end
 
 
-
 function ConstrainedLinear:accGradParameters(input, gradOutput, scale)
    scale = scale or 1
    if self.squared_weight_matrix then 
-      if input:dim() ~= 1 then
-	 error('squared_weight_matrix is only compatible with input of dimension 1')
-      end
       self.grad_weight_outer_product:resizeAs(self.weight)
-      self.grad_weight_outer_product:ger(gradOutput, input)
+
+      if input:dim() == 1 then
+	 self.grad_weight_outer_product:ger(gradOutput, input)
+	 self.gradBias:add(self.learning_scale_factor * scale, gradOutput)      
+      elseif input:dim() == 2 then
+	 local nframe = input:size(1)
+	 local nunit = self.bias:size(1)
+
+	 self.grad_weight_outer_product:mm(gradOutput:t(), input)
+	 self.gradBias:addmv(self.learning_scale_factor * scale, gradOutput:t(), input.new(nframe):fill(1))
+      else
+	 error('input must be a vector or matrix')
+      end
+
       if self.RUN_JACOBIAN_TEST then
 	 self.grad_weight_outer_product:cmul(self.stored_weight) -- DEBUG ONLY!!!
       else
 	 self.grad_weight_outer_product:cmul(self.weight)
       end
+
       self.gradWeight:add(self.learning_scale_factor * 2 * scale, self.grad_weight_outer_product)
 
       --self.gradWeight:cmul(self.weight) -- this only works if gradWeight was zeroed before the call; we can't accumulate into gradWeight
       --self.gradWeight:mul(2)
 
-      self.gradBias:add(self.learning_scale_factor * scale, gradOutput)      
       --print('using modified accGradParameters')
    else
       return parent.accGradParameters(self, input, gradOutput, self.learning_scale_factor * scale)
