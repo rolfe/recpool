@@ -424,7 +424,6 @@ rose4 - 11/13 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised
 rose6 - 
 othello - 11/13 400 hidden units minibatch size 10 learning rate 20e-2, 100 epochs unsupervised
 duncan - 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised
-11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3
 iago - 11/7 two recpool layers, 2.25 L1 scaling, 0.2 scaling of second layer
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
 ceres - 11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
