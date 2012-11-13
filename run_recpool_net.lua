@@ -16,7 +16,7 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 10e-3
+local full_train_learning_rate = 20e-3
 local quick_train_epoch_size = 50000
 local desired_minibatch_size = 10
 
