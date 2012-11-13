@@ -20,7 +20,7 @@ local full_train_learning_rate = 20e-3
 local quick_train_epoch_size = 50000
 local desired_minibatch_size = 10
 
-local fe_layer_size = 200 --400 --200
+local fe_layer_size = 400 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
