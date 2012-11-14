@@ -37,6 +37,7 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outpu
    self.opt.plot = opt.plot or false -- live plot
    self.opt.optimization = opt.optimization or 'SGD' -- optimization method: SGD | ASGD | CG | LBFGS
    self.opt.learning_rate = opt.learning_rate or 1e-3 -- learning rate at t=0
+   self.opt.learning_rate_decay = opt.learning_rate_decay or 5e-7 -- should be adjusted based upon minibatch size in run_recpool_net
    self.opt.batch_size = opt.batch_size or 1 -- mini-batch size (1 = pure stochastic)
    self.opt.weight_decay = opt.weight_decay or 0 -- weight decay (SGD only)
    self.opt.momentum = opt.momentum or 0 -- momentum (SGD only)
@@ -231,7 +232,7 @@ function RecPoolTrainer:train(train_data)
          self.config = self.config or {learningRate = self.opt.learning_rate,
                              weightDecay = self.opt.weight_decay,
                              momentum = self.opt.momentum,
-                             learningRateDecay = 5e-7}
+                             learningRateDecay = self.opt.learning_rate_decay} -- 5e-7
 	 self.config.learningRate = self.opt.learning_rate -- make sure that the sgd learning rate reflects any resets
          optim.sgd(self.feval, self.flattened_parameters, self.config)
 	 

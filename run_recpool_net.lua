@@ -15,10 +15,10 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local quick_train_learning_rate = 25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 10e-3
-local quick_train_epoch_size = 50000
 local desired_minibatch_size = 10
+local quick_train_learning_rate = desired_minibatch_size * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = desired_minibatch_size * 2e-3 --10e-3
+local quick_train_epoch_size = 5000
 
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
@@ -239,6 +239,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (1 = pure stochastic)
+   learning_rate_decay = 5e-7 * desired_minibatch_size, -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = 1, -- start averaging at t0 (ASGD only), in number (?!?) of epochs -- WHAT DOES THIS MEAN?
@@ -293,6 +294,7 @@ for i = 1,num_epochs_no_classification do
    trainer:train(data)
    --print('iterations so far: ' .. trainer.config.evalCounter)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+   print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
@@ -300,7 +302,8 @@ model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance betw
 --trainer:reset_learning_rate(1e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 if num_epochs_no_classification == 1 then
-   trainer.config.evalCounter = 200 * 50000 -- THIS NEEDS TO BE CHANGED TO REFLECT THE NUMBER OF EPOCHS USED DURING UNSUPERVISED PRETRAINING
+   trainer.config.evalCounter = 200 * 50000 / desired_minibatch_size -- THIS NEEDS TO BE CHANGED TO REFLECT THE NUMBER OF EPOCHS USED DURING UNSUPERVISED PRETRAINING
+   print('Setting evalCounter to ' .. trainer.config.evalCounter)
    --trainer:reset_learning_rate(0.5 * opt.learning_rate)
 end
 local perform_classifier_pretraining = false
@@ -338,6 +341,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
 
    trainer:train(data)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+   print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
 
 

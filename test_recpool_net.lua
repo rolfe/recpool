@@ -721,7 +721,7 @@ function rec_pool_test.full_network_test()
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 
-   local minibatch_size = 1
+   local minibatch_size = 0
    local layer_size = {10, 20, 10, 10}
    local target
    if minibatch_size > 0 then
@@ -868,7 +868,7 @@ function rec_pool_test.ISTA_reconstruction()
    recpool_config_prefs.normalize_each_layer = false
 
 
-   local minibatch_size = 3
+   local minibatch_size = 0
    local layer_size = {10, 60, 10, 10}
    local target
    if minibatch_size > 0 then

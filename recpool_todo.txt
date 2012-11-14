@@ -365,6 +365,8 @@ Complex cell units seem to be much less dependent than simple cell units on thei
 11/13 minibatch size 10, learning rate 20e-2, 6e-2 sparsity, 100 epochs unsupervised - 380 epochs, 97.14% - 400 epochs, 97.79% - 420 epochs, 97.78% - 440 epochs, 97.85%
 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised - 220 epochs, 97.49% - 240 epochs, 97.36% - 260 epochs, 97.44%
 
+Learning rate decay is based upon the number of calls to SGD, rather than the number of datapoints evaluated.  To maintain parity with previous runs, we need to scale the learning rate decay by the minibatch size.
+
 11/13 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised 
 11/13 minibatch size 0, learning rate 2e-2, restart from 11/13 learning rate 20e-2, 500 epochs - 
 
@@ -425,8 +427,8 @@ NormalizeTable
 
 
 rose1 - 
-rose2 - 11/13 minibatch size 10, learning rate 10e-2, 100 epochs unsupervised
-rose4 - 11/13 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised
+rose2 - 11/13 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised
+rose4 - 
 rose6 - 
 othello - 11/13 400 hidden units minibatch size 10 learning rate 20e-2, 100 epochs unsupervised
 duncan - DEAD - 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised
