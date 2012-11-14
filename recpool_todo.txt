@@ -359,8 +359,14 @@ Pretraining does seem to be important, but 100 epochs of pretraining seems to be
 
 Complex cell units seem to be much less dependent than simple cell units on their direct sensory input.  Whereas simple cell units rarely develop significant positive outputs if their feedforward activation is not positive, complex cell units that grow large often have negative feedforward activation.  
 
-11/9 no pooling, enc rows normalized 1.25, 11e-2 sparsity
-11/9 no pooling, enc rows normalized 1.25, 7e-2 sparsity
+11/13 minibatch size 10, learning rate 10e-2, 100 epochs unsupervised - 520 epochs, 97.92% - 540 epochs, 97.88% - 560 epochs, 97.68%
+11/13 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised - 460 epochs, 97.86% - 480 epochs, 95.74% - 500 epochs, 97.36% - 520 epoch, 98%
+11/13 400 hidden units minibatch size 10 learning rate 20e-2, 100 epochs unsupervised - 180 epochs, 98.25% - 200 epochs, 98.26%
+11/13 minibatch size 10, learning rate 20e-2, 6e-2 sparsity, 100 epochs unsupervised - 380 epochs, 97.14% - 400 epochs, 97.79% - 420 epochs, 97.78% - 440 epochs, 97.85%
+11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised - 220 epochs, 97.49% - 240 epochs, 97.36% - 260 epochs, 97.44%
+
+11/13 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised 
+11/13 minibatch size 0, learning rate 2e-2, restart from 11/13 learning rate 20e-2, 500 epochs - 
 
 
 
@@ -423,8 +429,8 @@ rose2 - 11/13 minibatch size 10, learning rate 10e-2, 100 epochs unsupervised
 rose4 - 11/13 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised
 rose6 - 
 othello - 11/13 400 hidden units minibatch size 10 learning rate 20e-2, 100 epochs unsupervised
-duncan - 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised
-iago - 11/7 two recpool layers, 2.25 L1 scaling, 0.2 scaling of second layer
+duncan - DEAD - 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised
+iago - 11/13 minibatch size 10, learning rate 20e-2, 6e-2 sparsity, 100 epochs unsupervised
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
 ceres - 11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
 iris - 11/5 no pooling, enc rows normalized, 9e-2 sparsity

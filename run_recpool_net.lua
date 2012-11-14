@@ -16,7 +16,7 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local quick_train_learning_rate = 25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 20e-3
+local full_train_learning_rate = 10e-3
 local quick_train_epoch_size = 50000
 local desired_minibatch_size = 10
 
@@ -61,7 +61,7 @@ if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) the
    sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
-   sl_mag = 2e-2 --3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
+   sl_mag = 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
 end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
@@ -284,7 +284,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 100 --200 --501 --201
+num_epochs_no_classification = 200 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
