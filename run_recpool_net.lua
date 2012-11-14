@@ -17,7 +17,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local desired_minibatch_size = 10
 local quick_train_learning_rate = desired_minibatch_size * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = desired_minibatch_size * 2e-3 --10e-3
+local full_train_learning_rate = desired_minibatch_size * 1e-3 --10e-3
 local quick_train_epoch_size = 5000
 
 local fe_layer_size = 200 --400 --200
@@ -285,7 +285,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-num_epochs_no_classification = 100 --200 --501 --201
+num_epochs_no_classification = 200 --200 --501 --201
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
