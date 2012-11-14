@@ -347,13 +347,13 @@ Dictionary elements that are poorly trained during unsupervised pretraining seem
 
 11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3 - 100 epochs, 98.41 (98.42% on test set)- 120 epochs, 98.42% (98.55% on test set) - 140 epochs, 98.11% (98.42% on test set) - 160 epochs, 98.62% (98.71% on test set) - 180 epochs, 98.11% (98.11% on test set) - 200 epochs, 98.72% (98.7% on test set) - 680 epochs, 98.56% - 700 epochs, 98.49% - 720 epochs, 98.57% - 740 epochs, 98.47% - 760 epochs, 98.45% - 780 epochs, 98.5% - 800 epochs, 98.49% - 960 epochs, 98.5% - 980 epochs, 98.47% - 1000 epochs, 98.47%
 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining - 440 epochs, 98.52% - 460 epochs, 98.68% - 480 epochs, 98.76% (98.7% on test set) - 500 epochs, 98.57% - 520 epochs, 98.46% - 660 epochs, 98.65% - 680 epochs, 98.67% - 700 epochs, 98.67%
-11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units - 340 epochs, 98.94% (98.78% on test set) - 360 epochs, 97.53% - 380 epochs, 97.86% (98.944% on train set) - 400 epochs, 98.82% (98.63% on test set, 99.994% (all but 3) on train set) - 440 epochs, 98.81% (98.73% on test) - 460 epochs, 98.72% - 480 epochs, 98.81% (98.64% on test) - 500 epochs, 98.76% - 520 epochs, 98.78% (98.65% on test) - 540 epochs, 98.8% (98.67% on test)
+11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units - 340 epochs, 98.94% (98.78% on test set) - 360 epochs, 97.53% - 380 epochs, 97.86% (98.944% on train set) - 400 epochs, 98.82% (98.63% on test set, 99.994% (all but 3) on train set) - 440 epochs, 98.81% (98.73% on test) - 460 epochs, 98.72% - 480 epochs, 98.81% (98.64% on test) - 500 epochs, 98.76% - 520 epochs, 98.78% (98.65% on test) - 540 epochs, 98.8% (98.67% on test) - 600 epochs, 98.76% (98.72% on test) - 620 epochs, 98.75% (98.7% on test)
 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3 - 140 epochs, 98.36% - 540 epochs, 98.38% - 560 epochs, 98.4% - 580 epochs, 98.31% - 600 epochs, 98.34% - 780 epochs, 98.28% - 800 epochs, 98.3% - 820 epochs, 98.25%
 
 11/9 no pooling, enc rows normalized 1.5, 9e-2 sparsity - 480 epochs, 98.55% - 500 epochs, 98.67% - 520 epochs, 98.61% - 540 epochs, 98.5% - 560 epochs, 98.54% - 580 epochs, 98.48% - 800 epochs, 98.51% - 820 epochs, 98.55% - 840 epochs, 98.46%
 11/9 no pooling, enc rows normalized 1.25, 9e-2 sparsity (should replicate 11/5) - 460 epochs, 98.3% - 480 epochs, 98.83% (98.68% on test set) - 500 epochs, 98.74% - 520 epochs, 98.39% - 540 epochs, 98.59% - 560 epochs, 98.61% (99.982% (all but 9) on train set) - 580 epochs, 98.3% (99.686% on train set) - 820 epochs, 98.6% - 840 epochs, 98.65% - 860 epochs, 98.05%
 11/9 no pooling, enc rows normalized 1.0, 9e-2 sparsity - 380 epochs, 98.44% - 400 epochs, 98.67% - 420 epochs, 98.25% - 540 epochs, 98.58% - 560 epochs, 98.54% - 580 epochs, 98.09% - 600 epochs, 98.64%
-11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations - 340 epochs, 97.18% - 360 epochs, 97.72% - 380 epochs, 98.52% - 520 epochs, 98.55% - 540 epochs, 96.66% - 560 epochs, 98.53%
+11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations - 340 epochs, 97.18% - 360 epochs, 97.72% - 380 epochs, 98.52% - 520 epochs, 98.55% - 540 epochs, 96.66% - 560 epochs, 98.53% - 640 epochs, 95.01% - 660 epochs, 96.51% - 680 epochs, 98.72%
 
 Pretraining does seem to be important, but 100 epochs of pretraining seems to be sufficient.  300 hidden units probably helps, but learning is no more stable, and will need to be investigated further.  There is no obvious effect to small variations in the amount of encoding_feature_extraction_dictionary row normalization.  Increasing the scaling of the classification loss does not hurt; decreasing the scaling of the classification loss probably does hurt.  
 
@@ -365,10 +365,15 @@ Complex cell units seem to be much less dependent than simple cell units on thei
 11/13 minibatch size 10, learning rate 20e-2, 6e-2 sparsity, 100 epochs unsupervised - 380 epochs, 97.14% - 400 epochs, 97.79% - 420 epochs, 97.78% - 440 epochs, 97.85%
 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised - 220 epochs, 97.49% - 240 epochs, 97.36% - 260 epochs, 97.44%
 
-Learning rate decay is based upon the number of calls to SGD, rather than the number of datapoints evaluated.  To maintain parity with previous runs, we need to scale the learning rate decay by the minibatch size.
+Learning rate decay is based upon the number of calls to SGD, rather than the number of datapoints evaluated.  To maintain parity with previous runs, we need to scale the learning rate decay by the minibatch size.  In general, training time can be used as a proxy for decreasing the learning rate, because of learning rate decay.  The 11/5 run thus demonstrates that decreasing the learning rate is not a panacea for instability in performance.  On the other hand, the amount of time required after pretraining to obtain good classification performance may be a result of the need to wait for learning rate decay to gradually reduce the learning rate.  
+I don't think I ever tried classifier pretraining with learning rate decay set properly.  This might be worth reinvestigating.  
 
-11/13 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised 
-11/13 minibatch size 0, learning rate 2e-2, restart from 11/13 learning rate 20e-2, 500 epochs - 
+11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised
+11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches
+11/14 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised, learning rate decay adjusted for minibatches
+11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches 
+11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, doubled learning rate decay adjusted for minibatches 
+
 
 
 
@@ -432,7 +437,7 @@ rose4 - 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, l
 rose6 - 
 othello - 11/13 400 hidden units minibatch size 10 learning rate 20e-2, 100 epochs unsupervised
 duncan - 11/14 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised, learning rate decay adjusted for minibatches
-iago - 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches
+iago - 11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
 ceres - 11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
 iris - 11/5 no pooling, enc rows normalized, 9e-2 sparsity
