@@ -427,11 +427,11 @@ NormalizeTable
 
 
 rose1 - 
-rose2 - 11/13 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised
-rose4 - 
+rose2 - 11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised
+rose4 - 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches
 rose6 - 
 othello - 11/13 400 hidden units minibatch size 10 learning rate 20e-2, 100 epochs unsupervised
-duncan - DEAD - 11/13 minibatch size 10, learning rate 20e-2, 12e-2 sparsity, 100 epochs unsupervised
+duncan - 11/14 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised, learning rate decay adjusted for minibatches
 iago - 11/13 minibatch size 10, learning rate 20e-2, 6e-2 sparsity, 100 epochs unsupervised
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
 ceres - 11/9 no pooling, enc rows normalize 1.25, 9e-2 sparsity, 11 ista iterations
