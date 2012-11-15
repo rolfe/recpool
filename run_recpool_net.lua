@@ -15,7 +15,7 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local desired_minibatch_size = 1 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
+local desired_minibatch_size = 0 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local quick_train_learning_rate = math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 5000
