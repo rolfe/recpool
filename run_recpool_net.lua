@@ -15,10 +15,10 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
-local desired_minibatch_size = 10
-local quick_train_learning_rate = desired_minibatch_size * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = desired_minibatch_size * 2e-3 --10e-3
-local quick_train_epoch_size = 50000
+local desired_minibatch_size = 1 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
+local quick_train_learning_rate = math.max(1, desired_minibatch_size) * 5e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local quick_train_epoch_size = 5000
 
 local num_epochs_no_classification = 200 --200 --501 --201
 local num_epochs = 1000
@@ -239,11 +239,11 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
-   init_eval_counter = ((num_epochs_no_classification <= 1) and 200 * 50000 / desired_minibatch_size) or 0,
+   init_eval_counter = ((num_epochs_no_classification <= 1) and (200 * 50000 / math.max(1, desired_minibatch_size))) or 0,
    learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
-   batch_size = desired_minibatch_size, -- mini-batch size (1 = pure stochastic)
-   learning_rate_decay = 2 * 5e-7 * desired_minibatch_size, -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
+   batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
+   learning_rate_decay = 5e-7 * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = 1, -- start averaging at t0 (ASGD only), in number (?!?) of epochs -- WHAT DOES THIS MEAN?
@@ -289,13 +289,6 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
---[[
-if num_epochs_no_classification <= 1 then -- do this first, so that the parameters aren't disrupted by an initial large unsupervised epoch
-   trainer.config.evalCounter = 200 * 50000 / desired_minibatch_size -- THIS NEEDS TO BE CHANGED TO REFLECT THE NUMBER OF EPOCHS USED DURING UNSUPERVISED PRETRAINING
-   print('Setting evalCounter to ' .. trainer.config.evalCounter)
-   --trainer:reset_learning_rate(0.5 * opt.learning_rate)
-end
---]]
 
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later

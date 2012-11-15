@@ -39,7 +39,7 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outpu
    self.opt.learning_rate = opt.learning_rate or 1e-3 -- learning rate at t=0
    self.opt.learning_rate_decay = opt.learning_rate_decay or 5e-7 -- should be adjusted based upon minibatch size in run_recpool_net
    self.opt.init_eval_counter = opt.init_eval_counter or 0
-   self.opt.batch_size = opt.batch_size or 1 -- mini-batch size (1 = pure stochastic)
+   self.opt.batch_size = opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
    self.opt.weight_decay = opt.weight_decay or 0 -- weight decay (SGD only)
    self.opt.momentum = opt.momentum or 0 -- momentum (SGD only)
    self.opt.t0 = opt.t0 or 1 -- start averaging at t0 (ASGD only), in number (?!?) of epochs -- WHAT DOES THIS MEAN?
@@ -185,7 +185,7 @@ function RecPoolTrainer:train(train_data)
    print('==> doing epoch on training data:')
    print("==> online epoch # " .. self.epoch .. ' [batch_size = ' .. self.opt.batch_size .. ']')
 
-   for t = 1, train_data:nExample(), self.opt.batch_size do
+   for t = 1, train_data:nExample(), math.max(1, self.opt.batch_size) do
       -- disp progress
       if (t % 200 == 1) or (t == train_data:nExample()) then
 	 xlua.progress(t, train_data:nExample())
@@ -193,7 +193,7 @@ function RecPoolTrainer:train(train_data)
       
       -- create mini batch.  The minibatch_inputs and minibatch_targets elements of a RecPoolTrainer are viewed directly by the feval made by make_feval()
       -- previously, minibatches consisted of a table, the elements of which were the components of the minibatch.  However, this is not directly compatible with the torch facilities for efficiently processing minibatches.  Now, minibatches consist of tensors, with the elements along the rows.  An exception is made for minibatches of size one, which use tensors (or numbers) of reduced dimensionality, to take advantage of more efficient matrix-vector rather than matrix-matrix calculations.
-      if self.opt.batch_size == 1 then
+      if self.opt.batch_size == 0 then
 	 self.minibatch_inputs = train_data.data[shuffle[t]]:double() -- This doesn't copy memory if the type is already correct
 	 self.minibatch_targets = train_data.labels[shuffle[t]]
       else -- unlike with minibatches of size 1, we *ALWAYS* copy the data in forming larger minibatches.  This is necessary because tensors consist of regular strides within contiguous blocks of memory, rather than arbitrary arrays of pointers.
@@ -353,7 +353,7 @@ function RecPoolTrainer:train(train_data)
       --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
       local single_shrink_output, single_pooling_output
-      if opt.batch_size == 1 then
+      if opt.batch_size == 0 then
 	 single_shrink_output = self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output
 	 if not(self.model.disable_pooling) then 
 	    single_pooling_output = self.model.layers[i].debug_module_list.pooling_seq.output[1]
@@ -481,7 +481,7 @@ function RecPoolTrainer:train(train_data)
    end
    print('C row norms are ', norms:unfold(1,10,10))
    
-   if self.opt.batch_size == 1 then
+   if self.opt.batch_size == 0 then
       print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
       print('target is ' .. self.model.current_target)
    else
@@ -499,14 +499,14 @@ function RecPoolTrainer:train(train_data)
 
    for j = 1,#index_list do
       -- automatically choose whether to use 1D or 2D indexing into shrink.output, depending upon the size of the minibatch
-      shrink_output_tensor[{j, 1}] = self.model.layers[1].module_list.shrink.output[((opt.batch_size == 1) and {index_list[j]}) or {1,index_list[j]}]
+      shrink_output_tensor[{j, 1}] = self.model.layers[1].module_list.shrink.output[((opt.batch_size == 0) and {index_list[j]}) or {1,index_list[j]}]
    end
    
    for i = 1,#self.model.layers[1].module_list.shrink_copies do
       --shrink_output_tensor:select(2,i):copy(self.model.layers[1].module_list.shrink_copies[i].output)
       for j = 1,#index_list do
 	 -- automatically choose whether to use 1D or 2D indexing into shrink_copies[i].output, depending upon the size of the minibatch
-	 shrink_output_tensor[{j, i+1}] = self.model.layers[1].module_list.shrink_copies[i].output[((opt.batch_size == 1) and {index_list[j]}) or {1,index_list[j]}]
+	 shrink_output_tensor[{j, i+1}] = self.model.layers[1].module_list.shrink_copies[i].output[((opt.batch_size == 0) and {index_list[j]}) or {1,index_list[j]}]
       end
    end
    print('evolution of selected shrink elements', shrink_output_tensor)
