@@ -20,7 +20,7 @@ local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2
 local full_train_learning_rate = 1e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
-local num_epochs_no_classification = 200 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
 local fe_layer_size = 200 --400 --200
