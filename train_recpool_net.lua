@@ -94,6 +94,11 @@ function RecPoolTrainer:make_feval()
    --[[
    local internal_counter = 1
    --]]
+
+   --[[ DEBUG CODE to check if minibatches produce the same gradients as pure SGD
+   local batched_update = torch.Tensor()
+   local batched_update_counter = 0
+   --]]
       
    local feval = function(current_params)
       -- enforce all constraints on parameters, since the parameters are updated manually, rather than through updateParameters as generally expected
@@ -159,12 +164,29 @@ function RecPoolTrainer:make_feval()
       
       -- normalize gradients and f(X)
       if self.minibatch_inputs:nDimension() == 2 then
-	 self.flattened_grad_parameters:div(self.minibatch_inputs:size(1)) -- minibatches are stored along the rows; each row is a different minibatch element
+	 -- we do not average gradients across a minibatch; rather we simply add them together.  This saves us from having to scale up the learning rate in proportion to the size of the minibatch
+	 --self.flattened_grad_parameters:div(self.minibatch_inputs:size(1)) -- minibatches are stored along the rows; each row is a different minibatch element
 	 total_err = total_err / self.minibatch_inputs:size(1)
-	 --if self.config.learningRate then
-	 --   print('update magnitude is ' .. torch.norm(torch.mul(self.flattened_grad_parameters, self.config.learningRate)))
-	 --end
       end
+
+      --[[  DEBUG CODE to check if minibatches produce the same gradients as pure SGD
+      if self.config.learningRate then
+	 batched_update:resizeAs(self.flattened_grad_parameters)
+	 if batched_update_counter == 0 then
+	    batched_update:zero()
+	 end
+	 --batched_update:add(self.config.learningRate, self.flattened_grad_parameters)
+	 batched_update:add(self.flattened_grad_parameters)
+	 batched_update_counter = batched_update_counter + 1
+	 if batched_update_counter == 10 then
+	    batched_update_counter = 0
+	    print('batched update magnitude is ' .. torch.norm(batched_update))
+	 end
+         --print('update magnitude is ' .. torch.norm(torch.mul(self.flattened_grad_parameters, self.config.learningRate)))
+	 print('update magnitude is ' .. torch.norm(self.flattened_grad_parameters))
+      end
+      --]]
+
        
       --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')
       -- return f and df/dX
@@ -183,6 +205,7 @@ function RecPoolTrainer:train(train_data)
    
    -- shuffle at each epoch
    local shuffle = torch.randperm(train_data:nExample()) --was trsize
+   --local shuffle = torch.range(1,train_data:nExample())
 
    -- do one epoch
    print('==> doing epoch on training data:')

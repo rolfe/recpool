@@ -512,7 +512,9 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
       classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
    end
-   local classification_criterion = nn.L1CriterionModule(nn.ClassNLLCriterion(), classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
+   local this_class_nll_criterion = nn.ClassNLLCriterion()
+   this_class_nll_criterion.sizeAverage = false -- ABSOLUTELY CRITICAL to ensure that the gradients from the classification loss alone are not scaled down in proportion to the minibatch size
+   local classification_criterion = nn.L1CriterionModule(this_class_nll_criterion, classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
    --local classification_criterion = nn.L1CriterionModule(nn.MSECriterion(), classification_criterion_lambda) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
 
    classification_dictionary.bias:zero()

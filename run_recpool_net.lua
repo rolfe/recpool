@@ -16,11 +16,11 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
-local quick_train_learning_rate = math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
-local num_epochs_no_classification = 0 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
 local fe_layer_size = 200 --400 --200
@@ -49,7 +49,7 @@ local disable_pooling_losses = false
 recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
-recpool_config_prefs.repair_interval = ((desired_minibatch_size <= 1) and 5) or 1
+recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
 
 pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
 mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2

@@ -375,11 +375,7 @@ Even with batch training with uncorrected learning rate decay, the encoding and 
 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches - 300 epochs, 95.11% - 320 epoch, 95.78% - 340 epochs, 96.16% - 400 epochs, 96.83% - 500 epochs, 97.15% - 600 epochs, 97.4% - 680 epochs, 97.52% (monotonic increase since 300 epochs) - 760 epochs, 97.57%
 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, doubled learning rate decay adjusted for minibatches - 640 epochs, 96.56% - 660 epochs, 96.59%
 
-Consider repairing more often
-After 300 supervised epochs, C row norms should be about 10.5
-Corresponding runs with minibatches have c row norms of 7.5, and incompletely trained filters
-Learning rate is too slow with decay adjusted for minibatches!!!
-
+UP UNTIL NOW, the classification gradient (alone) has been scaled down in proportion to the size of the minibatch, yielding attrocious results
 
 
 
@@ -429,7 +425,7 @@ rose2 - 11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised
 rose3 - 11/15 minibatch size 1 (matrix-matrix), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
 rose4 - 11/15 minibatch size 0 (matrix-vector), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
 rose6 -
-othello - 
+othello - 11/15 minibatch size 10, repair interval 1, learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
 duncan - 11/14 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised, learning rate decay adjusted for minibatches
 iago - 11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches
 macbeth - 11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units
@@ -449,3 +445,4 @@ Yann thinks number of epochs used for pretraining is larger than expected.  Try 
 
 Geoff's trick for avoiding early overconvergence: bound L2 norm of all weights.  I'm already basically doing this; L2 norm of encoder rows is bounded, L2 norm of decoder columns is fixed.
 Ask about deep convex nets.  What is a threshold for success?
+
