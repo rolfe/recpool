@@ -426,8 +426,8 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 rose1 - 
 rose2 - 11/14 minibatch size 10, learning rate 10e-2, 200 epochs unsupervised
-rose3 - 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, doubled learning rate decay (2x) adjusted for minibatches 
-rose4 - 11/14 minibatch size 10, learning rate 20e-2, 200 epochs unsupervised, learning rate decay adjusted for minibatches
+rose3 - 11/15 minibatch size 1 (matrix-matrix), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
+rose4 - 11/15 minibatch size 0 (matrix-vector), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
 rose6 -
 othello - 
 duncan - 11/14 minibatch size 10, learning rate 20e-2, 100 epochs unsupervised, learning rate decay adjusted for minibatches

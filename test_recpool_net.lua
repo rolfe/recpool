@@ -703,7 +703,7 @@ end
 function rec_pool_test.full_network_test()
    --REMEMBER that all Jacobian tests randomly reset the parameters of the module being tested, and then return them to their original value after the test is completed.  If gradients explode for only one module, it is likely that this random initialization is incorrect.  In particular, the signals passing through the explaining_away matrix will explode if it has eigenvalues with magnitude greater than one.  The acceptable scale of the random initialization will decrease as the explaining_away matrix increases, so be careful when changing layer_size.
 
-   -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
+   -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
    local recpool_config_prefs = {}
    recpool_config_prefs.num_ista_iterations = 5
    --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
@@ -716,6 +716,7 @@ function rec_pool_test.full_network_test()
    end
    recpool_config_prefs.use_squared_weight_matrix = true
    recpool_config_prefs.normalize_each_layer = false
+   recpool_config_prefs.repair_interval = 1
 
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
@@ -857,7 +858,7 @@ end
 function rec_pool_test.ISTA_reconstruction()
    -- check that ISTA actually finds a sparse reconstruction.  decoding_dictionary.output should be similar to test_input, and shrink_copies[#shrink_copies].output should have some zeros
 
-   -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
+   -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
    local recpool_config_prefs = {}
    recpool_config_prefs.num_ista_iterations = 50
    --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
@@ -866,6 +867,7 @@ function rec_pool_test.ISTA_reconstruction()
    recpool_config_prefs.disable_pooling = false
    recpool_config_prefs.use_squared_weight_matrix = true
    recpool_config_prefs.normalize_each_layer = false
+   recpool_config_prefs.repair_interval = 1
 
 
    local minibatch_size = 0

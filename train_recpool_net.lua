@@ -161,6 +161,9 @@ function RecPoolTrainer:make_feval()
       if self.minibatch_inputs:nDimension() == 2 then
 	 self.flattened_grad_parameters:div(self.minibatch_inputs:size(1)) -- minibatches are stored along the rows; each row is a different minibatch element
 	 total_err = total_err / self.minibatch_inputs:size(1)
+	 --if self.config.learningRate then
+	 --   print('update magnitude is ' .. torch.norm(torch.mul(self.flattened_grad_parameters, self.config.learningRate)))
+	 --end
       end
        
       --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')

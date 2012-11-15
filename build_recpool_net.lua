@@ -489,7 +489,7 @@ end
 
 
 
--- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer
+-- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
 -- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
 function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data_set, RUN_JACOBIAN_TEST)
@@ -957,11 +957,11 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    
    function this_layer:repair()
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
-      if repair_counter % 5 == 0 then
+      if repair_counter == 0 then
 	 encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
 	 base_decoding_feature_extraction_dictionary:repair(true) -- force full normalization of columns
       end
-      repair_counter = (repair_counter + 1) % 5
+      repair_counter = (repair_counter + 1) % recpool_config_prefs.repair_interval
       
       base_explaining_away:repair()
       if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
