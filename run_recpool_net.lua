@@ -20,11 +20,11 @@ local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2
 local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 10000
 
-local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
+local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
-local fe_layer_size = 200 --400 --200
+local fe_layer_size = 400 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
