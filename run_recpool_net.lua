@@ -21,10 +21,10 @@ local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e
 local quick_train_epoch_size = 20000
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
-local num_epochs_no_classification = 100 --200 --501 --201
+local num_epochs_no_classification = 200 --200 --501 --201
 local num_epochs = 1000
 
-local fe_layer_size = 200 --400 --200
+local fe_layer_size = 400 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -66,7 +66,7 @@ if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) the
    sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
-   sl_mag = 2e-2 --3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
+   sl_mag = 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
 end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
