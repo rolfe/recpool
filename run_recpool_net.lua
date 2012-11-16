@@ -18,13 +18,13 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 10000
+local quick_train_epoch_size = 20000
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
-local fe_layer_size = 400 --400 --200
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -269,10 +269,10 @@ if params.load_file ~= '' then
       local real_params = trainer:get_flattened_parameters()
       local temp_params = torch.Tensor():resizeAs(real_params)
       real_params:zero()
-      for j = 5,6 do
+      for j = 6,9 do
 	 for i = 0,8,2 do
 	    load_parameters(temp_params, (params.load_file .. tostring(j) .. tostring(i) .. '1.bin'))
-	    real_params:add(0.2/2, temp_params)
+	    real_params:add(0.2/4, temp_params)
 	 end
       end
    else
@@ -304,7 +304,7 @@ end
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
 
 for i = 1,num_epochs_no_classification do
-   if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
+   if (i % 50 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 
@@ -347,7 +347,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
       print('resetting learning rate to ' .. final_scale_factor * opt.learning_rate)
    end
    
-   if (i % 20 == 1) and (i > 1) then
+   if (i % 50 == 1) and (i > 1) then
       save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 

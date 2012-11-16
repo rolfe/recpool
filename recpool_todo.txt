@@ -380,11 +380,11 @@ UP UNTIL NOW, the classification gradient (alone) has been scaled down in propor
 11/15 minibatch size 0 (matrix-vector), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted 
 11/15 minibatch size 1 (matrix-matrix), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted 
 
-11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss - 200 epochs, 97.97% - 220 epochs, 98.41% - 240 epochs, 98.61% (98.72% on test set) - 260 epochs, 98.36% - 280 epochs, 98.44% - 300 epochs, 98.59% - 320 epochs, 98.48%
-11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 200 epochs, 97.36% - 220 epochs, 98.37% - 240 epochs, 98.09% - 280 epochs, 98.41% - 300 epochs, 96.92% - 320 epochs, 98.53% - 340 epochs, 98.6% (98.56% on test set) - 360 epochs, 97.82% - 380 epochs, 98.31% - 400 epochs, 98.58% - 460 epochs, 98.38% - 480 epochs, 98.58% - 500 epochs, 97.25% - 520 epochs, 98.65% - 540 epochs, 98.66% (98.6% on test set) - 560 epochs, 98.55% - 680 epochs, 98.66% (98.48% on test set) - 700 epochs, 98.62% - 720 epochs, 98.71% (98.5% on test set) - 800 epochs, 98.65% - 820 epochs, 98.7% (98.5% on test set) - 840 epochs, 98.66% - 860 epochs, 98.55% - 880 epochs, 98.61%
-11/15 minibatch size 10, learning rate 1e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 200 epochs, 98.28% - 220 epochs, 98.21% - 240 epochs, 98.44% - 300 epochs, 98.52% - 320 epochs, 98.46% - 340 epochs, 98.54% - 500 epochs, 98.39% - 520 epochs, 98.5% - 540 epochs, 98.44% - 560 epochs, 98.43%
- 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 300 epochs, 98.17% - 320 epochs, 98.39% - 340 epochs, 98.11% - 400 epochs, 98.41% - 500 epochs, 98.38% - 540 epochs, 98.51% - 560 epochs, 98.62% - 580 epochs, 98.57%
-11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss - 300 epochs, 98.12% - 320 epochs, 98.28%
+11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss - 200 epochs, 97.97% - 220 epochs, 98.41% - 240 epochs, 98.61% (98.72% on test set) - 260 epochs, 98.36% - 280 epochs, 98.44% - 300 epochs, 98.59% - 320 epochs, 98.48% - 400 epochs, 98.49% - 420 epochs, 98.03% - 440 epochs, 98.6% - 460 epochs, 98.03%
+11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 200 epochs, 97.36% - 220 epochs, 98.37% - 240 epochs, 98.09% - 280 epochs, 98.41% - 300 epochs, 96.92% - 320 epochs, 98.53% - 340 epochs, 98.6% (98.56% on test set) - 360 epochs, 97.82% - 380 epochs, 98.31% - 400 epochs, 98.58% - 460 epochs, 98.38% - 480 epochs, 98.58% - 500 epochs, 97.25% - 520 epochs, 98.65% - 540 epochs, 98.66% (98.6% on test set) - 560 epochs, 98.55% - 680 epochs, 98.66% (98.48% on test set) - 700 epochs, 98.62% - 720 epochs, 98.71% (98.5% on test set) - 800 epochs, 98.65% - 820 epochs, 98.7% (98.5% on test set) - 840 epochs, 98.66% - 860 epochs, 98.55% - 880 epochs, 98.61% - 1000 epochs, 98.54% - 1020 epochs, 98.31% (averaging 600 - 980, 98.7%)
+11/15 minibatch size 10, learning rate 1e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 200 epochs, 98.28% - 220 epochs, 98.21% - 240 epochs, 98.44% - 300 epochs, 98.52% - 320 epochs, 98.46% - 340 epochs, 98.54% - 500 epochs, 98.39% - 520 epochs, 98.5% - 540 epochs, 98.44% - 560 epochs, 98.43% - 780 epochs, 98.38% - 800 epochs, 98.4% - 820 epochs, 98.4%
+ 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 300 epochs, 98.17% - 320 epochs, 98.39% - 340 epochs, 98.11% - 400 epochs, 98.41% - 500 epochs, 98.38% - 540 epochs, 98.51% - 560 epochs, 98.62% - 580 epochs, 98.57% - 800 epochs, 780 epochs, 98.53% - 98.48% - 820 epochs, 98.44%
+11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss - 300 epochs, 98.12% - 320 epochs, 98.28% - 440 epochs, 98.46% - 460 epochs, 98.49%
 
 Learning rate of 1e-2 is too slow, even with batches!  Many receptive fields remain noisy even after 460 epochs of supervised training, and receptive fields change relatively little even over hundreds of epochs of training.  
 
@@ -435,14 +435,14 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 
 rose1 - 
-rose2 - 11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss
-rose3 - FILL
+rose2 - FILL
+rose3 - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, 400 hidden units
 rose4 - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, averaged SGD with t0 = 400 epochs
 rose6 -
-othello - 11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss
-duncan - 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss
+othello - FILL
+duncan - FILL
 iago - 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss
-macbeth - 11/15 minibatch size 10, learning rate 1e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss
+macbeth - FILL
 ceres - 
 iris - 
 
