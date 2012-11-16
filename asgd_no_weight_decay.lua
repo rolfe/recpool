@@ -39,6 +39,8 @@ function optim.asgd_no_weight_decay(opfunc, x, state)
    state.eta_t = state.eta_t or state.eta0
    state.mu_t = state.mu_t or 1
    state.t = state.t or 0
+   state.evalCounter = state.t -- used to maintain compatibility with SGD
+   state.learningRateDecay = state.lambda * state.eta0
 
    -- (1) evaluate f(x) and df/dx
    local fx,dfdx = opfunc(x)
@@ -62,6 +64,7 @@ function optim.asgd_no_weight_decay(opfunc, x, state)
 
    -- (5) update eta_t and mu_t
    state.t = state.t + 1
+   state.evalCounter = state.t -- used to maintain compatibility with SGD
    state.eta_t = state.eta0 / math.pow((1 + state.lambda * state.eta0 * state.t), state.alpha)
    state.mu_t = 1 / math.max(1, state.t - state.t0)
 

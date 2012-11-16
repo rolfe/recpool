@@ -437,7 +437,7 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 rose1 - 
 rose2 - 11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss
 rose3 - FILL
-rose4 - FILL
+rose4 - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, averaged SGD with t0 = 400 epochs
 rose6 -
 othello - 11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss
 duncan - 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss
