@@ -442,7 +442,7 @@ rose6 -
 othello - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fe row norm bound at 2, but initialized to 1.25
 duncan - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fe row norm bound at 4, but initialized to 1.25
 iago - 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss
-macbeth - FILL
+macbeth - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, 12e-2 L1 scaling
 ceres - 
 iris - 
 

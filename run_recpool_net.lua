@@ -66,7 +66,7 @@ if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) the
    sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
-   sl_mag = 4e-2 --3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
+   sl_mag = 2e-2 --3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
 end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
