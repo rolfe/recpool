@@ -42,7 +42,7 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outpu
    self.opt.batch_size = opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
    self.opt.weight_decay = opt.weight_decay or 0 -- weight decay (SGD only)
    self.opt.momentum = opt.momentum or 0 -- momentum (SGD only)
-   self.opt.t0 = opt.t0 or 1 -- start averaging at t0 (ASGD only), in number (?!?) of epochs -- WHAT DOES THIS MEAN?
+   self.opt.t0 = opt.t0 or 1 -- start averaging at t0 (ASGD only), where t0 is measured in number of epochs
    self.opt.max_iter = opt.max_iter or 2 -- maximum nb of iterations for CG and LBFGS
    
    -- allowed output classes
@@ -87,6 +87,14 @@ function RecPoolTrainer:get_flattened_parameters() -- flattened_parameters are m
    return self.flattened_parameters
 end
 
+function RecPoolTrainer:get_output_flattened_parameters() -- flattened_parameters are more sensibly handled by the model, rather than the trainer
+   if self.opt.optimization == 'ASGD' then
+      return self.average_parameters
+   else
+      return self.flattened_parameters
+   end
+end
+
 
 -- create closure to evaluate f(X) and df/dX; the closure is necessary so minibatch_inputs and self.minibatch_targets are correct.  
 -- self is provided by the column notation.  Thereafter, feval can be called without self as an argument, and the closure provides access to the (implicit) self argument of make_feval
@@ -102,7 +110,7 @@ function RecPoolTrainer:make_feval()
       
    local feval = function(current_params)
       -- enforce all constraints on parameters, since the parameters are updated manually, rather than through updateParameters as generally expected
-      if self.opt.optimization ~= 'SGD' then -- if we only do one feval call per parameter update, then it is safe to repair once after the update
+      if (self.opt.optimization ~= 'SGD') and (self.opt.optimization ~= 'ASGD') then -- if we only do one feval call per parameter update, then it is safe to repair once after the update
 	 print('consider the need to repair on each iteration')
 	 self.model:repair() -- THIS IS INEFFICIENT!  THIS DOUBLES THE TIME REQUIRED PER ITERATION!  THE COMPONENT OPERATIONS SHOULD BE IMPLEMENTED IN C!!!
       end
@@ -266,8 +274,9 @@ function RecPoolTrainer:train(train_data)
 	 
       elseif self.opt.optimization == 'ASGD' then
          self.config = self.config or {eta0 = self.opt.learning_rate,
-                             t0 = trsize * self.opt.t0}
-         _,_,average = optim.asgd(self.feval, self.flattened_parameters, self.config)
+				       lambda = self.opt.learning_rate_decay / self.opt.learning_rate, -- matches the decay to that in SGD
+				       t0 = train_data:nExample() * self.opt.t0}
+         _,_,self.average_parameters = optim.asgd_no_weight_decay(self.feval, self.flattened_parameters, self.config)
 	 
       else
          error('unknown optimization method')

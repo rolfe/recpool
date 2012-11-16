@@ -33,6 +33,8 @@ dofile('CauchyCost.lua')
 --dofile('DebugSquare.lua')
 dofile('ConstrainedLinear.lua')
 
+require 'optim'
+dofile('asgd_no_weight_decay.lua')
 
 require 'unsup'
 -- modifying unsup

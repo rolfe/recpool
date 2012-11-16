@@ -347,7 +347,7 @@ Dictionary elements that are poorly trained during unsupervised pretraining seem
 
 11/8 restart 11/5 no pooling, enc rows normalized, 9e-2 sparsity, but with classification loss scaling 2 and learning rate 1e-3 - 100 epochs, 98.41 (98.42% on test set)- 120 epochs, 98.42% (98.55% on test set) - 140 epochs, 98.11% (98.42% on test set) - 160 epochs, 98.62% (98.71% on test set) - 180 epochs, 98.11% (98.11% on test set) - 200 epochs, 98.72% (98.7% on test set) - 680 epochs, 98.56% - 700 epochs, 98.49% - 720 epochs, 98.57% - 740 epochs, 98.47% - 760 epochs, 98.45% - 780 epochs, 98.5% - 800 epochs, 98.49% - 960 epochs, 98.5% - 980 epochs, 98.47% - 1000 epochs, 98.47%
 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 100 epochs of unsupervised pretraining - 440 epochs, 98.52% - 460 epochs, 98.68% - 480 epochs, 98.76% (98.7% on test set) - 500 epochs, 98.57% - 520 epochs, 98.46% - 660 epochs, 98.65% - 680 epochs, 98.67% - 700 epochs, 98.67%
-11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units - 340 epochs, 98.94% (98.78% on test set) - 360 epochs, 97.53% - 380 epochs, 97.86% (98.944% on train set) - 400 epochs, 98.82% (98.63% on test set, 99.994% (all but 3) on train set) - 440 epochs, 98.81% (98.73% on test) - 460 epochs, 98.72% - 480 epochs, 98.81% (98.64% on test) - 500 epochs, 98.76% - 520 epochs, 98.78% (98.65% on test) - 540 epochs, 98.8% (98.67% on test) - 600 epochs, 98.76% (98.72% on test) - 620 epochs, 98.75% (98.7% on test)
+11/8 no pooling, enc rows normalized, 9e-2 sparsity, 300 fe units - 340 epochs, 98.94% (98.78% on test set) - 360 epochs, 97.53% - 380 epochs, 97.86% (98.944% on train set) - 400 epochs, 98.82% (98.63% on test set, 99.994% (all but 3) on train set) - 440 epochs, 98.81% (98.73% on test) - 460 epochs, 98.72% - 480 epochs, 98.81% (98.64% on test) - 500 epochs, 98.76% - 520 epochs, 98.78% (98.65% on test) - 540 epochs, 98.8% (98.67% on test) - 600 epochs, 98.76% (98.72% on test) - 620 epochs, 98.75% (98.7% on test) - 680 epochs, 98.74% (98.6% on test set) - 700 epochs, 98.78% (98.58% on test set)
 11/8 no pooling, enc rows normalized, 9e-2 sparsity, only 2 epochs of unsupervised pretraining, learning rate 1e-3 - 140 epochs, 98.36% - 540 epochs, 98.38% - 560 epochs, 98.4% - 580 epochs, 98.31% - 600 epochs, 98.34% - 780 epochs, 98.28% - 800 epochs, 98.3% - 820 epochs, 98.25%
 
 11/9 no pooling, enc rows normalized 1.5, 9e-2 sparsity - 480 epochs, 98.55% - 500 epochs, 98.67% - 520 epochs, 98.61% - 540 epochs, 98.5% - 560 epochs, 98.54% - 580 epochs, 98.48% - 800 epochs, 98.51% - 820 epochs, 98.55% - 840 epochs, 98.46%
@@ -377,6 +377,20 @@ Even with batch training with uncorrected learning rate decay, the encoding and 
 
 UP UNTIL NOW, the classification gradient (alone) has been scaled down in proportion to the size of the minibatch, yielding attrocious results
 
+11/15 minibatch size 0 (matrix-vector), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted 
+11/15 minibatch size 1 (matrix-matrix), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted 
+
+11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss - 200 epochs, 97.97% - 220 epochs, 98.41% - 240 epochs, 98.61% (98.72% on test set) - 260 epochs, 98.36% - 280 epochs, 98.44% - 300 epochs, 98.59% - 320 epochs, 98.48%
+11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 200 epochs, 97.36% - 220 epochs, 98.37% - 240 epochs, 98.09% - 280 epochs, 98.41% - 300 epochs, 96.92% - 320 epochs, 98.53% - 340 epochs, 98.6% (98.56% on test set) - 360 epochs, 97.82% - 380 epochs, 98.31% - 400 epochs, 98.58% - 460 epochs, 98.38% - 480 epochs, 98.58% - 500 epochs, 97.25% - 520 epochs, 98.65% - 540 epochs, 98.66% (98.6% on test set) - 560 epochs, 98.55% - 680 epochs, 98.66% (98.48% on test set) - 700 epochs, 98.62% - 720 epochs, 98.71% (98.5% on test set) - 800 epochs, 98.65% - 820 epochs, 98.7% (98.5% on test set) - 840 epochs, 98.66% - 860 epochs, 98.55% - 880 epochs, 98.61%
+11/15 minibatch size 10, learning rate 1e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 200 epochs, 98.28% - 220 epochs, 98.21% - 240 epochs, 98.44% - 300 epochs, 98.52% - 320 epochs, 98.46% - 340 epochs, 98.54% - 500 epochs, 98.39% - 520 epochs, 98.5% - 540 epochs, 98.44% - 560 epochs, 98.43%
+ 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss - 300 epochs, 98.17% - 320 epochs, 98.39% - 340 epochs, 98.11% - 400 epochs, 98.41% - 500 epochs, 98.38% - 540 epochs, 98.51% - 560 epochs, 98.62% - 580 epochs, 98.57%
+11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss - 300 epochs, 98.12% - 320 epochs, 98.28%
+
+Learning rate of 1e-2 is too slow, even with batches!  Many receptive fields remain noisy even after 460 epochs of supervised training, and receptive fields change relatively little even over hundreds of epochs of training.  
+
+11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, averaged SGD with t0 = 400 epochs
+
+Average over saved epochs!
 
 
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
@@ -422,8 +436,8 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 rose1 - 
 rose2 - 11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss
-rose3 - 11/15 minibatch size 1 (matrix-matrix), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
-rose4 - 11/15 minibatch size 0 (matrix-vector), learning rate 2e-2, restart from 11/9 200 epochs, lrd adjusted
+rose3 - FILL
+rose4 - FILL
 rose6 -
 othello - 11/15 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss
 duncan - 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 5 minibatches, fixed averaging of classification loss

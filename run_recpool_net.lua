@@ -17,9 +17,10 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 1e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
+local optimization_algorithm = 'ASGD' -- 'SGD'
 local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
@@ -239,7 +240,7 @@ local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
-   optimization = 'SGD', -- optimization method: SGD | ASGD | CG | LBFGS
+   optimization = optimization_algorithm, -- optimization method: SGD | ASGD | CG | LBFGS
    init_eval_counter = ((num_epochs_no_classification <= 1) and (200 * 50000 / math.max(1, desired_minibatch_size))) or 0,
    learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
@@ -247,7 +248,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    learning_rate_decay = 5e-7 * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
-   t0 = 1, -- start averaging at t0 (ASGD only), in number (?!?) of epochs -- WHAT DOES THIS MEAN?
+   t0 = num_epochs_no_classification + 300, -- start averaging at t0 (ASGD only), measured in number of epochs 
    max_iter = 2 -- maximum nb of iterations for CG and LBFGS
 }
 
@@ -263,9 +264,20 @@ local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_ou
 
 -- load parameters from file if desired
 if params.load_file ~= '' then
-   load_parameters(trainer:get_flattened_parameters(), params.load_file)
-   --model:randomize_pooling()
-   --model.module_list.classification_dictionary.weight:mul(10)
+   local average_saved_params = false
+   if average_saved_params then
+      local real_params = trainer:get_flattened_parameters()
+      local temp_params = torch.Tensor():resizeAs(real_params)
+      real_params:zero()
+      for j = 5,6 do
+	 for i = 0,8,2 do
+	    load_parameters(temp_params, (params.load_file .. tostring(j) .. tostring(i) .. '1.bin'))
+	    real_params:add(0.2/2, temp_params)
+	 end
+      end
+   else
+      load_parameters(trainer:get_flattened_parameters(), params.load_file)
+   end
 end
 
 os.execute('rm -rf ' .. opt.log_directory)
@@ -293,7 +305,7 @@ model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TUR
 
 for i = 1,num_epochs_no_classification do
    if (i % 20 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
-      save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
+      save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 
    trainer:train(data)
@@ -336,7 +348,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    end
    
    if (i % 20 == 1) and (i > 1) then
-      save_parameters(trainer:get_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
+      save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 
    trainer:train(data)
