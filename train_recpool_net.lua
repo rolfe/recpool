@@ -22,34 +22,18 @@ local RecPoolTrainer = torch.class('nn.RecPoolTrainer')
 local check_for_nans
 local output_gradient_magnitudes
 
-function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outputs)
+function RecPoolTrainer:__init(model, new_opt, layered_lambdas, track_criteria_outputs)
    self.layered_lambdas = layered_lambdas
    self.track_criteria_outputs = track_criteria_outputs or false
 
-   -- set default options
-   if not opt then
-      opt = {}
-   end
-   self.opt = {}
-
-   self.opt.log_directory = opt.log_directory or 'recpool_results' -- subdirectory in which to save/log experiments
-   self.opt.visualize = opt.visualize or false -- visualize input data and weights during training
-   self.opt.plot = opt.plot or false -- live plot
-   self.opt.optimization = opt.optimization or 'SGD' -- optimization method: SGD | ASGD | CG | LBFGS
-   self.opt.learning_rate = opt.learning_rate or 1e-3 -- learning rate at t=0
-   self.opt.learning_rate_decay = opt.learning_rate_decay or 5e-7 -- should be adjusted based upon minibatch size in run_recpool_net
-   self.opt.init_eval_counter = opt.init_eval_counter or 0
-   self.opt.batch_size = opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
-   self.opt.weight_decay = opt.weight_decay or 0 -- weight decay (SGD only)
-   self.opt.momentum = opt.momentum or 0 -- momentum (SGD only)
-   self.opt.t0 = opt.t0 or 1 -- start averaging at t0 (ASGD only), where t0 is measured in number of epochs
-   self.opt.max_iter = opt.max_iter or 2 -- maximum nb of iterations for CG and LBFGS
+   self:reset_options(new_opt)
    
    -- allowed output classes
    self.classes = {'1','2','3','4','5','6','7','8','9','0'}
    
    -- This matrix records the current confusion across classes
    self.confusion = optim.ConfusionMatrix(self.classes)
+   self.current_performance = 0
    self.loss_hist = {}   
    self.grad_loss_hist = {}
    for i = 1,#model.criteria_list.criteria do
@@ -77,6 +61,28 @@ function RecPoolTrainer:__init(model, opt, layered_lambdas, track_criteria_outpu
    -- note that feval takes only current_params as input, whereas make_feval takes self as input; the self provided to make_feval is accessible to feval through the closure
    self.feval = self:make_feval() 
    self.epoch = 0
+end
+
+function RecPoolTrainer:reset_options(new_opt)
+   -- set default options
+   if not new_opt then
+      new_opt = {}
+   end
+   self.opt = {}
+
+   -- only copy the desired components from new_opt, and initialize any unspecified components to sensible defaults
+   self.opt.log_directory = new_opt.log_directory or 'recpool_results' -- subdirectory in which to save/log experiments
+   self.opt.visualize = new_opt.visualize or false -- visualize input data and weights during training
+   self.opt.plot = new_opt.plot or false -- live plot
+   self.opt.optimization = new_opt.optimization or 'SGD' -- optimization method: SGD | ASGD | CG | LBFGS
+   self.opt.learning_rate = new_opt.learning_rate or 1e-3 -- learning rate at t=0
+   self.opt.learning_rate_decay = new_opt.learning_rate_decay or 5e-7 -- should be adjusted based upon minibatch size in run_recpool_net
+   self.opt.init_eval_counter = new_opt.init_eval_counter or 0
+   self.opt.batch_size = new_opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
+   self.opt.weight_decay = new_opt.weight_decay or 0 -- weight decay (SGD only)
+   self.opt.momentum = new_opt.momentum or 0 -- momentum (SGD only)
+   self.opt.t0 = new_opt.t0 or 1 -- start averaging at t0 (ASGD only), where t0 is measured in number of epochs
+   self.opt.max_iter = new_opt.max_iter or 2 -- maximum nb of iterations for CG and LBFGS
 end
 
 function RecPoolTrainer:reset_learning_rate(new_learning_rate)
@@ -205,8 +211,13 @@ function RecPoolTrainer:make_feval()
 end
 
 
-function RecPoolTrainer:train(train_data)
-   self.epoch = self.epoch + 1
+function RecPoolTrainer:train(train_data, test_epoch) 
+   -- test_epoch is true if we're just testing the network on the validation data, in which case nothing should be altered (in particular, learning should not be performed
+   if not(test_epoch) then
+      self.epoch = self.epoch + 1
+   end
+
+   local this_epoch_batch_size = (test_epoch and self.opt.test_batch_size) or self.opt.batch_size
    
    -- local vars
    local time = sys.clock()
@@ -217,9 +228,9 @@ function RecPoolTrainer:train(train_data)
 
    -- do one epoch
    print('==> doing epoch on training data:')
-   print("==> online epoch # " .. self.epoch .. ' [batch_size = ' .. self.opt.batch_size .. ']')
+   print("==> online epoch # " .. self.epoch .. ' [batch_size = ' .. this_epoch_batch_size .. ']')
 
-   for t = 1, train_data:nExample(), math.max(1, self.opt.batch_size) do
+   for t = 1, train_data:nExample(), math.max(1, this_epoch_batch_size) do
       -- disp progress
       if (t % 200 == 1) or (t == train_data:nExample()) then
 	 xlua.progress(t, train_data:nExample())
@@ -227,19 +238,19 @@ function RecPoolTrainer:train(train_data)
       
       -- create mini batch.  The minibatch_inputs and minibatch_targets elements of a RecPoolTrainer are viewed directly by the feval made by make_feval()
       -- previously, minibatches consisted of a table, the elements of which were the components of the minibatch.  However, this is not directly compatible with the torch facilities for efficiently processing minibatches.  Now, minibatches consist of tensors, with the elements along the rows.  An exception is made for minibatches of size one, which use tensors (or numbers) of reduced dimensionality, to take advantage of more efficient matrix-vector rather than matrix-matrix calculations.
-      if self.opt.batch_size == 0 then
+      if this_epoch_batch_size == 0 then
 	 self.minibatch_inputs = train_data.data[shuffle[t]]:double() -- This doesn't copy memory if the type is already correct
 	 self.minibatch_targets = train_data.labels[shuffle[t]]
       else -- unlike with minibatches of size 1, we *ALWAYS* copy the data in forming larger minibatches.  This is necessary because tensors consist of regular strides within contiguous blocks of memory, rather than arbitrary arrays of pointers.
-	 self.minibatch_inputs:resize(self.opt.batch_size, train_data:dataSize())
+	 self.minibatch_inputs:resize(this_epoch_batch_size, train_data:dataSize())
 	 if train_data:labelSize() == 1 then
-	    self.minibatch_targets:resize(self.opt.batch_size)
+	    self.minibatch_targets:resize(this_epoch_batch_size)
 	 else
-	    self.minibatch_targets:resize(self.opt.batch_size, train_data:labelSize())
+	    self.minibatch_targets:resize(this_epoch_batch_size, train_data:labelSize())
 	 end
 	 
 	 -- load new samples for the batch
-	 for i = 1,self.opt.batch_size do 
+	 for i = 1,this_epoch_batch_size do 
 	    --ensure that batches are full by wrapping around to the beginning if necessary; since the order of the dataset is reshuffled on each epoch, this shouldn't cause a big problem
 	    local shuffle_index = ((t+i-2) % train_data:nExample()) + 1
 	    self.minibatch_inputs:select(1,i):copy(train_data.data[shuffle[shuffle_index]]:double())
@@ -253,7 +264,9 @@ function RecPoolTrainer:train(train_data)
 
       
       -- optimize on current mini-batch
-      if self.opt.optimization == 'CG' then
+      if test_epoch then
+	 self.feval(self.flattened_parameters) -- just run the network on the minibatch_inputs and minibatch_targets to generate the confusion matrix, without doing any training
+      elseif self.opt.optimization == 'CG' then
          self.config = self.config or {maxIter = self.opt.max_iter}
          optim.cg(self.feval, self.flattened_parameters, self.config)
 	 
@@ -283,8 +296,8 @@ function RecPoolTrainer:train(train_data)
       end
 
       -- repair the parameters one final time
-      self.model:repair() -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
-   end
+      if not(test_epoch) then self.model:repair() end -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
+   end -- loop over the current epoch
    
    -- time taken for the current epoch (each call to train() only runs one epoch)
    time = sys.clock() - time
@@ -292,7 +305,8 @@ function RecPoolTrainer:train(train_data)
    print("==> time to learn 1 sample = " .. (time*1000) .. 'ms')
    
    print(self.confusion) -- print the confusion matrix for the current epoch
-   
+   self.current_performance = self.confusion.totalValid * 100 -- extract the current performance from the ConfusionMatrix object
+
    -- update logger/plot
    self.train_logger:add{['% mean class accuracy (train set)'] = self.confusion.totalValid * 100}
    if self.opt.plot then
@@ -388,7 +402,7 @@ function RecPoolTrainer:train(train_data)
       --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
       local single_shrink_output, single_pooling_output
-      if opt.batch_size == 0 then
+      if this_epoch_batch_size == 0 then
 	 single_shrink_output = self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output
 	 if not(self.model.disable_pooling) then 
 	    single_pooling_output = self.model.layers[i].debug_module_list.pooling_seq.output[1]
@@ -516,7 +530,7 @@ function RecPoolTrainer:train(train_data)
    end
    print('C row norms are ', norms:unfold(1,10,10))
    
-   if self.opt.batch_size == 0 then
+   if this_epoch_batch_size == 0 then
       print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
       print('target is ' .. self.model.current_target)
    else
@@ -534,14 +548,14 @@ function RecPoolTrainer:train(train_data)
 
    for j = 1,#index_list do
       -- automatically choose whether to use 1D or 2D indexing into shrink.output, depending upon the size of the minibatch
-      shrink_output_tensor[{j, 1}] = self.model.layers[1].module_list.shrink.output[((opt.batch_size == 0) and {index_list[j]}) or {1,index_list[j]}]
+      shrink_output_tensor[{j, 1}] = self.model.layers[1].module_list.shrink.output[((this_epoch_batch_size == 0) and {index_list[j]}) or {1,index_list[j]}]
    end
    
    for i = 1,#self.model.layers[1].module_list.shrink_copies do
       --shrink_output_tensor:select(2,i):copy(self.model.layers[1].module_list.shrink_copies[i].output)
       for j = 1,#index_list do
 	 -- automatically choose whether to use 1D or 2D indexing into shrink_copies[i].output, depending upon the size of the minibatch
-	 shrink_output_tensor[{j, i+1}] = self.model.layers[1].module_list.shrink_copies[i].output[((opt.batch_size == 0) and {index_list[j]}) or {1,index_list[j]}]
+	 shrink_output_tensor[{j, i+1}] = self.model.layers[1].module_list.shrink_copies[i].output[((this_epoch_batch_size == 0) and {index_list[j]}) or {1,index_list[j]}]
       end
    end
    print('evolution of selected shrink elements', shrink_output_tensor)

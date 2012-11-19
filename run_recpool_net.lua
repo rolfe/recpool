@@ -16,15 +16,16 @@ cmd:option('-full_test','quick_train', 'train slowly over the entire training se
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
+local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 20000
+local quick_train_epoch_size = 2000
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
-local num_epochs_no_classification = 200 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
-local fe_layer_size = 400 --400 --200
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -212,11 +213,15 @@ end
 
 -- create the dataset
 require 'mnist'
-local data_set_size, data
+local data_set_size, data, data_inline_test
 if params.data_set == 'train' then
    data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or quick_train_epoch_size
    data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
    --data = mnist.loadTrainSet(data_set_size, 'recpool_net_L2_classification') -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
+   if params.full_test == 'full_train' then
+      data_inline_test = mnist.loadTrainSet(10000, 'recpool_net', 50000) -- also load the validation set for inline testing
+      data_inline_test:normalizeL2()
+   end
 else
    data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
    if params.data_set == 'validation' then
@@ -245,6 +250,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
+   test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = 5e-7 * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
@@ -349,6 +355,13 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    
    if (i % 50 == 1) and (i > 1) then
       save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
+   end
+
+   if (i % 2 == 1) and (i > 1) and data_inline_test then
+      print('starting test epoch')
+      trainer:train(data_inline_test, true) --second argument specifies that this is a test epoch
+      print('writing performance ' .. trainer.current_performance)
+      save_performance_history(trainer.current_performance, opt.log_directory, i) -- defined in display_recpool_net
    end
 
    trainer:train(data)

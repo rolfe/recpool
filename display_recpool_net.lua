@@ -78,8 +78,7 @@ end
 
 
 function save_parameters(flattened_parameters, directory_name, iteration)
-   -- flatten the parameters for storage.  While this has already been done in the trainer, the trainer probably shouldn't be responsible for saving and loading the parameters
-   --local flattened_parameters = model:getParameters() 
+   -- The parameters have already been flattened by the trainer.  Flattening them again would move the parameters to a new flattened tensor.  This would be a Bad Thing.
 
    -- store model
    print('starting to store model')
@@ -92,6 +91,17 @@ function save_parameters(flattened_parameters, directory_name, iteration)
 
    --flattened_parameters = nil
    --collectgarbage()
+end
+
+function save_performance_history(performance, directory_name, iteration)
+   print('starting to store performance')
+   local mf = torch.DiskFile(directory_name .. '/performance_history.txt','rw'):ascii() -- ascii is redundant, since it is the default
+   mf:seekEnd()
+   print('about to write performance')
+   mf:writeString(iteration .. ', ' .. performance .. '\n')
+   print('about to close')
+   mf:close()
+   print('finished storing performance')
 end
 
 function load_parameters(flattened_parameters, file_name)
