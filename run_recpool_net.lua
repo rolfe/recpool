@@ -18,7 +18,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 0 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 4e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 2000
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -67,7 +67,7 @@ if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) the
    sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
-   sl_mag = 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
+   sl_mag = 1.5e-2 -- 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
 end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1

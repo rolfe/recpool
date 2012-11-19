@@ -388,8 +388,6 @@ UP UNTIL NOW, the classification gradient (alone) has been scaled down in propor
 
 Learning rate of 1e-2 is too slow, even with batches!  Many receptive fields remain noisy even after 460 epochs of supervised training, and receptive fields change relatively little even over hundreds of epochs of training.  
 
-11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, averaged SGD with t0 = 400 epochs
-
 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, 400 hidden units  - 380 epochs, 98.7% - 400 epochs, 98.58% - 420 epochs - 500 epochs, 98.63% - 600 epochs, 98.57% - 700 epochs, 98.58% - 800 epochs, 98.48% - 840 epochs, 98.46% - 98.68% - 860 epochs, 98.5% - 880 epochs, 98.5% - 1120 epochs, 98.45% - 1140 epochs, 98.43% - 1160 epochs, 98.43% -1180 epochs, 98.42%
 11/16 minibatch size 10, learning rate 2e-2, 200 epochs pretraining, repair every 5 minibatches, 400 hidden units - 250 epochs, 98.38% - 300 epochs, 98.76% - 350 epochs, 98.75% - 400 epochs, 98.76% - 450 epochs, 98.72% - 500 epochs, 98.8% - 600 epochs, 98.79% - 700 epochs, 98.77% - 800 epochs, 98.77% - 1100 epochs, 98.77% - 1150 epochs, 98.76%
 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, averaged SGD with t0 = 400 epochs - 700 epochs, 98.54% - 800 epochs, 98.51% - 880 epochs, 98.5% - 900 epochs, 98.54% - 1080 epochs, 98.57% (98.62% on test)
@@ -456,9 +454,9 @@ rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning 
 rose6 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 4e-2, repair every 5 minibatches
 othello - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches
 duncan - 
-iago - 11/15 minibatch size 10, learning rate 1e-2, 200 epochs pretraining, repair every 1 minibatch, fixed averaging of classification loss
-macbeth - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, 12e-2 L1 scaling
-banquo - 11/16 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, 6e-2 L1 scaling
+iago - 
+macbeth - 
+banquo - 
 ceres - 
 iris - 
 
