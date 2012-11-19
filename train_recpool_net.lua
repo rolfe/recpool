@@ -87,6 +87,7 @@ end
 
 function RecPoolTrainer:reset_learning_rate(new_learning_rate)
    self.opt.learning_rate = new_learning_rate
+   print('Resetting learning rate to ' .. new_learning_rate)
 end
 
 function RecPoolTrainer:get_flattened_parameters() -- flattened_parameters are more sensibly handled by the model, rather than the trainer
