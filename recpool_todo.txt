@@ -450,8 +450,8 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 
 rose1 - 
-rose2 - 
-rose3 - 
+rose2 - 11/19 400 fe units, 300 epochs pretraining, minibatch size 10, learning rate 2e-2, repair every 5 minibatches
+rose3 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-2, repair every 5 minibatches
 rose4 - 
 rose6 -
 othello - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches
