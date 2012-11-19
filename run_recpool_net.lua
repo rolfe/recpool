@@ -21,11 +21,12 @@ local quick_train_learning_rate = 0 --2e-3 --math.max(1, desired_minibatch_size)
 local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 2000
 
-local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
-local num_epochs_no_classification = 200 --200 --501 --201
+local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
+local desired_learning_rate_decay = 10e-7 --5e-7
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs = 1000
 
-local fe_layer_size = 400 --400 --200
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -67,7 +68,7 @@ if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) the
    sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
    --sl_mag = 0.025e-2 -- used in addition to group sparsity
 else
-   sl_mag = 1.5e-2 -- 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
+   sl_mag = 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
 end
 pooling_rec_mag = 1 --0 --0.5
 pooling_orig_rec_mag = 0 --1 --0.05 --1
@@ -251,7 +252,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
-   learning_rate_decay = 5e-7 * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
+   learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = num_epochs_no_classification + 300, -- start averaging at t0 (ASGD only), measured in number of epochs 
