@@ -401,8 +401,7 @@ Learning rate may still be too high!
 Keep in mind that the hessian of a piecewise-linear network is always zero or undefined.  It seems likely that by breaking the connection between the encoding, decoding, and explaining-away matrices, steep valleys are created in the loss function landscape.  In general, these three matrices need to change in a coordinated manner, or the mismatch prevents effective sparse coding.  
 Compared with 200 unit networks, 400 unit netwoks have L2 reconstruction loss that is 40% smaller, classification loss that is 60% smaller, and L1 loss that is slightly larger.  Of course, as a percentage, this implies that the half as many units are active.
 
-11/19 minibatch size 10, learning rate 2e-2, 400 epochs pretraining, repair every 5 minibatches, 400 hidden units 
-11/19 minibatch size 10, learning rate 4e-2, 6e-2 L1 scaling, 200 epochs pretraining, repair every 5 minibatches, 400 hidden units 
+11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 4e-2, repair every 5 minibatches - a quarter of the units fail to train
 
 ASGD IS NOT AVERAGING!!!!!
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
@@ -457,7 +456,7 @@ rose1 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning 
 rose2 - 11/19 400 fe units, 300 epochs pretraining, minibatch size 10, learning rate 2e-2, repair every 5 minibatches
 rose3 - 
 rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-2, repair every 5 minibatches
-rose6 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 4e-2, repair every 5 minibatches
+rose6 - 11/20 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats
 othello - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches
 duncan - 
 iago - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (DOES NOT AVERAGE until 4000 epochs)
