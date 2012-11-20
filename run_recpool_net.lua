@@ -17,14 +17,17 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 0 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local quick_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 500
+local quick_train_epoch_size = 1000
+local full_training_dataset_size = 50000
 
-local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
-local desired_learning_rate_decay = 5e-7
+local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
+local desired_learning_rate_decay = 10e-7 --5e-7
 local num_epochs_no_classification = 100 --200 --501 --201
+local num_classification_epochs_before_averaging_SGD = 300
 local num_epochs = 1000
+local default_pretraining_num_epochs = 200
 
 local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
@@ -243,11 +246,12 @@ data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
+local default_pretraining_minibatches = default_pretraining_num_epochs * full_training_dataset_size / math.max(1, desired_minibatch_size)
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = optimization_algorithm, -- optimization method: SGD | ASGD | CG | LBFGS
-   init_eval_counter = ((num_epochs_no_classification <= 1) and (200 * 50000 / math.max(1, desired_minibatch_size))) or 0,
+   init_eval_counter = ((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 0, 
    learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
       (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
@@ -255,7 +259,9 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
-   t0 = num_epochs_no_classification + 300, -- start averaging at t0 (ASGD only), measured in number of epochs 
+   t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
+	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
+      num_classification_epochs_before_averaging_SGD * (data:nExample() / math.max(1, desired_minibatch_size)), -- start averaging at t0 (ASGD only), measured in ASGD calls
    max_iter = 2 -- maximum nb of iterations for CG and LBFGS
 }
 

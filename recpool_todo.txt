@@ -404,6 +404,10 @@ Compared with 200 unit networks, 400 unit netwoks have L2 reconstruction loss th
 11/19 minibatch size 10, learning rate 2e-2, 400 epochs pretraining, repair every 5 minibatches, 400 hidden units 
 11/19 minibatch size 10, learning rate 4e-2, 6e-2 L1 scaling, 200 epochs pretraining, repair every 5 minibatches, 400 hidden units 
 
+ASGD IS NOT AVERAGING!!!!!
+Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
+Instabilities in validation error late in training correspond to instabilities in the reconstruction loss on the training set; it seems as if the training procedure is actually unstable, as opposed to the variation in validation loss being a result of the fact that the validation set is distinct from the training set.
+Sparsifying loss seems to consistently remain at about 0.2
 
 Average over saved epochs!
 
@@ -458,7 +462,7 @@ othello - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, r
 duncan - 
 iago - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7
 macbeth - 
-banquo - 
+banquo - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ISTA margin 1e-3
 ceres - 
 iris - 
 

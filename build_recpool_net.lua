@@ -16,7 +16,7 @@ NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
-CREATE_BUFFER_ON_L1_LOSS = 0.001
+CREATE_BUFFER_ON_L1_LOSS = false --0.001
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -896,7 +896,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
 
       local this_offset_shrink
-      if i == recpool_config_prefs.num_ista_iterations then
+      if CREATE_BUFFER_ON_L1_LOSS and (i == recpool_config_prefs.num_ista_iterations) then
 	 this_offset_shrink = nn.FixedShrink(layer_size[2])
 	 module_list.offset_shrink = this_offset_shrink
 	 if recpool_config_prefs.shrink_style ~= 'FixedShrink' then

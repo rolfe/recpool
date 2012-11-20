@@ -81,7 +81,7 @@ function RecPoolTrainer:reset_options(new_opt)
    self.opt.batch_size = new_opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
    self.opt.weight_decay = new_opt.weight_decay or 0 -- weight decay (SGD only)
    self.opt.momentum = new_opt.momentum or 0 -- momentum (SGD only)
-   self.opt.t0 = new_opt.t0 or 1 -- start averaging at t0 (ASGD only), where t0 is measured in number of epochs
+   self.opt.t0 = new_opt.t0 or 1 -- start averaging at t0 (ASGD only), where t0 is measured ASGD calls
    self.opt.max_iter = new_opt.max_iter or 2 -- maximum nb of iterations for CG and LBFGS
 end
 
@@ -96,6 +96,7 @@ end
 
 function RecPoolTrainer:get_output_flattened_parameters() -- flattened_parameters are more sensibly handled by the model, rather than the trainer
    if self.opt.optimization == 'ASGD' then
+      print('using averaged parameters')
       return self.average_parameters
    else
       return self.flattened_parameters
@@ -287,9 +288,10 @@ function RecPoolTrainer:train(train_data, test_epoch)
          optim.sgd(self.feval, self.flattened_parameters, self.config)
 	 
       elseif self.opt.optimization == 'ASGD' then
-         self.config = self.config or {eta0 = self.opt.learning_rate,
+         self.config = self.config or {t = self.opt.init_eval_counter or 0,
+				       eta0 = self.opt.learning_rate,
 				       lambda = self.opt.learning_rate_decay / self.opt.learning_rate, -- matches the decay to that in SGD
-				       t0 = train_data:nExample() * self.opt.t0}
+				       t0 = self.opt.t0} -- measured in calls to ASGD
          _,_,self.average_parameters = optim.asgd_no_weight_decay(self.feval, self.flattened_parameters, self.config)
 	 
       else
