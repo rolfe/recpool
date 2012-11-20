@@ -16,6 +16,7 @@ NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
+CREATE_BUFFER_ON_L1_LOSS = 0.001
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -78,8 +79,8 @@ end
 
 
 -- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
--- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
-local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST)
+-- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], the untransformed input x [3], and possibly the offset shrink [4]
+local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST, last_iteration, offset_shrink)
    local ista_seq = nn.Sequential()
    local explaining_away_parallel = nn.ParallelTable() 
    explaining_away_parallel:add(explaining_away) --subtract out the explained input: z + S*z [1]
@@ -96,14 +97,23 @@ local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST)
    add_in_WX_and_shrink_parallel:add(add_in_WX_and_shrink_seq) -- z = h_theta(z + Wx + S*z) [1]
    add_in_WX_and_shrink_parallel:add(nn.SelectTable{2}) -- preserve W*x [2]
    add_in_WX_and_shrink_parallel:add(nn.SelectTable{3}) -- preserve x [3]
+   if CREATE_BUFFER_ON_L1_LOSS and last_iteration then -- create an offset shrink, which can be used rather than the normal shrink output to as input to an L1 loss to ensure there is a buffer around the threshold
+      local add_in_WX_and_offset_and_shrink_seq = nn.Sequential()
+      add_in_WX_and_offset_and_shrink_seq:add(nn.SelectTable{1,2})
+      add_in_WX_and_offset_and_shrink_seq:add(nn.CAddTable())
+      add_in_WX_and_offset_and_shrink_seq:add(nn.AddConstant(0, CREATE_BUFFER_ON_L1_LOSS))
+      add_in_WX_and_offset_and_shrink_seq:add(offset_shrink)
+      add_in_WX_and_shrink_parallel:add(add_in_WX_and_offset_and_shrink_seq)
+   end
+
    ista_seq:add(add_in_WX_and_shrink_parallel)
 
    return ista_seq
 end
 
--- the input is a table of three elments: the subject of the shrink operation z [1], and the untransformed input x [untransformed_input_index] ; other signals are ignored
--- the output is a table of three elements: the subject of the shrink operation z [1], the reconstructed input D*z [2], and the untransformed input x [3]
-local function linearly_reconstruct_input(decoding_dictionary, untransformed_input_index)
+-- the input is a table of three (four) elments: the subject of the shrink operation z [1], the untransformed input x [untransformed_input_index], and possibly the offset shrink output [offset_shrink_index] ; other signals are ignored
+-- the output is a table of three (four) elements: the subject of the shrink operation z [1], the reconstructed input D*z [2], the untransformed input x [3], and possibly the offset shrink output [4]
+local function linearly_reconstruct_input(decoding_dictionary, untransformed_input_index, offset_shrink_index)
    local reconstruct_input_parallel = nn.ParallelDistributingTable() -- reconstruct the input from the shrunk code z
    local reconstruct_input_seq = nn.Sequential()
    reconstruct_input_seq:add(nn.SelectTable{1})
@@ -111,12 +121,14 @@ local function linearly_reconstruct_input(decoding_dictionary, untransformed_inp
    reconstruct_input_parallel:add(nn.SelectTable{1}) -- preserve the subject of the shrink operation z [1]
    reconstruct_input_parallel:add(reconstruct_input_seq) -- reconstruct the input D*z from the shrunk code z [2]
    reconstruct_input_parallel:add(nn.SelectTable{untransformed_input_index}) -- preserve the untransformed input x [3]
-
+   if CREATE_BUFFER_ON_L1_LOSS and offset_shrink_index then
+      reconstruct_input_parallel:add(nn.SelectTable{offset_shrink_index}) -- preserve the offset shrink, used to ensure there is a buffer around the threshold [4]
+   end
    return reconstruct_input_parallel
 end
 
--- the input is a table of three elments: the layer n code z [1], the reconstructed layer n-1 code r [2], and untransformed layer n-1 input x [3]
--- the output is a table of two elements: the layer n code z [1], and the untransformed layer n-1 input x[2]
+-- the input is a table of three (four) elments: the layer n code z [1], the reconstructed layer n-1 code r [2], the untransformed layer n-1 input x [3], and possibly the layer n-1 offset shrink output [4]
+-- the output is a table of two (three) elements: the layer n code z [1], the untransformed layer n-1 input x[2], and possibly the layer n-1 offset shrink output [3]
 local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
    local combined_loss = nn.ParallelDistributingTable() -- calculate the MSE between the reconstructed layer n-1 code r [2] and untransformed layer n-1 input x [3]; only pass on the layer n code z [1]
    
@@ -144,6 +156,9 @@ local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
 
    combined_loss:add(nn.SelectTable{1}) -- throw away all streams but the shrunk code z [1] and the original input x [3]; the result is a table with two entries
    combined_loss:add(nn.SelectTable{3})
+   if CREATE_BUFFER_ON_L1_LOSS then
+      combined_loss:add(nn.SelectTable{4}) -- preserve the offset shrink, used to ensure there is a buffer around the threshold [3]
+   end
    combined_loss:add(L2_loss_seq)
 
    -- rather than using nn.Ignore on the output of the criterion, we could use a SelectTable{1} without a ParallelDistributingTable, which would output a tensor in the forward direction, and send a nil as gradOutput to the criterion in the backwards direction
@@ -152,15 +167,19 @@ local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
 end
 
 
--- the input is a table of two elements: the subject of the shrink operation z [1], and the original input x [2]
+-- the input is a table of two (three) elements: the subject of the shrink operation z [1], the original input x [2], the possibly the offset shrink output [3]
 -- the output is a table of two elements: the subject of the shrink operation z [1], and the original input x [2]
-local function build_sparsifying_loss(sparsifying_criterion_module, criteria_list)
+local function build_sparsifying_loss(sparsifying_criterion_module, criteria_list, use_offset_shrink_output)
    --local L1_seq = nn.Sequential()
    --L1_seq:add(nn.CopyTable(1, 2)) -- split into the output to the rest of the chain [1] and the output to the L1 norm [2]; original input x is now [3]
    
    local apply_L1_norm = nn.ParallelDistributingTable()
    local scaled_L1_norm = nn.Sequential() -- scale the code [1], calculate its L1 norm, and throw away the output
-   scaled_L1_norm:add(nn.SelectTable{1}) 
+   if use_offset_shrink_output then
+      scaled_L1_norm:add(nn.SelectTable{3}) 
+   else
+      scaled_L1_norm:add(nn.SelectTable{1}) 
+   end
    if DEBUG_L1 or DEBUG_OUTPUT then
       scaled_L1_norm:add(nn.ZeroModule())
    else
@@ -876,19 +895,29 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 error('shrink style ' .. recpool_config_prefs.shrink_style .. ' was not recognized')
       end
 
+      local this_offset_shrink
+      if i == recpool_config_prefs.num_ista_iterations then
+	 this_offset_shrink = nn.FixedShrink(layer_size[2])
+	 module_list.offset_shrink = this_offset_shrink
+	 if recpool_config_prefs.shrink_style ~= 'FixedShrink' then
+	    error('offset shrink is only compatible with fixed shrink')
+	 end
+      end
+
       explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = this_explaining_away, this_shrink
-      ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST)
+      ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST, (i == recpool_config_prefs.num_ista_iterations), this_offset_shrink) -- last argument indicates whether this is the last ISTA iteration, in which case we should also pass on the offset shrink
       this_layer:add(ista_seq)
    end
+   
    -- reconstruct the input D*z [2] from the code z [1], leaving z [1] and x [3->2] unchanged
-   this_layer:add(linearly_reconstruct_input(base_decoding_feature_extraction_dictionary, 3))
+   this_layer:add(linearly_reconstruct_input(base_decoding_feature_extraction_dictionary, 3, (CREATE_BUFFER_ON_L1_LOSS and 4)))
    -- calculate the L2 distance between the reconstruction based on the shrunk code D*z [2], and the original input x [3]; discard all signals but the current code z [1] and the original input x [2]
    this_layer:add(build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda, criteria_list)) 
    -- calculate the L1 magnitude of the shrunk code z [1] (input also contains the original input x [2]), returning the shrunk code z [1] and original input x[2] unchanged
 
 
    -- compute the sparsifying loss on the shrunk code; input and output are the subject of the shrink operation z [1], and the original input x [2]
-   local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_module, criteria_list)
+   local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_module, criteria_list, CREATE_BUFFER_ON_L1_LOSS)
    this_layer:add(ista_sparsifying_loss_seq)
 
    -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved input z [2], and the original input x[3]

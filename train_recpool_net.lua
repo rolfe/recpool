@@ -402,20 +402,29 @@ function RecPoolTrainer:train(train_data, test_epoch)
       --print('shrink magnitude ', self.model.layers[i].module_list.shrink.shrink_val:norm())
       --print('all shrink', self.model.layers[i].module_list.shrink.shrink_val:unfold(1,10,10))
       --print('explaining away diag', torch.diag(self.model.layers[i].module_list.explaining_away.weight):unfold(1,10,10))
-      local single_shrink_output, single_pooling_output
+      local single_shrink_output, single_offset_shrink_output, single_pooling_output
       if this_epoch_batch_size == 0 then
 	 single_shrink_output = self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output
+	 if self.model.layers[i].module_list.offset_shrink then
+	    single_offset_shrink_output = self.model.layers[i].module_list.offset_shrink.output
+	 end
 	 if not(self.model.disable_pooling) then 
 	    single_pooling_output = self.model.layers[i].debug_module_list.pooling_seq.output[1]
 	 end
       else -- only display the first element of the minibatch
 	 single_shrink_output = self.model.layers[i].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output:select(1,1)
+	 if self.model.layers[i].module_list.offset_shrink then
+	    single_offset_shrink_output = self.model.layers[i].module_list.offset_shrink.output:select(1,1)
+	 end
 	 if not(self.model.disable_pooling) then 
 	    single_pooling_output = self.model.layers[i].debug_module_list.pooling_seq.output[1]:select(1,1)
 	 end
       end
 
       print('final shrink output', single_shrink_output:unfold(1,10,10))
+      if single_offset_shrink_output then 
+	 print('offset shrink output', single_offset_shrink_output:unfold(1,10,10))
+      end
       if not(self.model.disable_pooling) then -- this may not be defined if we've disabled pooling
 	 print('pooling reconstruction', self.model.layers[i].module_list.decoding_pooling_dictionary.output:unfold(1,10,10))
       end
