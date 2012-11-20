@@ -460,9 +460,9 @@ rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning 
 rose6 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 4e-2, repair every 5 minibatches
 othello - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches
 duncan - 
-iago - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7
-macbeth - 
-banquo - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ISTA margin 1e-3
+iago - 11/19 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (DOES NOT AVERAGE until 4000 epochs)
+macbeth - 11/20 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (proper ASGD averaging)
+banquo - 11/20 minibatch size 10, learning rate 2e-2, 100 epochs pretraining, repair every 5 minibatches, ISTA margin 1e-3
 ceres - 
 iris - 
 
