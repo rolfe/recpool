@@ -329,7 +329,7 @@ for i = 1,num_epochs_no_classification do
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(0.2) -- 0.2 seems to strike an even balance between reconstruction and classification
+model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
 --trainer:reset_learning_rate(1e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 local perform_classifier_pretraining = false
