@@ -21,13 +21,13 @@ local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_s
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
-local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
+local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
 if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay 10e-7')
    desired_learning_rate_decay = 10e-7 --5e-7
 end
-local num_epochs_no_classification = 200 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
 local num_epochs = 1000

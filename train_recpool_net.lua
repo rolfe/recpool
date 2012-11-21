@@ -95,7 +95,7 @@ function RecPoolTrainer:get_flattened_parameters() -- flattened_parameters are m
 end
 
 function RecPoolTrainer:get_output_flattened_parameters() -- flattened_parameters are more sensibly handled by the model, rather than the trainer
-   if self.opt.optimization == 'ASGD' then
+   if (self.opt.optimization == 'ASGD') and self.average_parameters then
       print('using averaged parameters')
       return self.average_parameters
    else

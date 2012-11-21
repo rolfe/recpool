@@ -408,17 +408,17 @@ Compared with 200 unit networks, 400 unit netwoks have L2 reconstruction loss th
 
 11/19 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches - average seems to be about 98.4
 11/19 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (DOES NOT AVERAGE until 4000 epochs) - average seems to be about 98.55%, but consistently hits 98.65% earlier in training
-11/20 minibatch size 10, learning rate 10e-3, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats - average seems to be about 98.65 - AFTER ONLY 100 EPOCHS OF PRETRAINING, ALL FILTERS ARE LEARNED WELL!!! - even with rescaling and 10 epochs of lower learning rate pretraining, doubling the learning rate to 20e-3 induces instabilities - it may be safe to scale the learning rate up to 10e-3 from 2e-3 since the learning rates of the encoding_feature_extraction_dictionary and explaining_away are scaled down, and these tend to be the most unstable; only decoding_feature_extraction_dictionary and classification_dictionary are actually subject to the increased learning rate
-11/20 minibatch size 10, learning rate 10e-3, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats, classification loss scaled by 1/5 - average seems to be about 98.3% - Scaling down the classification loss clearly sacrifices the quality of the supervised classification training - if gradients are too large after the classification loss is introduced, the global learning rate should be scaled down, rather than reducing the classification loss - keep in mind taht the ISTA rescaling reduces the learning rates, but does not change the scaling of the reconstruction losses
+11/20 minibatch size 10, learning rate 10e-3, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats - average seems to be about 98.65 - AFTER ONLY 100 EPOCHS OF PRETRAINING, ALL FILTERS ARE LEARNED WELL!!! - even with rescaling and 10 epochs of lower learning rate pretraining, doubling the learning rate to 20e-3 induces instabilities - it may be safe to scale the learning rate up to 10e-3 from 2e-3 since the learning rates of the encoding_feature_extraction_dictionary and explaining_away are scaled down, and these tend to be the most unstable; only decoding_feature_extraction_dictionary and classification_dictionary are actually subject to the increased learning rate - the network seems to overtrain after about 700 total epochs
+11/20 minibatch size 10, learning rate 10e-3, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats, classification loss scaled by 1/5 - average seems to be about 98.3% - Scaling down the classification loss clearly sacrifices the quality of the supervised classification training - if gradients are too large after the classification loss is introduced, the global learning rate should be scaled down, rather than reducing the classification loss - keep in mind that the ISTA rescaling reduces the learning rates, but does not change the scaling of the reconstruction losses
 11/20 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ISTA margin 1e-3 - average seems to be at least 98.7; maybe 98.72 (700 epochs, 98.68% on test set)
 11/20 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (proper ASGD averaging) - 500 epochs averaged since 400, 98.8% (98.76% on test set)
 
-ASGD IS NOT AVERAGING!!!!!
+
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
 Instabilities in validation error late in training correspond to instabilities in the reconstruction loss on the training set; it seems as if the training procedure is actually unstable, as opposed to the variation in validation loss being a result of the fact that the validation set is distinct from the training set.
 Sparsifying loss seems to consistently remain at about 0.2
 
-Average over saved epochs!
+
 
 
 All techniques to keep receptive fields well-formed, including scaling down repeated ista modules, pretraining the classification dictionary, and scaling down the classification loss while scaling up the learning rate; do not seem to improve performance.  However, I don't think I've tried scaling down the classification loss and scaling up learning rate in the absence of classification pretraining
@@ -463,7 +463,7 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 
 rose1 - 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - FILL
+rose2 - 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats, ASGD, learning rate decay 10e-7
 rose3 - 
 rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-3, repair every 5 minibatches
 rose6 - 11/20 minibatch size 10, learning rate 10e-3, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats
