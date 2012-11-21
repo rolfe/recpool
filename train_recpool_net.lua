@@ -292,6 +292,8 @@ function RecPoolTrainer:train(train_data, test_epoch)
 				       eta0 = self.opt.learning_rate,
 				       lambda = self.opt.learning_rate_decay / self.opt.learning_rate, -- matches the decay to that in SGD
 				       t0 = self.opt.t0} -- measured in calls to ASGD
+	 self.config.eta0 = self.opt.learning_rate -- make sure that asgd learning rate reflects any resets
+	 self.config.lambda = self.opt.learning_rate_decay / self.opt.learning_rate
          _,_,self.average_parameters = optim.asgd_no_weight_decay(self.feval, self.flattened_parameters, self.config)
 	 
       else

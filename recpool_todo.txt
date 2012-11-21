@@ -401,7 +401,12 @@ Learning rate may still be too high!
 Keep in mind that the hessian of a piecewise-linear network is always zero or undefined.  It seems likely that by breaking the connection between the encoding, decoding, and explaining-away matrices, steep valleys are created in the loss function landscape.  In general, these three matrices need to change in a coordinated manner, or the mismatch prevents effective sparse coding.  
 Compared with 200 unit networks, 400 unit netwoks have L2 reconstruction loss that is 40% smaller, classification loss that is 60% smaller, and L1 loss that is slightly larger.  Of course, as a percentage, this implies that the half as many units are active.
 
-11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 4e-2, repair every 5 minibatches - a quarter of the units fail to train
+11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 4e-3, repair every 5 minibatches - a quarter of the units fail to train
+11/19 400 fe units, 300 epochs pretraining, minibatch size 10, learning rate 2e-3, repair every 5 minibatches - average seems to be about 98.75%
+11/19 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches - average seems to be about 98.4
+11/20 minibatch size 10, learning rate 10e-3, 100 epochs pretraining, repair every 5 minibatches, learning rates scaled down in proportion to the number of ISTA repeats - average seems to be about 98.65 - AFTER ONLY 100 EPOCHS OF PRETRAINING, ALL FILTERS ARE LEARNED WELL!!! - even with rescaling and 10 epochs of lower learning rate pretraining, doubling the learning rate to 20e-3 induces instabilities
+11/20 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ISTA margin 1e-3 - average seems to be at least 98.7; maybe 98.72 (700 epochs, 98.68% on test set)
+11/20 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (proper ASGD averaging) - 500 epochs averaged since 400, 98.8% (98.76% on test set)
 
 ASGD IS NOT AVERAGING!!!!!
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
