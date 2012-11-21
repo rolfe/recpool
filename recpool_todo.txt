@@ -462,7 +462,7 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 
 
-rose1 - FILL
+rose1 - 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose2 - FILL
 rose3 - 
 rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-3, repair every 5 minibatches
