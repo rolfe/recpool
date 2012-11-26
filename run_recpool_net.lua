@@ -17,15 +17,15 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 5e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 5e-3 --10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
-local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
+local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
 if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay 10e-7')
-   desired_learning_rate_decay = 10e-7 --5e-7
+   desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
 end
 local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
@@ -53,7 +53,7 @@ local mask_mag = nil
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -340,7 +340,9 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
-trainer:reset_learning_rate(opt.learning_rate)
+if num_epochs_gentle_pretraining >= 0 then
+   trainer:reset_learning_rate(opt.learning_rate)
+end
 --trainer:reset_learning_rate(5e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 local perform_classifier_pretraining = false
