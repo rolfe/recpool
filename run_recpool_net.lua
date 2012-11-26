@@ -34,7 +34,7 @@ local num_epochs = 1000
 local full_training_dataset_size = 50000
 
 
-local fe_layer_size = 400 --400 --200
+local fe_layer_size = 800 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
