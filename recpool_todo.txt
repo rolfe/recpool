@@ -423,6 +423,10 @@ Compared with 200 unit networks, 400 unit netwoks have L2 reconstruction loss th
 
 The density of full-digit units decreases substantially when the total number of units increases from 200 to 400
 ASGD doesn't seem to be nearly as effective when the learning rate of the encoding_feature_extraction_dictionary and explaining_away are scaled down.  It's possible that with the larger learning rate decay 10e-7, learning simply isn't fast enough.
+Now that the learning rate of the encoders is balanced with that of the decoder, consider increasing the number of ISTA iterations.  Previously, the efficacy of large number of ISTA iterations may have been reduced since it caused the encoder learning rates to scale up too much.
+Doubling the learning rate, even after 20 epochs of pretraining (with associated learning rate decay of about 0.5) still induces instability initial instability, causes some units to learn whole digits, and increases the negative background on the encoding dictionary elements
+
+11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 
 
 
@@ -475,16 +479,16 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 
 
-rose1 - 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats, ASGD, learning rate decay 10e-7
+rose1 - 11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose2 - 
 rose3 - 
 rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-3, repair every 5 minibatches
-rose6 - 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-othello - 11/20 (actually 11/21) learning rate 10e-3 during pretraining, 2e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-duncan - 11/21 learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats, ASGD, learning rate decay 10e-7
-iago - 11/21 learning rate 10e-3 during pretraining, 5e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-macbeth - 11/20 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 (proper ASGD averaging)
-banquo - 11/20 minibatch size 10, learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ISTA margin 1e-3
+rose6 - 
+othello - 
+duncan - 
+iago - 
+macbeth - 
+banquo - 
 ceres - 
 iris - 
 

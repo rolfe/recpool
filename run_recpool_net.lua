@@ -28,13 +28,15 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 10e-7 --5e-7
 end
 local num_epochs_no_classification = 100 --200 --501 --201
+local num_epochs_gentle_pretraining = 20 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
+local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
 local num_epochs = 1000
 local full_training_dataset_size = 50000
 
 
-local fe_layer_size = 800 --400 --200
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -326,6 +328,10 @@ for i = 1,num_epochs_no_classification do
       save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 
+   if (num_epochs_gentle_pretraining >= 0) and (i == num_epochs_gentle_pretraining) then
+      trainer:reset_learning_rate(fast_pretraining_scale_factor * opt.learning_rate)
+   end
+
    trainer:train(data)
    --print('iterations so far: ' .. trainer.config.evalCounter)
    plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
@@ -334,6 +340,7 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
+trainer:reset_learning_rate(opt.learning_rate)
 --trainer:reset_learning_rate(5e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
 local perform_classifier_pretraining = false
