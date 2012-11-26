@@ -480,9 +480,9 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 
 rose1 - 11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - 
+rose2 - 11/27 400 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - 
-rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-3, repair every 5 minibatches
+rose4 - 
 rose6 - 
 othello - 11/27 200 fe units, learning rate 10e-3 during initial pretraining, doubled after 20 epochs, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
@@ -499,7 +499,7 @@ cassio - ceded to Nathan
 Look at averaging SGD - Leon Bottou - do SGD as usual, but then final result is average of last few iterations
 Minibatches of size 10 has a good chance of all being different classes; don't need learning rate much
 Chaituh (first name) in Eero's lab, just graduated - represent data manifold as point plus gradient
-Yann thinks number of epochs used for pretraining is larger than expected.  Try turing up learning rate during pretraining?  What happens if we only use 50 epochs of pretraining?
+Yann thinks number of epochs used for pretraining is larger than expected.  Try turning up learning rate during pretraining?  What happens if we only use 50 epochs of pretraining?  Keep in mind that the Jacobian of active units never goes to zero, since threshold-linear units that are above the threshold have a constant gradient, unlike sigmoidal units that have a decreasing derivative as they move away from the linear region and begin to saturate on either side.  
 
 Geoff's trick for avoiding early overconvergence: bound L2 norm of all weights.  I'm already basically doing this; L2 norm of encoder rows is bounded, L2 norm of decoder columns is fixed.
 Ask about deep convex nets.  What is a threshold for success?

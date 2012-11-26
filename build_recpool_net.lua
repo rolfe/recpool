@@ -13,6 +13,8 @@ FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, 
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false
 FULLY_NORMALIZE_ENC_FE_DICT = false
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
+NORMALIZE_ROWS_OF_CLASS_DICT = true
+CLASS_DICT_BOUND = 5
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
@@ -526,11 +528,18 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    -- size of the classification dictionary depends upon whether we're using pooling or not
    local classification_dictionary
    if not(recpool_config_prefs.disable_pooling) then
-      classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
-      --classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], {normalized_rows = true})
+      if NORMALIZE_ROWS_OF_CLASS_DICT then
+	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], {normalized_rows = true})
+      else
+	 classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
+      end
    else
       -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
-      classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
+      if NORMALIZE_ROWS_OF_CLASS_DICT then
+	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], {normalized_rows = true})
+      else
+	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
+      end
    end
    local this_class_nll_criterion = nn.ClassNLLCriterion()
    this_class_nll_criterion.sizeAverage = false -- ABSOLUTELY CRITICAL to ensure that the gradients from the classification loss alone are not scaled down in proportion to the minibatch size
@@ -642,10 +651,18 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 for i = 1,#layer_list do
 	    layer_list[i]:repair()
 	 end
-	 --classification_dictionary:repair()
+	 if NORMALIZE_ROWS_OF_CLASS_DICT then
+	    classification_dictionary:repair(false, CLASS_DICT_BOUND)
+	 end
       end
 
       function model:reset_learning_scale_factor(new_scale_factor)  -- reset the learning scale factor for each layer; classification dictionary is left unchanged
+	 if NORMALIZE_ROWS_OF_CLASS_DICT then
+	    classification_dictionary:reset_learning_scale_factor(new_scale_factor)
+	 else
+	    error('WARNING: learning scale factor is not changed for classification dictionary!')
+	 end
+	 
 	 for i = 1,#layer_list do
 	    layer_list[i]:reset_learning_scale_factor(new_scale_factor)
 	 end
