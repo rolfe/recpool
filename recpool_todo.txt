@@ -481,9 +481,9 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 
 rose1 - 11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose2 - 11/27 400 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose3 - 
-rose4 - 
-rose6 - 
+rose3 - 11/27 200 fe units, classification dictionary bounded at 5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose4 - 11/27 200 fe units, classification dictionary bounded at 2.5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose6 - 11/27 200 fe units, classification dictionary bounded at 10, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - 11/27 200 fe units, learning rate 10e-3 during initial pretraining, doubled after 20 epochs, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 iago - 11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
