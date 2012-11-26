@@ -487,7 +487,7 @@ rose6 -
 othello - 11/27 200 fe units, learning rate 10e-3 during initial pretraining, doubled after 20 epochs, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 iago - 11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-macbeth - 
+macbeth - 11/27 200 fe units, ASGD, learning rate 2e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - replicate good 11/20 run
 banquo - 
 ceres - 
 iris - 
