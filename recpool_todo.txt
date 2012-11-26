@@ -484,8 +484,8 @@ rose2 -
 rose3 - 
 rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning rate 3e-3, repair every 5 minibatches
 rose6 - 
-othello - 
-duncan - 
+othello - 11/27 200 fe units, learning rate 10e-3 during initial pretraining, doubled after 20 epochs, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 iago - 
 macbeth - 
 banquo - 
