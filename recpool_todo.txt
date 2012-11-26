@@ -418,7 +418,7 @@ Compared with 200 unit networks, 400 unit netwoks have L2 reconstruction loss th
 11/20 (actually 11/21) learning rate 10e-3 during pretraining, 2e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average about 98.35%
  
 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average is about 98.75%, and remains consistent throughout training
-11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats, ASGD, learning rate decay 10e-7 - never actually averages weights before job was killed - average performance of unaveraged weights is about 98.65%
+11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats, ASGD, learning rate decay 10e-7 - never actually averages weights before job was killed - average performance of unaveraged weights is about 98.65%, which is less than in comparable non-ASGD runs; the difference is learning rate decay with smaller constant but also smaller exponent
 11/21 400 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average peaks very quickly at 98.85% and decays to 98.7%
 
 The density of full-digit units decreases substantially when the total number of units increases from 200 to 400
@@ -486,7 +486,7 @@ rose4 - 11/19 400 fe units, 200 epochs pretraining, minibatch size 10, learning 
 rose6 - 
 othello - 11/27 200 fe units, learning rate 10e-3 during initial pretraining, doubled after 20 epochs, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-iago - 
+iago - 11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 macbeth - 
 banquo - 
 ceres - 

@@ -17,15 +17,15 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local quick_train_learning_rate = 2e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 2e-3 --10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
 local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
 if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay 10e-7')
-   desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
+   desired_learning_rate_decay = 10e-7 --5e-7
 end
 local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
