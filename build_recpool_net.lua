@@ -14,7 +14,8 @@ USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false
 FULLY_NORMALIZE_ENC_FE_DICT = false
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_ROWS_OF_CLASS_DICT = true
-CLASS_DICT_BOUND = 10
+CLASS_DICT_BOUND = 1
+CLASS_DICT_GRAD_SCALING = 0.1
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
@@ -536,7 +537,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    else
       -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
       if NORMALIZE_ROWS_OF_CLASS_DICT then
-	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], {normalized_rows = true})
+	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], {normalized_rows = true}, false, CLASS_DICT_GRAD_SCALING)
       else
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
       end

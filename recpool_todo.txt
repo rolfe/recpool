@@ -428,7 +428,7 @@ Doubling the learning rate, even after 20 epochs of pretraining (with associated
 
 11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 
-
+It makes sense to bound the magnitude of the classification dictionary rows.  Otherwise, once all of the elements of the training set are classified correctly, the softmax can be saturated and learning brought to a standstill by simply scaling up the classification dictionary, even if the output of the classification dictionary is often ambiguous (i.e., at least two classes have similar magnitude).  Indeed, it seems as if good performance should be achievable with a relatively low bound on the magnitude of the classification dictionary rows.  In this case, large values of the log likelihood can only be achieved if the incorrect classes have small output.  However, it might be problematic if datapoints that are consistently classified correctly fail to saturate the softmax, and thus contribute a significant gradient, swamping the gradients due to a minority of truly ambiguous outputs.  On the other hand, the problem may simply be that the gradients of the classification dictionary are too large, resulting in unstable training; this should be resolvable by scaling down the classification gradients/step size.
 
 
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
