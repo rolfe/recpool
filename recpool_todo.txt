@@ -430,6 +430,12 @@ Doubling the learning rate, even after 20 epochs of pretraining (with associated
 
 It makes sense to bound the magnitude of the classification dictionary rows.  Otherwise, once all of the elements of the training set are classified correctly, the softmax can be saturated and learning brought to a standstill by simply scaling up the classification dictionary, even if the output of the classification dictionary is often ambiguous (i.e., at least two classes have similar magnitude).  Indeed, it seems as if good performance should be achievable with a relatively low bound on the magnitude of the classification dictionary rows.  In this case, large values of the log likelihood can only be achieved if the incorrect classes have small output.  However, it might be problematic if datapoints that are consistently classified correctly fail to saturate the softmax, and thus contribute a significant gradient, swamping the gradients due to a minority of truly ambiguous outputs.  On the other hand, the problem may simply be that the gradients of the classification dictionary are too large, resulting in unstable training; this should be resolvable by scaling down the classification gradients/step size.
 
+Lower learning rates may lead to considerably worse performance because they allow the network to fall into local minima.  In particular, these local minima probably classify (almost) all of the elements of the training set correctly, but they are not robust, in that small perturbations of the parameters (and correspondingly of the input) lead to different classifications, either because the hidden state falls into a very different attractor, or because the output was ambiguous by amplified by scaling up the classification dictionary, thus leading to a much more certain classification after the softmax.  The latter condition should be addressable by bounding the magnitude of the classification dictionary rows during training.  For the latter condition, note that the encoder is continuous, although the derivative does not exist everywhere.  The gradient is dependent on the eigenvalues of the explaining away matrix.  
+
+ELIMINATE FULL NORMALIZATION OF decoding_feature_extraction_matrix; ALLOW COMPLEX UNITS TO PRODUCE NO RECONSTRUCTION OUTPUT, since they are compatible with many renditions of a given digit, and so will innevitably introduce errors to the reconstruction.  This might allow more units to become complex, improving classification accuracy.
+
+
+
 
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
 Instabilities in validation error late in training correspond to instabilities in the reconstruction loss on the training set; it seems as if the training procedure is actually unstable, as opposed to the variation in validation loss being a result of the fact that the validation set is distinct from the training set.
@@ -490,7 +496,7 @@ iago - 11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 
 macbeth - 11/27 200 fe units, ASGD, learning rate 2e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - replicate good 11/20 run
 banquo - 
 ceres - 
-iris - 
+iris - 11/27 200 fe units, classification dictionary bounded at 1 and gradient scaled down by 0.1, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 
 cassio - ceded to Nathan
 

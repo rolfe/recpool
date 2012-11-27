@@ -467,18 +467,21 @@ function RecPoolTrainer:train(train_data, test_epoch)
       end
       print('FE row norms are ', norms:unfold(1,10,10))
 
+      --[[
       local m = self.model.layers[i].module_list.encoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(1))
       for j = 1,m:size(1) do
 	 norms[j] = torch.pow(m:select(1,j), 2):norm()
       end
       print('P row norms are ', norms:unfold(1,10,10))
-
+      --]]
+	 
       if self.model.layers[i].debug_module_list.normalize_pooled_output then
 	 print('Pooling normalization is ', self.model.layers[i].debug_module_list.normalize_pooled_output.norm)
       end
+     
 
-      --[[
+      ---[[
       local m = self.model.layers[i].module_list.explaining_away.weight
       local norms = torch.Tensor(m:size(1))
       for j = 1,m:size(1) do
@@ -486,7 +489,7 @@ function RecPoolTrainer:train(train_data, test_epoch)
       end
       print('EXP row norms are ', norms:unfold(1,10,10))
 
-      print(m:select(1,101):unfold(1,10,10))
+      --print(m:select(1,101):unfold(1,10,10))
       --]]
 
       
