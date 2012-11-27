@@ -21,13 +21,13 @@ local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_s
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 
-local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
+local optimization_algorithm = 'ASGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
 if optimization_algorithm == 'ASGD' then
-   desired_learning_rate_decay = 10e-7 --10e-7 --5e-7
+   desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 200 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
@@ -36,7 +36,7 @@ local num_epochs = 1000
 local full_training_dataset_size = 50000
 
 
-local fe_layer_size = 800 --400 --200
+local fe_layer_size = 200 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)

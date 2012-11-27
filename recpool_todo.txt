@@ -432,10 +432,10 @@ Lower learning rates may lead to considerably worse performance because they all
 
 ELIMINATE FULL NORMALIZATION OF decoding_feature_extraction_matrix; ALLOW COMPLEX UNITS TO PRODUCE NO RECONSTRUCTION OUTPUT, since they are compatible with many renditions of a given digit, and so will innevitably introduce errors to the reconstruction.  This might allow more units to become complex, improving classification accuracy.
 
-11/27 200 fe units, ASGD, learning rate 2e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates *NOT* scaled down in proportion to the number of ISTA repeats - replicate good 11/20 run - averaged performance (from 300) at 600 epochs, 98.61% - nonaveraged performance is about 98.5% - WHY IS THIS WORSE THEN 11/20?!?  CODE APPEARS TO BE IDENTICAL!!!
-11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - averaged performance at 500 epochs, 98.6%; at 600, 98.5% - typical performance, 98.5%
+11/27 200 fe units, ASGD, learning rate 2e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates *NOT* scaled down in proportion to the number of ISTA repeats - replicate good 11/20 run - averaged performance (from 300) at 600 epochs, 98.61%; 750 epochs, 98.59% - nonaveraged performance is about 98.5% - WHY IS THIS WORSE THEN 11/20?!?  CODE APPEARS TO BE IDENTICAL!!!
+11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - averaged performance at 500 epochs, 98.6%; at 600, 98.5%; 750 epochs, 98.46% - typical performance, 98.5%
 11/27 200 fe units, learning rate 10e-3 during initial pretraining, doubled after 20 epochs, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - typical performance 96% - explaining away is distorted by large negative values
-11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average performance, 98.67% - explaining away row norms are generally near 1, and bounded above by 1.5
+11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average performance, 98.67%, decaying to 98.6% with continued training - explaining away row norms are generally near 1, and bounded above by 1.5
 11/27 200 fe units, classification dictionary bounded at 1 and gradient scaled down by 0.1, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average around 98.45% - classification dictionary rows have one large positive element a few negative elements; the rest are near zero - some explaining away rows have huge norms (>4)
 11/27 200 fe units, classification dictionary bounded at 2.5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average around 98.6%, decaying down to 98.55% with continued training - classification dictionary rows have one large positive element a few negative elements; the rest are near zero - some explaining away rows have huge norms (>4)
 11/27 200 fe units, classification dictionary bounded at 5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - average around 98.68% - classification dictionary rows have one large positive element a few negative elements; the rest are near zero - some explaining away rows have huge norms (>4)
@@ -445,6 +445,8 @@ ELIMINATE FULL NORMALIZATION OF decoding_feature_extraction_matrix; ALLOW COMPLE
 11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - 100 epochs does not appear to be sufficient pretraining; many units have poorly formed receptive fields
 
 Removing full normalization of decoding_feature_extraction_dictionary columns doesn't seem to do much, and can safely be incorporated into the network.  Increasing the number of ISTA iterations to 11 and introducing a mild bound of the classification dictionary row magnitudes both seem to help a little.
+
+It seems as if the strong recurrence developed in the explaining-away rows for complex units, which respond to a whole digit class rather than a particular stroke, is dependent upon the details of the softmax applied to classification dictionary output.  If the classification dictionary output is subject to a nn.NormalizeTensor before the softmax, so constant scalings are factored out, then the explaining away recurrence is much weaker, although complex units with diffuse inputs still develop.  This variation is odd, since the sparse coding output is subject to a nn.NormalizeTable before being passed to the classification dictionary in both cases.  
 
 
 
@@ -499,12 +501,12 @@ Deep convex network seem to achieve ridiculously good performance by training ea
 rose1 - 11/27 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose2 - 11/27 400 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - 11/27 200 fe units, classification dictionary bounded at 5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose4 - REPLACE
+rose4 - 11/28 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, 200 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 11/27 200 fe units, classification dictionary bounded at 10, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-othello - 11/27 200 fe units, classification dictionary output normalized, decoding FE dict bounded above but not fixed, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+othello - 11/28 200 fe units, classification dictionary output normalized, decoding FE dict bounded above but not fixed, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-iago - 11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-macbeth - 11/27 200 fe units, ASGD, learning rate 2e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - replicate good 11/20 run
+iago - REPLACE
+macbeth - REPLACE
 banquo - 
 ceres - 
 iris - 11/27 200 fe units, classification dictionary bounded at 1 and gradient scaled down by 0.1, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
