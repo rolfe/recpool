@@ -448,6 +448,9 @@ Removing full normalization of decoding_feature_extraction_dictionary columns do
 
 It seems as if the strong recurrence developed in the explaining-away rows for complex units, which respond to a whole digit class rather than a particular stroke, is dependent upon the details of the softmax applied to classification dictionary output.  If the classification dictionary output is subject to a nn.NormalizeTensor before the softmax, so constant scalings are factored out, then the explaining away recurrence is much weaker, although complex units with diffuse inputs still develop.  This variation is odd, since the sparse coding output is subject to a nn.NormalizeTable before being passed to the classification dictionary in both cases.  
 
+Poor performance on 11/21 runs with reduced steps size during supervised training is associated with weaker recurrent explaining away connections.  
+
+TRY COMBINING ASGD, 11 ISTA repeats, and normalization of the rows of the classification dictionary, along with 400 or 800 hidden units
 
 
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
@@ -505,7 +508,7 @@ rose4 - 11/28 800 fe units, decoding FE dict bounded above but not fixed, learni
 rose6 - 11/27 200 fe units, classification dictionary bounded at 10, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - 11/28 200 fe units, classification dictionary output normalized, decoding FE dict bounded above but not fixed, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/27 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-iago - REPLACE
+iago - 11/28 200 fe units, ASGD, learning rate 10e-3, learning rate decay 20e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 macbeth - REPLACE
 banquo - 
 ceres - 
