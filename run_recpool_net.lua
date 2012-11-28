@@ -36,7 +36,7 @@ local num_epochs = 1000
 local full_training_dataset_size = 50000
 
 
-local fe_layer_size = 200 --400 --200
+local fe_layer_size = 400 --400 --200
 local p_layer_size = 50 --200 --50
 
 local params = cmd:parse(arg)
@@ -53,7 +53,7 @@ local mask_mag = nil
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -334,7 +334,9 @@ for i = 1,num_epochs_no_classification do
 
    trainer:train(data)
    --print('iterations so far: ' .. trainer.config.evalCounter)
-   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+   if (i < 10) or (i % 10 == 1) then
+      plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+   end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
 
@@ -386,7 +388,9 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    end
 
    trainer:train(data)
-   plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+   if (i < 10) or (i % 10 == 1) then
+      plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+   end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
 
