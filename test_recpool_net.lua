@@ -471,9 +471,26 @@ function rec_pool_test.NormalizeTable()
 end
 
 
-function rec_pool_test.NormalizeTensor()
+function rec_pool_test.NormalizeTensor1D()
    local ini = math.random(10,20)
    local input = torch.Tensor(ini):zero()
+   local module = nn.NormalizeTensor()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+   local err = jac.testJacobian(module,input)
+   mytester:assertlt(err,precision, 'error on state (non-table) ')
+
+   --local ferr,berr = jac.testIOTable(module,input)
+   local ferr,berr = jac.testIO(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.NormalizeTensor2D()
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local input = torch.Tensor(inj,ini):zero()
    local module = nn.NormalizeTensor()
 
    local err = jac.testJacobianTable(module,input)
