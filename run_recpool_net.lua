@@ -347,15 +347,16 @@ if num_epochs_gentle_pretraining >= 0 then
 end
 --trainer:reset_learning_rate(5e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
-local perform_classifier_pretraining = false
-local num_epochs_classification_pretraining = 7 -- 12
-local num_epochs_classification_slow_burn_in = 10
+local perform_classifier_pretraining = true
+local perform_slow_burn_in = false
+local num_epochs_classification_pretraining = 5
+local num_epochs_classification_slow_burn_in = 0
 local slow_burn_in_scale_factor = 0.1 -- 0.05
 
 if perform_classifier_pretraining then
-   trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
-   print('resetting learning rate to ' .. 20 * (5000 / data_set_size) * opt.learning_rate)
-   model:reset_learning_scale_factor(0) -- turn off learning for all ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
+   --trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
+   --print('resetting learning rate to ' .. 20 * (5000 / data_set_size) * opt.learning_rate)
+   model:reset_ista_learning_scale_factor(0) -- turn off learning for all ISTA ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
 end
 
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
@@ -364,11 +365,12 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
       --model:reset_learning_scale_factor(0.05) 
       --trainer:reset_learning_rate(opt.learning_rate) 
 
-      model:reset_classification_lambda(0.1)
-      model:reset_learning_scale_factor(1) 
-      trainer:reset_learning_rate(slow_burn_in_scale_factor * opt.learning_rate) 
-      print('resetting learning rate to ' .. slow_burn_in_scale_factor * opt.learning_rate)
-   elseif perform_classifier_pretraining and (i == num_epochs_classification_slow_burn_in + num_epochs_classification_pretraining + num_epochs_no_classification) then
+      --model:reset_classification_lambda(0.1)
+      model:reset_ista_learning_scale_factor(1) 
+      --trainer:reset_learning_rate(slow_burn_in_scale_factor * opt.learning_rate) 
+      --print('resetting learning rate to ' .. slow_burn_in_scale_factor * opt.learning_rate)
+   elseif perform_slow_burn_in and perform_classifier_pretraining and (i == num_epochs_classification_slow_burn_in + num_epochs_classification_pretraining + num_epochs_no_classification) then
+      error('USING SLOW BURN-IN!!!')
       --model:reset_learning_scale_factor(0.2) -- this is largely equivalent to the learning rate decay after 200 epochs, which we removed above
       model:reset_classification_lambda(0.1)
       local final_scale_factor = 5 --0.25 -- 0.15

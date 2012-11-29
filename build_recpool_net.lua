@@ -17,7 +17,7 @@ NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
 NORMALIZE_ROWS_OF_CLASS_DICT = true
 CLASS_DICT_BOUND = 5
-CLASS_DICT_GRAD_SCALING = 0.5 --nil
+CLASS_DICT_GRAD_SCALING = nil
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
@@ -664,14 +664,14 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 end
       end
 
-      function model:reset_learning_scale_factor(new_scale_factor)  -- reset the learning scale factor for each layer; classification dictionary is left unchanged
-	 print('CHECK WHETHER THIS SHOULD UPDATE THE CLASSIFICATION DICTIONARY!')
-	 io.read()
+      function model:reset_ista_learning_scale_factor(new_scale_factor)  -- reset the learning scale factor for each layer; classification dictionary is left unchanged
+	 --[[ -- ONLY reset the learning scale factor for the ISTA iterations!!!
 	 if NORMALIZE_ROWS_OF_CLASS_DICT then
 	    classification_dictionary:reset_learning_scale_factor(new_scale_factor)
 	 else
 	    error('WARNING: learning scale factor is not changed for classification dictionary!')
 	 end
+	 --]]
 	 
 	 for i = 1,#layer_list do
 	    layer_list[i]:reset_learning_scale_factor(new_scale_factor)
