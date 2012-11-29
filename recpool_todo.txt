@@ -459,6 +459,9 @@ WHY DOESN'T THE NETWORK LEARN TO USE *OR* IN THE TOP CLASSIFICATION LAYER EFFECT
 11/27 (marked as 11/26) complete repeat of good 11/20 ASGD run - learning rate 2e-3, 100 epochs pretraining, repair every 5 minibatches, ASGD, learning rate decay 10e-7 
 
 TRY DOING 11 ISTA REPEATS WITH THE MAX VALUE OF ELEMENTS IN THE CLASSIFICATION DICTIONARY BOUNDED
+nn.NormalizeTensor WAS WRONG UP UNITL THIS POINT!!!  Runs that normalized the output of the classification dictionary were flawed!!!  It still seems sensible to normalize the output of the classification dictionary, rather than just bound its parameters, since the output of the sparse coding is already normalized!
+
+
 
 
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
@@ -516,7 +519,7 @@ rose1 - 11/26 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during
 rose2 - 11/26 400 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - KILLED!!!
 rose4 - 11/27 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose6 - 11/28 400 fe units, 11 ista iterations, dec FE dict bounded above, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose6 - 11/28 400 fe units, 11 ista iterations, learning rate 5e-3, dec FE dict bounded above, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - REPLACE - 11/27 200 fe units, classification dictionary output normalized, decoding FE dict bounded above but not fixed, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/26 200 fe units, 11 ista iterations, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 iago - 11/27 200 fe units, ASGD, learning rate 10e-3, learning rate decay 20e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats

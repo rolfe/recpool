@@ -14,7 +14,7 @@ USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false
 FULLY_NORMALIZE_ENC_FE_DICT = false
 FULLY_NORMALIZE_DEC_FE_DICT = false -- has generally been true
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
-NORMALIZE_CLASS_DICT_OUTPUT = false
+NORMALIZE_CLASS_DICT_OUTPUT = true
 NORMALIZE_ROWS_OF_CLASS_DICT = false --true
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = nil --0.1
@@ -600,7 +600,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    if NORMALIZE_CLASS_DICT_OUTPUT then
       local normalize_classification_dictionary_output = nn.NormalizeTensor()
       model:add(normalize_classification_dictionary_output) 
-      model:add(nn.MulConstant(nil, 5))
+      --model:add(nn.MulConstant(nil, 5))
    end
    model:add(logsoftmax_module)
    --model:add(nn.SoftMax()) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
