@@ -334,7 +334,7 @@ for i = 1,num_epochs_no_classification do
 
    trainer:train(data)
    --print('iterations so far: ' .. trainer.config.evalCounter)
-   if (i < 10) or (i % 10 == 1) then
+   if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
@@ -388,7 +388,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    end
 
    trainer:train(data)
-   if (i < 10) or (i % 10 == 1) then
+   if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
