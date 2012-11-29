@@ -57,6 +57,19 @@ static int kex_(maxZero2)(lua_State *L)
   return 1;
 }
 
+static int kex_(minN)(lua_State *L)
+{
+  real thresh = luaL_checknumber(L,2);
+  THTensor *tensor = luaT_checkudata(L,1, torch_Tensor);
+  //luaL_argcheck(L, lambda >=0, 2, "Lambda should be non-negative");
+
+  TH_TENSOR_APPLY(real, tensor,
+		  if (*tensor_data > thresh) {
+		    *tensor_data = thresh;
+		  });
+  return 1;
+}
+
 
 static int kex_(sign)(lua_State *L)
 {
@@ -89,6 +102,7 @@ static const struct luaL_Reg kex_(util__) [] = {
   {"shrinkage", kex_(shrinkage)},
   {"maxZero", kex_(maxZero)},
   {"maxZero2", kex_(maxZero2)},
+  {"minN", kex_(minN)},
   {"sign", kex_(sign)},
   {NULL, NULL}
 };

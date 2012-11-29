@@ -15,7 +15,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
    self.RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST
    
    local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'normalized_rows', 'normalized_rows_pooling', 'threshold_normalized_rows', 
-				'non_negative_diag', 'squared_weight_matrix'}
+				'bounded_elements', 'non_negative_diag', 'squared_weight_matrix'}
    for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
       self[defined_constraints[i]] = false
    end
@@ -274,6 +274,10 @@ function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- aft
       do_threshold_normalize_rows(self.weight)
       if self.squared_weight_matrix then
 	 error('threshold normalized rows is not compatible with squared weight matrix')
+      end
+   elseif self.bounded_elements then
+      if desired_norm_value then
+	 self.weight:minN(desired_norm_value)
       end
    end
 

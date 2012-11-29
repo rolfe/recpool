@@ -15,8 +15,9 @@ FULLY_NORMALIZE_ENC_FE_DICT = false
 FULLY_NORMALIZE_DEC_FE_DICT = false -- has generally been true
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
-NORMALIZE_ROWS_OF_CLASS_DICT = true
-CLASS_DICT_BOUND = 5
+NORMALIZE_ROWS_OF_CLASS_DICT = false
+BOUND_ROWS_OF_CLASS_DICT = true
+CLASS_DICT_BOUND = 3
 CLASS_DICT_GRAD_SCALING = nil
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
@@ -531,15 +532,18 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    -- size of the classification dictionary depends upon whether we're using pooling or not
    local classification_dictionary
    if not(recpool_config_prefs.disable_pooling) then
-      if NORMALIZE_ROWS_OF_CLASS_DICT then
-	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], {normalized_rows = true})
+      if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
+	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], 
+							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT})
       else
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
       end
    else
       -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
-      if NORMALIZE_ROWS_OF_CLASS_DICT then
-	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], {normalized_rows = true}, false, CLASS_DICT_GRAD_SCALING)
+      if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
+	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], 
+							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT},
+							  false, CLASS_DICT_GRAD_SCALING)
       else
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
       end
@@ -659,7 +663,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 for i = 1,#layer_list do
 	    layer_list[i]:repair()
 	 end
-	 if NORMALIZE_ROWS_OF_CLASS_DICT then
+	 if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
 	    classification_dictionary:repair(false, CLASS_DICT_BOUND)
 	 end
       end
