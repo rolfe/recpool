@@ -467,7 +467,7 @@ nn.NormalizeTensor WAS WRONG UP UNITL THIS POINT!!!  Runs that normalized the ou
 TRY 11 ISTA REPEATS WITH BOUNDED CLASSIFICATION DICTIONARY ROWS - **MAKE SURE** that row magnitudes are merely bounded above, rather than fixed - Bound should probably match the row magnitudes observed when performance is best with unconstrained training; suggests that norm should be about 15 with 400 units.  Even with only 200 units, classification dictionary row norms increase quickly, and seem to saturate near 15 after only 100 epochs of supervised training, long before performance peaks
 What if we just (or also) turn down the scaling on the classification dictionary training rate?
 
-11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - plateaus at about 98.65% - performance *does not* seem to decay with continued training
+11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - plateaus at about 98.68% - performance *does not* seem to decay with continued training - after 600/700/800 epochs, even given this realtively heavy regularization, the network only misclassifies 11 elements of the training set.
 11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - plateaus at about 98.55% (strangely, this seems lower than the 11/26 run with the same bound on the classification dictionary row magnitudes)
 11/29 200 fe units, class dict mag bounded by 5, 5 epochs classification pretraining, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - seems to speed initial training, but performance plateaus at only 98.55%
 11/29 200 fe units, 11 ista iterations, class dict mag bounded by 5, learning rate 5e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - performance is not very stable; learning rate may be too large, plateaus at 98.5%
@@ -529,14 +529,14 @@ Aside from the denominator, Gated Softmax Classification by Memisevic, Hinton, e
 
 
 rose1 - 11/26 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - REPLACE - 11/26 400 fe units, ASGD, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose2 - 11/30 400 fe units, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - 
 rose4 - 11/27 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 11/28 400 fe units, 11 ista iterations, learning rate 5e-3, dec FE dict bounded above, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - 11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 iago - 11/29 200 fe units, class dict mag bounded by 5, 5 epochs classification pretraining, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-macbeth - 11/30 200 fe units, learning rate decay 1e-3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+macbeth - 11/30 200 fe units, weight decay 1e-3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 banquo - 
 ceres - 
 iris - 11/29 200 fe units, class dict units bounded by 3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats

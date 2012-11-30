@@ -15,7 +15,7 @@ FULLY_NORMALIZE_ENC_FE_DICT = false
 FULLY_NORMALIZE_DEC_FE_DICT = false -- has generally been true
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
-NORMALIZE_ROWS_OF_CLASS_DICT = true
+NORMALIZE_ROWS_OF_CLASS_DICT = false
 BOUND_ROWS_OF_CLASS_DICT = false
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
@@ -23,7 +23,7 @@ ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
-MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = false
+MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
