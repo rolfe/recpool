@@ -264,7 +264,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
-   weight_decay = 0, -- weight decay (SGD only)
+   weight_decay = 1e-3, -- weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 

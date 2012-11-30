@@ -16,13 +16,14 @@ FULLY_NORMALIZE_DEC_FE_DICT = false -- has generally been true
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
 NORMALIZE_ROWS_OF_CLASS_DICT = false
-BOUND_ROWS_OF_CLASS_DICT = true
-CLASS_DICT_BOUND = 3
+BOUND_ROWS_OF_CLASS_DICT = false --true
+CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = nil
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
+MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -88,11 +89,35 @@ end
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], the untransformed input x [3], and possibly the offset shrink [4]
 local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST, last_iteration, offset_shrink)
    local ista_seq = nn.Sequential()
-   local explaining_away_parallel = nn.ParallelTable() 
-   explaining_away_parallel:add(explaining_away) --subtract out the explained input: z + S*z [1]
-   explaining_away_parallel:add(nn.Identity()) -- preserve W*x [2]
-   explaining_away_parallel:add(nn.Identity()) -- preserve x [3]
-   ista_seq:add(explaining_away_parallel)
+
+   if MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL then
+      -- copy z so we can add it back in after applying the explaining away matrix
+      ista_seq:add(nn.CopyTable(1, 2))
+
+      -- apply the explaining away matrix to the first copy of z
+      local explaining_away_parallel = nn.ParallelTable() 
+      explaining_away_parallel:add(explaining_away) --subtract out the explained input, without the diagonal: S*z [1]
+      explaining_away_parallel:add(nn.Identity()) -- preserve z [2]
+      explaining_away_parallel:add(nn.Identity()) -- preserve W*x [3]
+      explaining_away_parallel:add(nn.Identity()) -- preserve x [4]
+      ista_seq:add(explaining_away_parallel)
+
+      -- add S*z to z -- we could also add in W*x at this point, but it seems preferable to maintain compatibility for the original code that explicitly includes the diagonal in the explaining-away matrix
+      local add_in_explaining_away_diag_parallel = nn.ParallelDistributingTable() 
+      local add_in_explaining_away_diag_seq = nn.Sequential()
+      add_in_explaining_away_diag_seq:add(nn.SelectTable{1,2})
+      add_in_explaining_away_diag_seq:add(nn.CAddTable()) -- compute z + S*z [1]
+      add_in_explaining_away_diag_parallel:add(add_in_explaining_away_diag_seq)
+      add_in_explaining_away_diag_parallel:add(nn.SelectTable{3}) -- preserve W*x [2]
+      add_in_explaining_away_diag_parallel:add(nn.SelectTable{4}) -- preserve x [3]
+      ista_seq:add(add_in_explaining_away_diag_parallel)
+   else
+      local explaining_away_parallel = nn.ParallelTable() 
+      explaining_away_parallel:add(explaining_away) --subtract out the explained input: z + S*z [1]
+      explaining_away_parallel:add(nn.Identity()) -- preserve W*x [2]
+      explaining_away_parallel:add(nn.Identity()) -- preserve x [3]
+      ista_seq:add(explaining_away_parallel)
+   end
 
    -- we need to do this in two stages, since S must be applied only to z, rather than to z + Wx; adding in Wx needs to be the first in the sequence of operations within a ParallelDistributingTable
    local add_in_WX_and_shrink_parallel = nn.ParallelDistributingTable() 
@@ -825,7 +850,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       -- WAS 1.25 rather than 2
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1))) -- the first ista iteration doesn't count towards num_ista_iterations
    end
-   encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.05, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
+   encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
 
    base_explaining_away.weight:mul(-math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
    --[[
@@ -833,8 +858,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
       base_explaining_away.weight:mul(0) 
    --]]
-   for i = 1,base_explaining_away.weight:size(1) do -- add the identity matrix into base_explaining_away
-      base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
+   if not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then -- add the identity matrix into base_explaining_away, assuming this isn't done explicitly by the network dynamics
+      for i = 1,base_explaining_away.weight:size(1) do 
+	 base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
+      end
    end
    
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
