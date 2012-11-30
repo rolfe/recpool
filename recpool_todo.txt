@@ -475,6 +475,9 @@ What if we just (or also) turn down the scaling on the classification dictionary
 
 How are bounds on row magnitudes of the encoding matrices related to a collective L2 weight-decay?
 The issue of soft-max saturating due to the final classification matrix scaling up in magnitude should be a pervasive problem whenever softmax is used with negative log likelihood.  How is this addressed elsewhere?
+Note that after performance plateaus, the networks only misclassify a small handful of elements from the training dataset.  This indicates that even with only 200 hidden units, the networks have more than enough power to represent the full dataset; the bias error is already zero, and all testing error comes from variance.  Adding units should only increase the variance error of the dataset without any benefit to the bias.  The solution is presumably more regularization, rather than more hidden units and the corresponding unnecessary representational power.  
+
+
 
 
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
@@ -534,8 +537,8 @@ rose3 -
 rose4 - 11/27 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 11/28 400 fe units, 11 ista iterations, learning rate 5e-3, dec FE dict bounded above, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - 11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-duncan - 11/29 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.5, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-iago - 11/29 200 fe units, class dict mag bounded by 5, 5 epochs classification pretraining, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+duncan - 11/30 200 fe units, weight decay 0.5e-3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+iago - 11/30 200 fe units, weight decay 1e-3, reset classification dict after unsup pretraining, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 macbeth - 11/30 200 fe units, weight decay 1e-3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 banquo - 
 ceres - 

@@ -20,6 +20,7 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
+local RESET_CLASSIFICATION_DICTIONARY = false
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
@@ -342,7 +343,7 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
-if (opt.weight_decay > 0) and (num_epochs_no_classification > 0) then
+if (opt.weight_decay > 0) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
    model:reset_classification_dictionary() -- ensure that weight decay during the unsupervised pretraining doesn't cause the classification dictionary to grow too small
 end
 if num_epochs_gentle_pretraining >= 0 then
