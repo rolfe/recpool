@@ -662,6 +662,14 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 classification_criterion:reset_lambda(new_lambda)
       end
 
+      function model:reset_classification_dictionary()
+	 classification_dictionary:reset()
+	 classification_dictionary.bias:zero()
+	 if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
+	    classification_dictionary:repair(false, CLASS_DICT_BOUND)
+	 end
+      end
+
       local original_updateOutput = model.updateOutput -- by making this local, it is impossible to access outside of the closures created below
       
       -- note that this is different than the original model.output; model is a nn.Sequential, which ends in the classification_criterion, and thus consists of a single number
