@@ -25,7 +25,7 @@ local full_diagnostic_epoch_size = 50000
 local RESET_CLASSIFICATION_DICTIONARY = false
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
-local desired_learning_rate_decay = 5e-7 --10e-7 --5e-7
+local desired_learning_rate_decay = 10e-7 --5e-7
 if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
