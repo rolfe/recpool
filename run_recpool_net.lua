@@ -12,14 +12,16 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
-cmd:option('-full_test','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)')
+cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic)
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
+cmd:option('-layer_size','200', 'size of sparse coding layer')
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
+local full_diagnostic_epoch_size = 50000
 local RESET_CLASSIFICATION_DICTIONARY = false
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -28,7 +30,7 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 100 --200 --501 --201
+local num_epochs_no_classification = 200 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
@@ -37,11 +39,14 @@ local num_epochs = 1000
 local full_training_dataset_size = 50000
 
 
-local fe_layer_size = 200 --400 --200
-local p_layer_size = 50 --200 --50
-
 local params = cmd:parse(arg)
 local num_layers = tonumber(params.num_layers)
+local fe_layer_size = tonumber(params.layer_size) --200 --400 --200
+local p_layer_size = 50 --200 --50
+if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') then
+   num_epochs_no_classification = 0
+   num_epochs = 1
+end
 
 local sl_mag = nil
 local rec_mag = nil
@@ -227,15 +232,18 @@ end
 require 'mnist'
 local data_set_size, data, data_inline_test
 if params.data_set == 'train' then
-   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 50000) or quick_train_epoch_size
+   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and 50000) or 
+      ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
+      ((params.run_type == 'full_diagnostic') and full_diagnostic_epoch_size) or
+      quick_train_epoch_size
    data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
    --data = mnist.loadTrainSet(data_set_size, 'recpool_net_L2_classification') -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
-   if params.full_test == 'full_train' then
+   if params.run_type == 'full_train' then
       data_inline_test = mnist.loadTrainSet(10000, 'recpool_net', 50000) -- also load the validation set for inline testing
       data_inline_test:normalizeL2()
    end
 else
-   data_set_size = (((params.full_test == 'full_train') or (params.full_test == 'full_test')) and 10000) or 5000
+   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and 10000) or 5000
    if params.data_set == 'validation' then
       data = mnist.loadTrainSet(data_set_size, 'recpool_net', 50000)
    elseif params.data_set == 'test' then
@@ -260,8 +268,9 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    plot = false, -- live plot
    optimization = optimization_algorithm, -- optimization method: SGD | ASGD | CG | LBFGS
    init_eval_counter = ((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 0, 
-   learning_rate = ((params.full_test == 'full_train') and full_train_learning_rate) or ((params.full_test == 'quick_train') and quick_train_learning_rate) or 
-      (((params.full_test == 'full_test') or (params.full_test == 'quick_test')) and 0), --1e-3, -- learning rate at t=0
+   learning_rate = ((params.run_type == 'full_train') and full_train_learning_rate) or 
+      ((params.run_type == 'quick_train') and quick_train_learning_rate) or 
+      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic')) and 0), --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
@@ -279,8 +288,12 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 torch.seed()
 
 
-local track_criteria_outputs = not((params.full_test == 'full_train') or (params.full_test == 'full_test'))
-local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs) -- layered_lambdas is required for debugging purposes only
+local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
+local receptive_field_builder = nil
+if params.run_type == 'full_diagnostic' then
+   receptive_field_builder = receptive_field_builder_factory()
+end
+local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
 
 
 -- load parameters from file if desired
@@ -337,6 +350,7 @@ for i = 1,num_epochs_no_classification do
    --print('iterations so far: ' .. trainer.config.evalCounter)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+      if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
@@ -396,6 +410,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    trainer:train(data)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+      if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end

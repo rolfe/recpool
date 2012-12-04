@@ -22,9 +22,10 @@ local RecPoolTrainer = torch.class('nn.RecPoolTrainer')
 local check_for_nans
 local output_gradient_magnitudes
 
-function RecPoolTrainer:__init(model, new_opt, layered_lambdas, track_criteria_outputs)
+function RecPoolTrainer:__init(model, new_opt, layered_lambdas, track_criteria_outputs, receptive_field_builder)
    self.layered_lambdas = layered_lambdas
    self.track_criteria_outputs = track_criteria_outputs or false
+   self.receptive_field_builder = receptive_field_builder -- if nil, then receptive fields are not built
 
    self:reset_options(new_opt)
    
@@ -177,7 +178,11 @@ function RecPoolTrainer:make_feval()
 	 end -- for all criteria
       end --if track_criteria_outputs
       --end
-      
+
+      if self.receptive_field_builder then
+	 self.receptive_field_builder:accumulate_shrink_weighted_inputs(self.minibatch_inputs, self.model.layers[1].module_list.shrink, self.model.layers[1].module_list.shrink_copies)
+      end
+
       -- normalize gradients and f(X)
       if self.minibatch_inputs:nDimension() == 2 then
 	 -- we do not average gradients across a minibatch; rather we simply add them together.  This saves us from having to scale up the learning rate in proportion to the size of the minibatch

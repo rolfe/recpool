@@ -12,17 +12,70 @@ local function plot_training_error(t)
    gnuplot.closeall()
 end
 
-function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)
+local function save_filter(current_filter, filter_name, log_directory)
+   local current_filter_side_length = math.sqrt(current_filter:size(1))
+   current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
+   local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=10,symmetric=true}
+   
+   -- ideally, the pdf viewer should refresh automatically.  This 
+   image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
+end
 
-   function save_filter(current_filter, filter_name, log_directory)
-      local current_filter_side_length = math.sqrt(current_filter:size(1))
-      current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
-      local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=10,symmetric=true}
 
-      -- ideally, the pdf viewer should refresh automatically.  This 
-      image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
+function receptive_field_builder_factory()
+   local accumulated_inputs = {} -- array holding the (unscaled) receptive fields; initialized by the first call to accumulate_weighted_inputs
+   local receptive_field_builder = {}
+
+   function receptive_field_builder:accumulate_weighted_inputs(input_tensor, weight_tensor, accumulated_inputs_index)
+      if input_tensor:nDimension() == 1 then -- inputs and weights are vectors; we aren't using minibatches
+	 if not(accumulated_inputs[accumulated_inputs_index]) then
+	    accumulated_inputs[accumulated_inputs_index] = torch.ger(input_tensor, weight_tensor)
+	 else
+	    accumulated_inputs[accumulated_inputs_index]:addr(input_tensor, weight_tensor)
+	 end
+      else
+	 if not(accumulated_inputs[accumulated_inputs_index]) then
+	    accumulated_inputs[accumulated_inputs_index] = torch.mm(input_tensor:t(), weight_tensor)
+	 else
+	    accumulated_inputs[accumulated_inputs_index]:addmm(input_tensor:t(), weight_tensor)
+	 end
+      end
    end
+   
+   function receptive_field_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies)
+      self:accumulate_weighted_inputs(new_input, base_shrink.output, 1)
+      for i = 1,#shrink_copies do
+	 self:accumulate_weighted_inputs(new_input, shrink_copies[i].output, i+1)
+      end
+   end
+   
+   function receptive_field_builder:extract_receptive_fields(index)
+      local receptive_field_output = accumulated_inputs[index]:clone()
+      for i = 1,receptive_field_output:size(2) do
+	 local selected_col = receptive_field_output:select(2,i)
+	 selected_col:div(selected_col:norm())
+      end
+      return receptive_field_output
+   end
+   
+   function receptive_field_builder:plot_receptive_fields(opt)
+      for i = 1,#accumulated_inputs do
+	 local receptive_field_output = self:extract_receptive_fields(i)
+	 save_filter(receptive_field_output, 'shrink receptive field ' .. i, opt.log_directory)
+      end
+   end
+   
+   function receptive_field_builder:reset()
+      for i = 1,#accumulated_inputs do
+	 accumulated_inputs[i]:zero()
+      end
+   end
+   
+   return receptive_field_builder
+end
 
+
+function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)
    for i = 1,#filter_list do
       local current_filter
       if filter_enc_dec_list[i] == 'encoder' then
