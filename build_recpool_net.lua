@@ -23,7 +23,7 @@ ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
-MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
+MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = false
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -573,7 +573,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
       end
    end
-   local this_class_nll_criterion = nn.ClassNLLCriterion() -- nn.SoftClassNLLCriterion()
+   local this_class_nll_criterion = nn.SoftClassNLLCriterion()
    this_class_nll_criterion.sizeAverage = false -- ABSOLUTELY CRITICAL to ensure that the gradients from the classification loss alone are not scaled down in proportion to the minibatch size
    local classification_criterion = nn.L1CriterionModule(this_class_nll_criterion, classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
    --local classification_criterion = nn.L1CriterionModule(nn.MSECriterion(), classification_criterion_lambda) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
