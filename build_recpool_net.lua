@@ -559,7 +559,7 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    if not(recpool_config_prefs.disable_pooling) then
       if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
 	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], 
-							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT})
+							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT}, RUN_JACOBIAN_TEST)
       else
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
       end
@@ -568,12 +568,12 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
 	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], 
 							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT},
-							  false, CLASS_DICT_GRAD_SCALING)
+							  RUN_JACOBIAN_TEST, CLASS_DICT_GRAD_SCALING)
       else
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
       end
    end
-   local this_class_nll_criterion = nn.ClassNLLCriterion()
+   local this_class_nll_criterion = nn.SoftClassNLLCriterion()
    this_class_nll_criterion.sizeAverage = false -- ABSOLUTELY CRITICAL to ensure that the gradients from the classification loss alone are not scaled down in proportion to the minibatch size
    local classification_criterion = nn.L1CriterionModule(this_class_nll_criterion, classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
    --local classification_criterion = nn.L1CriterionModule(nn.MSECriterion(), classification_criterion_lambda) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
