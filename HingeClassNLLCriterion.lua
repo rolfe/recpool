@@ -3,7 +3,7 @@ local HingeClassNLLCriterion, parent = torch.class('nn.HingeClassNLLCriterion', 
 function HingeClassNLLCriterion:__init()
    parent.__init(self)
    self.sizeAverage = true
-   self.hinge_point = math.log(0.9)
+   self.hinge_point = math.log(0.8)
 end
 
 function HingeClassNLLCriterion:updateOutput(input, target)

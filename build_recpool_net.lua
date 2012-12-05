@@ -26,7 +26,7 @@ ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
-USE_SOFT_CLASS_NLL_CRITERION = false
+CLASS_NLL_CRITERION_TYPE = 'hinge' -- soft, hinge, nil
 
 if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then
    error('trying to normalize rows of explaining away while explicitly including the diagonal in the explaining away matrix')
@@ -582,8 +582,10 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       end
    end
    local this_class_nll_criterion 
-   if USE_SOFT_CLASS_NLL_CRITERION then
+   if CLASS_NLL_CRITERION_TYPE == 'soft' then
       this_class_nll_criterion = nn.SoftClassNLLCriterion()
+   elseif CLASS_NLL_CRITERION_TYPE == 'hinge' then
+      this_class_nll_criterion = nn.HingeClassNLLCriterion()
    else
       this_class_nll_criterion = nn.ClassNLLCriterion()
    end
