@@ -13,7 +13,12 @@ local function plot_training_error(t)
 end
 
 local function save_filter(current_filter, filter_name, log_directory)
-   local current_filter_side_length = math.sqrt(current_filter:size(1))
+   local current_filter_side_length 
+   if current_filter:size(1) == 3*32*32 then -- make sure that CIFAR input filters align the R, G, and B channels coherently
+      current_filter_side_length = 32 
+   else
+      current_filter_side_length = math.sqrt(current_filter:size(1))
+   end
    current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
    local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=10,symmetric=true}
    

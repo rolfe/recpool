@@ -16,16 +16,17 @@ cmd:option('-run_type','quick_train', 'train slowly over the entire training set
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
 
+local selected_dataset = 'mnist'
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local quick_train_learning_rate = 0.1e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 50000
-local full_diagnostic_epoch_size = 50000
+local quick_train_epoch_size = 5000
+local full_diagnostic_epoch_size = 40000
 local RESET_CLASSIFICATION_DICTIONARY = false
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
-local desired_learning_rate_decay = 10e-7 --5e-7
+local desired_learning_rate_decay = 5e-7
 if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
@@ -175,6 +176,18 @@ local lagrange_multiplier_learning_rate_scaling_factors_1 = {feature_extraction_
 local lagrange_multiplier_learning_rate_scaling_factors_2 = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 0} --2e-6} 
 
 
+-- choose the dataset
+require 'mnist'
+require 'cifar'
+local first_layer_size
+if selected_dataset == 'mnist' then
+   this_data_set = mnist
+   first_layer_size = 28*28
+elseif selected_dataset == 'cifar' then
+   this_data_set = cifar
+   first_layer_size = 3*32*32
+end
+
 
 for k,v in pairs(lambdas) do
    lambdas[k] = v * 1
@@ -183,7 +196,7 @@ end
 local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors
 if false and (num_layers == 1) then
    print(lambdas)
-   layer_size = {28*28, 200, 50, 10}
+   layer_size = {first_layer_size, 200, 50, 10}
    layered_lambdas = {lambdas}
    local this_layer_lagrange_multiplier_targets = {}
    this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_1.feature_extraction_target * layer_size[2]
@@ -193,7 +206,7 @@ if false and (num_layers == 1) then
    layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors_1}
 else
    print(lambdas_1, lambdas_2)
-   layer_size = {28*28}
+   layer_size = {first_layer_size}
    layered_lambdas = {}
    layered_lagrange_multiplier_targets = {}
    layered_lagrange_multiplier_learning_rate_scaling_factors = {}
@@ -229,25 +242,24 @@ end
 
 
 -- create the dataset
-require 'mnist'
 local data_set_size, data, data_inline_test
 if params.data_set == 'train' then
-   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and 50000) or 
+   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
       ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
       ((params.run_type == 'full_diagnostic') and full_diagnostic_epoch_size) or
       quick_train_epoch_size
-   data = mnist.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
+   data = this_data_set.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
    --data = mnist.loadTrainSet(data_set_size, 'recpool_net_L2_classification') -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
    if params.run_type == 'full_train' then
-      data_inline_test = mnist.loadTrainSet(10000, 'recpool_net', 50000) -- also load the validation set for inline testing
+      data_inline_test = this_data_set.loadTrainSet(this_data_set:validation_set_size(), 'recpool_net', this_data_set:train_set_size()) -- also load the validation set for inline testing
       data_inline_test:normalizeL2()
    end
 else
-   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and 10000) or 5000
+   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:test_set_size()) or 5000
    if params.data_set == 'validation' then
-      data = mnist.loadTrainSet(data_set_size, 'recpool_net', 50000)
+      data = this_data_set.loadTrainSet(data_set_size, 'recpool_net', this_data_set:train_set_size())
    elseif params.data_set == 'test' then
-      data = mnist.loadTestSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
+      data = this_data_set.loadTestSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
    else
       error('requested data set ' .. params.data_set .. ' was not recognized')
    end

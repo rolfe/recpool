@@ -8,6 +8,19 @@ mnist.path_dataset = 'mnist-th7'
 mnist.path_trainset = paths.concat(mnist.path_dataset, 'train.th7')
 mnist.path_testset = paths.concat(mnist.path_dataset, 'test.th7')
 
+function mnist:train_set_size()
+   return 50000
+end
+
+function mnist:validation_set_size()
+   return 10000
+end
+
+function mnist:test_set_size()
+   return 10000
+end
+
+
 local function download()
    if not paths.filep(mnist.path_trainset) or not paths.filep(mnist.path_testset) then
       local remote = mnist.path_remote

@@ -485,13 +485,16 @@ THE REASON THAT THE GRADIENT MAGNITUDES ON THE CLASSIFICATION DICTIONARY ARE SO 
 It is probably the case that, without normalization after ISTA, the outputs are too small to significantly saturate the softmax.  The explaining-away matrix thus must grow very large to produce an effective output, which disrupts the learning of good discriminative parts.  It actually probably makes sense to discard the magnitude of ISTA, especially if it's actually doing part-based reconstruction, in which case the magnitude is determined by the magnitude of the input, and the normalization on the decoding dictionary columns.  Digit ID outputs are free to grow large (subject to the L1 regularization) without affecting the reconstruction (so long as the dictionary columns are only bounded above) even if the outputs are normalized; this just sparsifies the normalized output.
 Even with normalization of ISTA outputs, the rows of the explaining-away matrix corresponding to the digit ID units grow large.  
 
+Learning_rate_decay is generally 5e-7 up until this point, although in some descriptions I marked it as 10e-7
+
+12/4 200 fe units, SoftClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA - average performance is about 98.58% - presumably because of the bound on the classification dictionary row norms, the logsoftmax output is not much flatter than normal (about -4.3) - moreover, it's not surprising that the anomalous pressure to flatten the output corresponding to the incorrect classes would hurt performance - classification dictionary rows are still very sparse, although not perfectly so, and ISTA matrices look similar to their usual form - only miss 9 elements on the training set, so difference in performance is a matter of regularization
+12/4 200 fe units, SoftClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA - average performance 98.5% - logsoftmax output has higher variance than with lower learning rate decay
+
+12/4 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 5e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA - average performance is about 98.68%, and seems to match the complementary run on 11/29 (which had an explicit diagonal in the explaining away matrix)
+12/4 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
 
 
-
-
-UP UNTIL 12/4, learning_rate_decay WAS MISTAKENLY SET TO 5e-7, rather than 10e-7!!!
-
-
+Increasing the learning rate decay from 5e-7 to 10e-7 seems to hurt performance, at least with 200 units and learning rate 10e-3
 
 
 

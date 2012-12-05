@@ -19,11 +19,17 @@ NORMALIZE_ROWS_OF_CLASS_DICT = true
 BOUND_ROWS_OF_CLASS_DICT = false
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
+NORMALIZE_ROWS_OF_EXPLAINING_AWAY = true
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
-MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = false
+MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
+USE_SOFT_CLASS_NLL_CRITERION = false
+
+if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then
+   error('trying to normalize rows of explaining away while explicitly including the diagonal in the explaining away matrix')
+end
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -63,7 +69,8 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
+					     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 					     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/num_ista_iterations)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
    end
@@ -573,7 +580,12 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
       end
    end
-   local this_class_nll_criterion = nn.SoftClassNLLCriterion()
+   local this_class_nll_criterion 
+   if USE_SOFT_CLASS_NLL_CRITERION then
+      this_class_nll_criterion = nn.SoftClassNLLCriterion()
+   else
+      this_class_nll_criterion = nn.ClassNLLCriterion()
+   end
    this_class_nll_criterion.sizeAverage = false -- ABSOLUTELY CRITICAL to ensure that the gradients from the classification loss alone are not scaled down in proportion to the minibatch size
    local classification_criterion = nn.L1CriterionModule(this_class_nll_criterion, classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called
    --local classification_criterion = nn.L1CriterionModule(nn.MSECriterion(), classification_criterion_lambda) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
@@ -761,7 +773,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 								       ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
+						     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 						     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/recpool_config_prefs.num_ista_iterations) 
    local base_shrink 
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
@@ -871,6 +884,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
       end
    end
+   base_explaining_away:repair(false, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
    
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
       base_shrink.shrink_val:fill(1e-5) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
@@ -1063,7 +1077,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
       repair_counter = (repair_counter + 1) % recpool_config_prefs.repair_interval
       
-      base_explaining_away:repair()
+      base_explaining_away:repair(false, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
       if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
 	 base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       end
