@@ -559,7 +559,7 @@ rose6 - 12/2 200 fe units, class dict mag bounded by 5, class dict grad scaled b
 othello - 12/4 200 fe units, SoftClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7 (!!!), 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
 duncan - 12/4 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 5e-3 (!!!), learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
 iago - 12/4 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
-macbeth - 
+macbeth - 12/5 200 fe units, explaining away rows normed, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
 banquo - 
 ceres - 
 iris - 11/29 200 fe units, class dict units bounded by 3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats

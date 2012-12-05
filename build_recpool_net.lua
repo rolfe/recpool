@@ -20,6 +20,7 @@ BOUND_ROWS_OF_CLASS_DICT = false
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NORMALIZE_ROWS_OF_EXPLAINING_AWAY = true
+EXPLAINING_AWAY_BOUND_SCALE_FACTOR = 3
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
@@ -884,7 +885,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
       end
    end
-   base_explaining_away:repair(false, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
+   base_explaining_away:repair(false, math.max(0.1, EXPLAINING_AWAY_BOUND_SCALE_FACTOR * ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
    
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
       base_shrink.shrink_val:fill(1e-5) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
@@ -1077,7 +1078,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
       repair_counter = (repair_counter + 1) % recpool_config_prefs.repair_interval
       
-      base_explaining_away:repair(false, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
+      base_explaining_away:repair(false, math.max(0.1, EXPLAINING_AWAY_BOUND_SCALE_FACTOR * ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
       if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
 	 base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       end
