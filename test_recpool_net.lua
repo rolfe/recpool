@@ -562,6 +562,36 @@ function rec_pool_test.SoftClassNLLCriterion()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' (1 input) - i/o backward err ')
 end
 
+function rec_pool_test.HingeClassNLLCriterion()
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local input = torch.Tensor(ini, inj):zero()
+   local module = nn.L1CriterionModule(nn.HingeClassNLLCriterion(), 1)
+   local target = torch.Tensor(ini)
+   for i = 1,ini do
+      target[i] = math.random(input:size(2))
+   end
+   module:setTarget(target)
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (2 inputs) ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (2 inputs) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (2 inputs) - i/o backward err ')
+
+   input = torch.Tensor(ini):zero()
+   module = nn.L1CriterionModule(nn.HingeClassNLLCriterion(), 1)
+   module:setTarget(math.random(ini))
+
+   err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (1 input) ')
+
+   ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (1 input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (1 input) - i/o backward err ')
+end
+
 
 function rec_pool_test.CauchyCost()
    print(' testing CauchyCost!!!')
