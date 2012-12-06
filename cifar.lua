@@ -100,15 +100,29 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       local std = std_ or torch.std(data, 1, true) -- std and mean return 1xn tensors, so the useless first index needs to be stripped out below
       local mean = mean_ or torch.mean(data, 1)
       for i=1,dim do
-         tensor:select(2, i):add(-mean[1][i])
+         data:select(2, i):add(-mean[1][i])
          if std[1][i] > 0 then
-            tensor:select(2, i):mul(1/std[1][i])
+            data:select(2, i):mul(1/std[1][i])
          end
       end
       return mean, std
    end
 
+   function dataset:normalize_by_color(mean_) -- mean-0, std-1 normalize each pixel separately
+      local mean = mean_ or torch.mean(data, 1)
+      for i=1,dim do
+         data:select(2, i):add(-mean[1][i])
+      end
+
+      for i = 1,3 do
+	 local chosen_color = data:narrow(2,1+32*32*(i-1),32*32)
+	 chosen_color:div(torch.std(chosen_color)) -- note that this is normalized by n-1 rather than n
+      end
+   end
+
    function dataset:normalizeL2(desired_norm) -- set all elements of the dataset to be norm-1
+      self:normalize_by_color()
+      
       desired_norm = desired_norm or 1
       print('normalizing: data has ' .. dim .. ' dimensions')
 
@@ -147,7 +161,7 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       dataset.data = {}
       dataset.labels = {}
       setmetatable(dataset.data, {__index = function(self, index)
-                                                return data[index]
+				                return data[index] --:narrow(1,1,32*32)
                                              end})
       setmetatable(dataset.labels, {__index = function(self, index)
                                                 return labels[index]+1

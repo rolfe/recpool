@@ -2,6 +2,7 @@ dofile('init.lua')
 dofile('build_recpool_net.lua')
 dofile('train_recpool_net.lua')
 dofile('display_recpool_net.lua')
+dofile('set_recpool_net_structural_params.lua')
 
 
 cmd = torch.CmdLine()
@@ -15,14 +16,16 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic)
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
+cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
-local selected_dataset = 'mnist'
+local L1_scaling = 0.75
+
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 0.1e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 5000
-local full_diagnostic_epoch_size = 50000 --40000
+local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local quick_train_epoch_size = 50000
+local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -41,205 +44,37 @@ local full_training_dataset_size = 50000
 
 
 local params = cmd:parse(arg)
-local num_layers = tonumber(params.num_layers)
-local fe_layer_size = tonumber(params.layer_size) --200 --400 --200
-local p_layer_size = 50 --200 --50
+params.num_layers = tonumber(params.num_layers)
+params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
+params.p_layer_size = 50 --200 --50
 if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') then
    num_epochs_no_classification = 0
    num_epochs = 1
 end
 
-local sl_mag = nil
-local rec_mag = nil
-local pooling_rec_mag = nil
-local pooling_orig_rec_mag = nil
-local pooling_shrink_position_L2_mag = nil
-local pooling_orig_position_L2_mag = nil
-local pooling_sl_mag = nil
-local mask_mag = nil
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
 recpool_config_prefs.disable_pooling = true
-local disable_pooling_losses = false
+recpool_config_prefs.disable_pooling_losses = false
 recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
 
-pooling_sl_mag = 0.5e-2 --0.9e-2 --0.5e-2 --0.15e-2 --0.25e-2 --2e-2 --5e-2 -- keep in mind that there are four times as many mask outputs as pooling outputs in the first layer -- also remember that the columns of decoding_pooling_dictionary are normalized to be the square root of the pooling factor.  However, before training, this just ensures that all decoding projections have a magnitude of one
-mask_mag = 0.3e-2 --0.2e-2 --0.3e-2 --0.4e-2 --0.5e-2 --0 --0.75e-2 --0.5e-2 --0.75e-2 --8e-2 --4e-2 --2.5e-2 --1e-1 --5e-2
-
---pooling_sl_mag = 0.1e-2
---mask_mag = 0.35e-2 --0.375e-2 --0.35e-2 --0.325e-2
-
---pooling_sl_mag = 1.7e-2
---mask_mag = 0
-
-if not(recpool_config_prefs.disable_pooling) and not(disable_pooling_losses) then
-   --sl_mag = 0 -- this *SHOULD* be scaled by L1_scaling
-   sl_mag = 0.33e-2 --now scaled by L1_scaling = 3    was: 1e-2 -- attempt to duplicate good run on 10/11
-   --sl_mag = 0.025e-2 -- used in addition to group sparsity
-else
-   sl_mag = 3e-2 -- now scaled by L1_scaling = 3 was: 9e-2 --3e-2
-end
-pooling_rec_mag = 1 --0 --0.5
-pooling_orig_rec_mag = 0 --1 --0.05 --1
---pooling_shrink_position_L2_mag = 0.1
---pooling_shrink_position_L2_mag = 0.01 --0.001
---pooling_shrink_position_L2_mag = 1e-3 --1e-4 --4e-3 --1e-3 --0.0001 --0.01 --0.005 --0
-pooling_shrink_position_L2_mag = 1e-3 -- further tests with sqrt reconstruction
---pooling_shrink_position_L2_mag = 1e-2 -- straight L2 position, sqrt-sum-of-squares pooling
---pooling_shrink_position_L2_mag = 1e-4 --1e-6 -- straight L2 position, cube-root-sum-of-squares pooling
---pooling_shrink_position_L2_mag = 1e-6 -- straight L2 position, cube-root-sum-of-squares pooling
-pooling_orig_position_L2_mag = 0 --0.005 --0.1
---local pooling_reconstruction_scaling = 3 --1.5 --2.5 --1.5 --0.85 --0.5 --0.25 -- straight L2 position, sqrt-sum-of-squares pooling
---local pooling_reconstruction_scaling = 40 --60000 --100000 -- straight L2 position, cube-root-sum-of-squares pooling
---local pooling_reconstruction_scaling = 20000  --200000 --100000 -- straight L2 position, cube-root-sum-of-squares pooling
---local pooling_reconstruction_scaling = 200 --140 --400 --180 --1400 --40 --140
-local pooling_reconstruction_scaling = 400 -- further tests with sqrt reconstruction
-if disable_pooling_losses then
-   pooling_reconstruction_scaling = 0
-   pooling_sl_mag = 0
-   mask_mag = 0
-end
-pooling_rec_mag = pooling_reconstruction_scaling * pooling_rec_mag
-pooling_orig_rec_mag = pooling_reconstruction_scaling * pooling_orig_rec_mag
-pooling_shrink_position_L2_mag = pooling_reconstruction_scaling * pooling_shrink_position_L2_mag
-pooling_orig_position_L2_mag = pooling_reconstruction_scaling * pooling_orig_position_L2_mag
-
--- GROUP SPARSITY TEST
-rec_mag = 5 --4 --5 --4
-if num_layers == 1 then
-   if fe_layer_size == 200 then
-      L1_scaling = 3 --4 --2.5 -- with square root L2 position loss
-      --L1_scaling = 6 -- with classification loss added in
-      --L1_scaling = 3 --2.5 --1.5 -- straight L2 position, sqrt-sum-of-squares pooling
-      --L1_scaling = 2 --1.25 --6 --1 -- straight L2 position, cube-root-sum-of-squares pooling
-      if p_layer_size == 200 then
-	 L1_scaling = 3 * 3/4
-      end
-   else
-      -- SHOULD SCALE INITIAL SPARSITY RATHER THAN L1 SCALING WHEN CHANGING THE NUMBER OF UNITS
-      L1_scaling = 3 --3.1 --2 --3/math.sqrt(2) -- for use with 400 FE units
-      mask_mag = mask_mag * math.sqrt(200/50) / math.sqrt(fe_layer_size/p_layer_size)
-   end
-elseif num_layers == 2 then
-   -- TRY ONLY ADJUSTING THE LAYER 2 SCALING WHEN ADDING A SECOND LAYER!!!
-   L1_scaling = 2.25 --1 --0.25 
-else
-   error('L1_scaling not specified for num_layers')
-end
-
-print('Using group sparsity scaling ' .. L1_scaling)
-
---L1_scaling = 2
-L1_scaling_layer_2 = 0.2*2.25 --0.05 --0.1
-pooling_rec_layer_2 = 0.2*1 --0.2 --0.5
-
-
---[[
-rec_mag = 0
-pooling_rec_mag = 0
-pooling_orig_rec_mag = 0 
-pooling_shrink_position_L2_mag = 0
-pooling_orig_position_L2_mag = 0
-sl_mag = 0
-pooling_sl_mag = 0
-mask_mag = 0
-local L1_scaling = 0
-local L1_scaling_layer_2 = 0
---]]
-
--- Correct classification of the last few examples are is learned very slowly when we turn up the regularizers, since as the classification improves, the regularization error becomes as large as the classification error, so corrections to the classification trade off against the sparsity and reconstruction quality.  
-local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
-
--- FOR THE LOVE OF GOD!!!  DEBUG ONLY!!!  L1_scaling should also scale sl_mag, but this has been removed to reconstruct the good run on 10/11
---local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
-local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
-
-
--- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
-local lambdas_2 = {ista_L2_reconstruction_lambda = pooling_rec_layer_2 * rec_mag, ista_L1_lambda = L1_scaling_layer_2 * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_layer_2 * pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_rec_layer_2 * pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_rec_layer_2 * pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_rec_layer_2 * pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling_layer_2 * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling_layer_2 * mask_mag} -- classification implicitly has a scaling constant of 1
-
-
--- targets a multiplied by layer_size to produce the final value, since the L1 loss increases linear with the number of units; it represents the desired value for each unit
-local lagrange_multiplier_targets = {feature_extraction_target = 5e-3, pooling_target = 1e-3, mask_target = 0.25e-3} --{feature_extraction_lambda = 5e-2, pooling_lambda = 2e-2, mask_lambda = 1e-2} -- {feature_extraction_lambda = 1e-2, pooling_lambda = 5e-2, mask_lambda = 1e-1} -- {feature_extraction_lambda = 5e-3, pooling_lambda = 1e-1}
-local lagrange_multiplier_targets_1 = {feature_extraction_target = 5e-3, pooling_target = 1e-3, mask_target = 0.25e-3}
-local lagrange_multiplier_targets_2 = {feature_extraction_target = 5e-3, pooling_target = 1e-3, mask_target = 5e-3}
-local lagrange_multiplier_learning_rate_scaling_factors = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 1e-4} -- {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 2e-3, mask_scaling_factor = 1e-3}
-local lagrange_multiplier_learning_rate_scaling_factors_1 = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 0} --1e-4} 
-local lagrange_multiplier_learning_rate_scaling_factors_2 = {feature_extraction_scaling_factor = 1e-1, pooling_scaling_factor = 1e-2, mask_scaling_factor = 0} --2e-6} 
-
 
 -- choose the dataset
-require 'mnist'
-require 'cifar'
-local first_layer_size
-if selected_dataset == 'mnist' then
+if params.selected_dataset == 'mnist' then
+   require 'mnist'
    this_data_set = mnist
-   first_layer_size = 28*28
-elseif selected_dataset == 'cifar' then
+elseif params.selected_dataset == 'cifar' then
+   require 'cifar'
    this_data_set = cifar
-   first_layer_size = 3*32*32
 end
-
-
-for k,v in pairs(lambdas) do
-   lambdas[k] = v * 1
-end
-
-local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors
-if false and (num_layers == 1) then
-   print(lambdas)
-   layer_size = {first_layer_size, 200, 50, 10}
-   layered_lambdas = {lambdas}
-   local this_layer_lagrange_multiplier_targets = {}
-   this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_1.feature_extraction_target * layer_size[2]
-   this_layer_lagrange_multiplier_targets.pooling_target = lagrange_multiplier_targets_1.pooling_target * layer_size[3]
-   this_layer_lagrange_multiplier_targets.mask_target = lagrange_multiplier_targets_1.mask_target * layer_size[2]
-   layered_lagrange_multiplier_targets = {this_lagrange_multiplier_targets}
-   layered_lagrange_multiplier_learning_rate_scaling_factors = {lagrange_multiplier_learning_rate_scaling_factors_1}
-else
-   print(lambdas_1, lambdas_2)
-   layer_size = {first_layer_size}
-   layered_lambdas = {}
-   layered_lagrange_multiplier_targets = {}
-   layered_lagrange_multiplier_learning_rate_scaling_factors = {}
-   for i = 1,num_layers do
-      if i == 1 then
-	 table.insert(layer_size, fe_layer_size) --200)
-	 table.insert(layer_size, p_layer_size)
-	 table.insert(layered_lambdas, lambdas_1)
-      else
-	 table.insert(layer_size, 100) --100
-	 table.insert(layer_size, 25) --25
-	 table.insert(layered_lambdas, lambdas_2)
-      end
-      
-      local this_layer_lagrange_multiplier_targets = {}
-      if i == 1 then
-	 this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_1.feature_extraction_target * layer_size[#layer_size - 1]
-	 this_layer_lagrange_multiplier_targets.pooling_target = lagrange_multiplier_targets_1.pooling_target * layer_size[#layer_size]
-	 this_layer_lagrange_multiplier_targets.mask_target = lagrange_multiplier_targets_1.mask_target * layer_size[#layer_size - 1] 
-	 table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors_1)
-      else
-	 this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_2.feature_extraction_target * layer_size[#layer_size - 1]
-	 this_layer_lagrange_multiplier_targets.pooling_target = lagrange_multiplier_targets_2.pooling_target * layer_size[#layer_size]
-	 this_layer_lagrange_multiplier_targets.mask_target = lagrange_multiplier_targets_2.mask_target * layer_size[#layer_size - 1] 
-	 table.insert(layered_lagrange_multiplier_learning_rate_scaling_factors, lagrange_multiplier_learning_rate_scaling_factors_2)
-      end
-      table.insert(layered_lagrange_multiplier_targets, this_layer_lagrange_multiplier_targets)
-
-   end
-   table.insert(layer_size, 10) -- insert the classification output last
-end
-
-
 
 -- create the dataset
 local data_set_size, data, data_inline_test
@@ -268,6 +103,10 @@ end
 --Indexing labels returns an index, rather than a tensor
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
+
+-- the code required to set the structural parameters of a network is messy, so it's been moved to a separate file
+layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors = 
+   set_recpool_net_structural_params(recpool_config_prefs, data, params, L1_scaling)
 
 
 
