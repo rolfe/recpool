@@ -551,24 +551,6 @@ The major contribution of techniques like deep belief networks is a method to ef
 Aside from the denominator, Gated Softmax Classification by Memisevic, Hinton, et al. is basically a one-hidden-layer neural network with a soft rectified linear nonlinearity, if we look at log-likelihood and ignore the common log partition function.  log(1 + e^x) is the softplus approximation to threshold-linear/rectified-linear used by Nair and Hinton's Deep sparse rectifier neural networks.  The weights from the hidden units to the output units are then effectively disjoint groups of ones; alternatively, each output unit can be though of as having an independent group of hidden units.  Given the similarity to threshold-linear units and thus LISTA, consider taking the output of a LISTA network as threshold-linear after the classification dictionary, minus log of the sum of exp of classification dictionary outputs.  That is, treat the threshold-linear output as the energy, and construct a full log likelihood by adding back in the log partition function.  THIS IS EXACTLY WHAT nn.LogSoftMax combined with ClassNLLCriterion does!!!
 
 
-rose1 - 11/26 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - 12/2 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.1, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose3 - 
-rose4 - 11/27 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose6 - 12/2 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.05, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-othello - 12/5 weight decay 1e-4, 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 5e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
-duncan - 12/4 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 5e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
-iago - 12/5 200 fe units, explaining away rows normed with bound scaled by 3, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
-macbeth - 12/5 200 fe units, explaining away rows normed, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
-banquo - 
-ceres - 
-iris - 11/29 200 fe units, class dict units bounded by 3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-cassio - 
-
-
-cassio - ceded to Nathan
-
-
 
 Look at averaging SGD - Leon Bottou - do SGD as usual, but then final result is average of last few iterations
 Minibatches of size 10 has a good chance of all being different classes; don't need learning rate much
@@ -577,6 +559,31 @@ Yann thinks number of epochs used for pretraining is larger than expected.  Try 
 
 Geoff's trick for avoiding early overconvergence: bound L2 norm of all weights.  I'm already basically doing this; L2 norm of encoder rows is bounded, L2 norm of decoder columns is fixed.
 Ask about deep convex nets.  What is a threshold for success?
+
+
+
+
+
+rose1 - 11/26 800 fe units, learning rate 10e-3 during pretraining, 10e-3 during supervised training, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose2 - 12/2 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.1, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose3 - 
+rose4 - 11/27 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose6 - 12/2 200 fe units, class dict mag bounded by 5, class dict grad scaled by 0.05, learning rate 10e-3, learning rate decay 10e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+othello - 12/5 weight decay 1e-4, 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
+duncan - 12/4 200 fe units, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
+iago - 12/5 200 fe units, explaining away rows normed with bound scaled by 3, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
+macbeth - 12/5 200 fe units, explaining away rows normed, manual explaining away diag, ClassNLLCriterion, class dict mag boudned by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
+banquo - 
+ceres - 
+iris - 12/5 hinge loss 0.8, 200 fe units, manual explaining away diag, HingeClassNLLCriterion, class dict mag bounded by 5, class dict grad scaled by 0.2, learning rate 10e-3, learning rate decay 5e-7, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA
+cassio - 
+
+11/29 200 fe units, class dict units bounded by 3, learning rate 10e-3, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+
+cassio - ceded to Nathan
+
+
+
 
 
 

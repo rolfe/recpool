@@ -26,7 +26,7 @@ ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
-CLASS_NLL_CRITERION_TYPE = 'hinge' -- soft, hinge, nil
+CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 
 if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then
    error('trying to normalize rows of explaining away while explicitly including the diagonal in the explaining away matrix')

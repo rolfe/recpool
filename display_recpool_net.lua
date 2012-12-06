@@ -26,10 +26,62 @@ local function save_filter(current_filter, filter_name, log_directory)
    image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
 end
 
+-- dataset is nExamples x input_dim
+-- hidden_activation is nExamples x hidden_dim
+function plot_optimal_dictionary(data_set, hidden_activation, filter_name, log_directory)
+   --print('calling torch.gels on data of size')
+   --print(data_set:size())
+   --print(hidden_activation:size())
+   --print(data_set:select(1,1):unfold(1,10,10))
+   --print(hidden_activation:select(1,1):unfold(1,10,10))
+   
+   local num_active_units = 0
+   local activation_norms = torch.Tensor(hidden_activation:size(2)):zero()
+   for i=1,hidden_activation:size(2) do
+      activation_norms[i] = hidden_activation:select(2,i):norm()
+      if hidden_activation:select(2,i):norm() > 0.05 then
+	 num_active_units = num_active_units + 1
+      end
+   end
+   print('found ' .. num_active_units .. ' active units')
+   --print('activations norms are ')
+   --print(activation_norms:unfold(1,10,10))
+   local conservative_hidden_activation = torch.Tensor(hidden_activation:size(1), num_active_units)
+   num_active_units = 0
+   for i=1,hidden_activation:size(2) do
+      if hidden_activation:select(2,i):norm() > 0.05 then
+	 num_active_units = num_active_units + 1
+	 conservative_hidden_activation:select(2,num_active_units):copy(hidden_activation:select(2,i))
+      end
+   end
 
-function receptive_field_builder_factory()
+   -- add random noise to ensure that the matrix is invertible; otherwise, there's a problem if a unit is always silent
+   local conservative_optimal_dictionary_matrix = torch.gels(data_set, conservative_hidden_activation) --:add(torch.rand(hidden_activation:size()):mul(1e-6))) 
+   local optimal_dictionary_matrix = torch.Tensor(hidden_activation:size(2), data_set:size(2)):zero()
+   
+   num_active_units = 0
+   for i=1,hidden_activation:size(2) do
+      if hidden_activation:select(2,i):norm() > 0.05 then
+	 num_active_units = num_active_units + 1
+	 optimal_dictionary_matrix:select(1,i):copy(conservative_optimal_dictionary_matrix:select(1,num_active_units)) -- this ignores the extra rows --:narrow(1,1,hidden_activation:size(2)))
+      end
+   end
+
+   --print('actual error is ' .. data_set:dist(conservative_hidden_activation*optimal_dictionary_matrix:narrow(1,1,conservative_hidden_activation:size(2))))
+   print('actual error is ' .. data_set:dist(hidden_activation*optimal_dictionary_matrix))
+   print('predicted error is ' .. math.sqrt(conservative_optimal_dictionary_matrix:narrow(1,conservative_hidden_activation:size(2)+1,
+											  conservative_hidden_activation:size(1) - conservative_hidden_activation:size(2)):pow(2):sum()))
+   --save_filter(optimal_dictionary_matrix:narrow(1,1,conservative_hidden_activation:size(2)):t(), filter_name, log_directory)
+   save_filter(optimal_dictionary_matrix:t(), filter_name, log_directory)
+end
+
+
+function receptive_field_builder_factory(nExamples, input_size, shrink_size, total_num_shrink_copies)
    local accumulated_inputs = {} -- array holding the (unscaled) receptive fields; initialized by the first call to accumulate_weighted_inputs
    local receptive_field_builder = {}
+   local shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, shrink_size)
+   local data_set_tensor = torch.Tensor(nExamples, input_size)
+   local data_set_index = 1
 
    function receptive_field_builder:accumulate_weighted_inputs(input_tensor, weight_tensor, accumulated_inputs_index)
       if input_tensor:nDimension() == 1 then -- inputs and weights are vectors; we aren't using minibatches
@@ -48,10 +100,21 @@ function receptive_field_builder_factory()
    end
    
    function receptive_field_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies)
+      local batch_size = new_input:size(1)
+      if data_set_index >= nExamples then
+	 error('accumulated ' .. data_set_index .. ' elements in the receptive field builder, but only expected ' .. nExamples)
+      end
+
+      data_set_tensor:narrow(1,data_set_index,batch_size):copy(new_input)
+
       self:accumulate_weighted_inputs(new_input, base_shrink.output, 1)
+      shrink_val_tensor:select(1,1):narrow(1,data_set_index,batch_size):copy(base_shrink.output)
       for i = 1,#shrink_copies do
 	 self:accumulate_weighted_inputs(new_input, shrink_copies[i].output, i+1)
+	 shrink_val_tensor:select(1,i+1):narrow(1,data_set_index,batch_size):copy(shrink_copies[i].output)
       end
+
+      data_set_index = data_set_index + batch_size
    end
    
    function receptive_field_builder:extract_receptive_fields(index)
@@ -64,13 +127,18 @@ function receptive_field_builder_factory()
    end
    
    function receptive_field_builder:plot_receptive_fields(opt)
+      --shrink_val_tensor:select(2,nExamples+1):zero()
+      --data_set_tensor:select(1,nExamples+1):fill(1)
+
       for i = 1,#accumulated_inputs do
 	 local receptive_field_output = self:extract_receptive_fields(i)
 	 save_filter(receptive_field_output, 'shrink receptive field ' .. i, opt.log_directory)
+	 plot_optimal_dictionary(data_set_tensor, shrink_val_tensor:select(1,i), 'shrink dictionary ' .. i, opt.log_directory)
       end
    end
    
    function receptive_field_builder:reset()
+      data_set_index = 0
       for i = 1,#accumulated_inputs do
 	 accumulated_inputs[i]:zero()
       end
