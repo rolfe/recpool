@@ -18,7 +18,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
-local L1_scaling = 0.5 --1.25 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
+local L1_scaling = 0.75 --1.25 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
 local RESTRICT_TO_WINDOW = false
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
@@ -35,7 +35,7 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 100 --200 --501 --201
+local num_epochs_no_classification = 200 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300

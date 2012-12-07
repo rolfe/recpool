@@ -575,9 +575,9 @@ So long as the set of active units doesn't change, the L1 sparsifying loss is ap
 
 
 rose1 - 12/7 800 fe units, sparsity scaled down by 0.75, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, **100** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - 12/7 800 fe units, sparsity scaled down by 0.75, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose2 - 12/7 800 fe units, sparsity scaled down by 0.5, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, **100** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - 
-rose4 - 12/3 800 fe units, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose4 - 12/7 800 fe units, sparsity scaled down by 0.75, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, **200** epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 
 othello - 
 duncan - 
