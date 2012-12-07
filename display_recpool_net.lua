@@ -14,12 +14,12 @@ end
 
 local function save_filter(current_filter, filter_name, log_directory)
    local current_filter_side_length 
-   if current_filter:size(1) == 3*32*32 then -- make sure that CIFAR input filters align the R, G, and B channels coherently
+   if current_filter:size(1) % 3 == 0 then -- make sure that CIFAR input filters align the R, G, and B channels coherently
+      current_filter_side_length = math.sqrt(current_filter:size(1)/3) 
       --current_filter = current_filter:reshape(current_filter:size(2),3,32,32) -- reshape makes a copy of the entire filter, which seems unnecessarily inefficient
-      -- after unfolding, the first dimension iterates across groups; the last dimension iterates within groups
-      current_filter = current_filter:unfold(1,32,32):unfold(1,32,32):transpose(1,2) -- may still need to transpose the last two dimensions!!!
+      -- after unfolding, the original dimension iterates across groups; the last dimension iterates within groups
+      current_filter = current_filter:unfold(1,current_filter_side_length,current_filter_side_length):unfold(1,current_filter_side_length,current_filter_side_length):transpose(1,2) -- may still need to transpose the last two dimensions!!!
       --current_filter_side_length = math.sqrt(current_filter:size(1))
-      current_filter_side_length = 32 
    else
       current_filter_side_length = math.sqrt(current_filter:size(1))
       current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)

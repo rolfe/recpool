@@ -18,14 +18,15 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
-local L1_scaling = 0.75
+local L1_scaling = 0.75 --1.25 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
+local RESTRICT_TO_WINDOW = false
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
-local full_diagnostic_epoch_size = 10000 --40000
+local full_diagnostic_epoch_size = 50000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -34,7 +35,7 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 200 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
@@ -77,28 +78,30 @@ elseif params.selected_dataset == 'cifar' then
 end
 
 -- create the dataset
-local data_set_size, data, data_inline_test
+local data, data_inline_test
+-- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
+local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternative_access_method = 'recpool_net', offset = nil, RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW}
 if params.data_set == 'train' then
-   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
       ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
       ((params.run_type == 'full_diagnostic') and full_diagnostic_epoch_size) or
       quick_train_epoch_size
-   data = this_data_set.loadTrainSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
-   --data = mnist.loadTrainSet(data_set_size, 'recpool_net_L2_classification') -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
    if params.run_type == 'full_train' then
-      data_inline_test = this_data_set.loadTrainSet(this_data_set:validation_set_size(), 'recpool_net', this_data_set:train_set_size()) -- also load the validation set for inline testing
+      -- also load the validation set for inline testing
+      data_inline_test = this_data_set.loadDataSet({train_or_test = 'train', maxLoad = this_data_set:validation_set_size(), alternative_access_method = 'recpool_net', 
+						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW})
       data_inline_test:normalizeL2()
    end
-else
-   data_set_size = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:test_set_size()) or 5000
+else -- test or validation
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:test_set_size()) or 5000
    if params.data_set == 'validation' then
-      data = this_data_set.loadTrainSet(data_set_size, 'recpool_net', this_data_set:train_set_size())
-   elseif params.data_set == 'test' then
-      data = this_data_set.loadTestSet(data_set_size, 'recpool_net') -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded. 
-   else
-      error('requested data set ' .. params.data_set .. ' was not recognized')
+      data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
+      data_set_options.offset = this_data_set:train_set_size()
    end
 end
+
+data = this_data_set.loadDataSet(data_set_options) 
+
 
 --Indexing labels returns an index, rather than a tensor
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1

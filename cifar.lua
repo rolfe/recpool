@@ -52,7 +52,7 @@ end
 
 
 -- alternative_access_method specifies the format with which the dataset should be returned 
-local function loadFlatDataset(desired_data_set, max_load, alternative_access_method, offset)
+local function loadFlatDataset(desired_data_set, max_load, alternative_access_method, offset, RESTRICT_TO_WINDOW)
    download()
    offset = offset or 0
    
@@ -85,17 +85,28 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
    data = data:narrow(1,offset+1,max_load) --:reshape(max_load,3,32,32)
    labels = labels:narrow(1,offset+1,max_load) --:reshape(max_load,3,32,32)
 
-   -- Visualization is quite easy, using image.display(). Check out:
-   -- help(image.display), for more info about options.
+   local dim = 3*32*32
+   local side_length = 32
+   local nExample = max_load
+   local dataset = {} -- this is the object that is actually returned, and which mediates access to the local variables bound by the closure
+   
+   if RESTRICT_TO_WINDOW then
+      --require 'image'
+      --image.display{image=torch.reshape(data[{ {1,256} }], 256,3,32,32), nrow=16, legend='Some samples from the data set'}
+
+      dim = 3*16*16
+      side_length = 16
+      local data_window = data:unfold(2,32,32):unfold(2,32,32):transpose(3,4):narrow(3,8,16):narrow(4,8,16)
+      data = torch.Tensor(data_set.set_size, 3*16*16)
+      data:copy(data_window)
+      
+      --image.display{image=torch.reshape(data[{ {1,256} }], 256,3,16,16), nrow=16, legend='Some samples from the data set'}
+   end
 
    --require 'image'
    --image.display{image=torch.reshape(data[{ {1,256} }], 256,3,32,32), nrow=16, legend='Some samples from the data set'}
    --image.display{image=torch.reshape(data[{ {1,256} }], 256,3*32,32), nrow=16, legend='Some samples from the data set'}
    
-   local dim = 3*32*32
-   local nExample = max_load
-   local dataset = {} -- this is the object that is actually returned, and which mediates access to the local variables bound by the closure
-
    function dataset:normalize(mean_, std_) -- mean-0, std-1 normalize each pixel separately
       local std = std_ or torch.std(data, 1, true) -- std and mean return 1xn tensors, so the useless first index needs to be stripped out below
       local mean = mean_ or torch.mean(data, 1)
@@ -115,7 +126,7 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       end
 
       for i = 1,3 do
-	 local chosen_color = data:narrow(2,1+32*32*(i-1),32*32)
+	 local chosen_color = data:narrow(2,1+side_length*side_length*(i-1),side_length*side_length)
 	 chosen_color:div(torch.std(chosen_color)) -- note that this is normalized by n-1 rather than n
       end
    end
@@ -204,6 +215,10 @@ end
 
 function cifar.loadTestSet(maxLoad, alternative_access_method, offset)
    return loadFlatDataset('test', maxLoad, alternative_access_method, offset)
+end
+
+function cifar.loadDataSet(params)
+   return loadFlatDataset(params.train_or_test, params.maxLoad, params.alternative_access_method, params.offset, params.RESTRICT_TO_WINDOW)
 end
 
 

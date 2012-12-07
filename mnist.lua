@@ -165,5 +165,17 @@ function mnist.loadTestSet(maxLoad, alternative_access_method, offset)
    return loadFlatDataset(mnist.path_testset, maxLoad, alternative_access_method, offset)
 end
 
+function mnist.loadDataSet(params)
+   local chosen_path
+   if params.train_or_test == 'train' then
+      chosen_path = mnist.path_trainset
+   elseif params.train_or_test == 'test' then
+      chosen_path = mnist.path_testset
+   else
+      error('unrecognized train/test request')
+   end
+   return loadFlatDataset(chosen_path, params.maxLoad, params.alternative_access_method, params.offset)
+end
+
 
 return mnist
