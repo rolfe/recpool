@@ -16,7 +16,7 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic)
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
-cmd:option('-selected_dataset','cifar', 'dataset on which to train (mnist or cifar)')
+cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
 local RESTRICT_TO_WINDOW = false
@@ -41,7 +41,6 @@ local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
 local num_epochs = 1000
-local full_training_dataset_size = 50000
 
 
 local params = cmd:parse(arg)
@@ -92,12 +91,14 @@ if params.data_set == 'train' then
 						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW})
       data_inline_test:normalizeL2()
    end
-else -- test or validation
+elseif params.data_set == 'test' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:test_set_size()) or 5000
-   if params.data_set == 'validation' then
-      data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
-      data_set_options.offset = this_data_set:train_set_size()
-   end
+elseif params.data_set == 'validation' then
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:validation_set_size()) or 5000
+   data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
+   data_set_options.offset = this_data_set:train_set_size()
+else
+   error('unrecognized data set: ' .. params.data_set)
 end
 
 data = this_data_set.loadDataSet(data_set_options) 
@@ -116,7 +117,7 @@ layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagran
 local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
-local default_pretraining_minibatches = default_pretraining_num_epochs * full_training_dataset_size / math.max(1, desired_minibatch_size)
+local default_pretraining_minibatches = default_pretraining_num_epochs * this_data_set:train_set_size() / math.max(1, desired_minibatch_size)
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot

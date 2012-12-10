@@ -25,7 +25,7 @@ ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
-MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
+MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = false
 CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 
 if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then
@@ -70,7 +70,7 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
 					     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 					     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/num_ista_iterations)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
@@ -776,7 +776,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 								       ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, non_negative_diag = false, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
 						     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 						     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/recpool_config_prefs.num_ista_iterations) 
    local base_shrink 
