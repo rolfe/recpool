@@ -472,6 +472,8 @@ function RecPoolTrainer:train(train_data, test_epoch)
       end
       print('FE row norms are ', norms:unfold(1,10,10))
 
+      print('FE biases are ', self.model.layers[i].module_list.encoding_feature_extraction_dictionary.bias:unfold(1,10,10))
+
       --[[
       local m = self.model.layers[i].module_list.encoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(1))
@@ -563,8 +565,9 @@ function RecPoolTrainer:train(train_data, test_epoch)
 
    output_gradient_magnitudes(self)
 
-   local index_list = {11, 12, 13, 14, 15, 16, 4, 7, 8, 10, 42, 52, 63, 64, 67, 78}
+   --local index_list = {11, 12, 13, 14, 15, 16, 4, 7, 8, 10, 42, 52, 63, 64, 67, 78}
    --local index_list = {1, 2, 3, 11, 12, 13, 4, 9, 21, 32, 72, 83, 88}
+   local index_list = {32, 34, 41, 58, 69, 70, 91, 103, 114, 121, 123, 138, 171, 201, 203, 213, 217, 238, 244, 290, 304, 327, 1, 2, 3, 4, 5, 6, 7, 8} -- for 11/30 400 units
    local num_shrink_output_tensor_elements = #index_list -- self.model.layers[1].module_list.shrink.output:size(1)
    local shrink_output_tensor = torch.Tensor(num_shrink_output_tensor_elements, 1 + #self.model.layers[1].module_list.shrink_copies)
 

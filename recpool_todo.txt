@@ -618,3 +618,9 @@ Try to visualize how the template units develop their output.  Maybe show recons
 Try doing zero and one ISTA iteration for comparison.
 Try decreasing the number of hidden units to see how performance degrades.
   
+
+
+Try adding L1 sparsity on weights
+Try silencing encoder input to some units; do these become categorical units?
+Try forcing band structure on explaining away, which is effectively a smooth hierarchy.  Can this be done with convolutional code?
+Create better visualization of trajectory of information through the network.  
