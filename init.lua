@@ -37,6 +37,7 @@ dofile('ConstrainedLinear.lua')
 
 require 'optim'
 dofile('asgd_no_weight_decay.lua')
+dofile('sgd_decayed_weight_decay.lua')
 
 require 'unsup'
 -- modifying unsup

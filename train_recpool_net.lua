@@ -81,6 +81,7 @@ function RecPoolTrainer:reset_options(new_opt)
    self.opt.init_eval_counter = new_opt.init_eval_counter or 0
    self.opt.batch_size = new_opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
    self.opt.weight_decay = new_opt.weight_decay or 0 -- weight decay (SGD only)
+   self.opt.L1_weight_decay = new_opt.L1_weight_decay or 0 -- weight decay (SGD only)
    self.opt.momentum = new_opt.momentum or 0 -- momentum (SGD only)
    self.opt.t0 = new_opt.t0 or 1 -- start averaging at t0 (ASGD only), where t0 is measured ASGD calls
    self.opt.max_iter = new_opt.max_iter or 2 -- maximum nb of iterations for CG and LBFGS
@@ -287,10 +288,11 @@ function RecPoolTrainer:train(train_data, test_epoch)
          self.config = self.config or {evalCounter = self.opt.init_eval_counter or 0,
 				       learningRate = self.opt.learning_rate,
 				       weightDecay = self.opt.weight_decay,
+				       L1weightDecay = self.opt.L1_weight_decay,
 				       momentum = self.opt.momentum,
 				       learningRateDecay = self.opt.learning_rate_decay} -- 5e-7
 	 self.config.learningRate = self.opt.learning_rate -- make sure that the sgd learning rate reflects any resets
-         optim.sgd(self.feval, self.flattened_parameters, self.config)
+         optim.sgd_decayed_weight_decay(self.feval, self.flattened_parameters, self.config)
 	 
       elseif self.opt.optimization == 'ASGD' then
          self.config = self.config or {t = self.opt.init_eval_counter or 0,

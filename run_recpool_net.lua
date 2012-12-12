@@ -65,7 +65,7 @@ recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
-recpool_config_prefs.manually_maintain_explaining_away_diagonal = false
+recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
 
 
 -- choose the dataset
@@ -131,6 +131,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
+   L1_weight_decay = 1e-5, -- L1 weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
@@ -215,7 +216,7 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
-if (opt.weight_decay > 0) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
+if ((opt.weight_decay > 0) or (opt.L1_weight_decay > 0)) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
    model:reset_classification_dictionary() -- ensure that weight decay during the unsupervised pretraining doesn't cause the classification dictionary to grow too small
 end
 if num_epochs_gentle_pretraining >= 0 then
