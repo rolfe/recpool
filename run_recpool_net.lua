@@ -65,7 +65,7 @@ recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
-recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
+recpool_config_prefs.manually_maintain_explaining_away_diagonal = false
 
 
 -- choose the dataset
