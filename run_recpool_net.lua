@@ -131,7 +131,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
-   L1_weight_decay = 1e-5, -- L1 weight decay (SGD only)
+   L1_weight_decay = 0, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
@@ -141,8 +141,8 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
 
 print('Using opt.learning_rate = ' .. opt.learning_rate)
 
---torch.manualSeed(23827602) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
-torch.seed()
+torch.manualSeed(46393475) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
+--torch.seed()
 
 
 local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
