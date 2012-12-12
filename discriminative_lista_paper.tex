@@ -1,0 +1,126 @@
+Overall concept:
+
+Focus on structure learning.  LIke the group sparsity papers, we want to show that a simple training algorithm leads to the emergence of biologically suggestive structure that is present in the data, rather than the algorithm itself.  This frees us from having to beat state-of-the-art performance, so we can focus on smaller networks.  
+Switch to 11 ISTA iterations to allow emergence of more structural tiers.  
+Can get a sense of hierarchy by looking at when a unit turns on.  Maybe cluster activation trajectories?  Stroke units quickly plateau; categorical units grow monotonically?  Empirically, stroke units tend to turn on immediately, whereas categorical units generally wait an iteration before turning on.  A unit that waited two iterations before turning on would probably be on a third layer of the hierarchy.  
+***Add small L1 loss on weights to make units beyond the first layer of the hierarchy have no encoder input, which clearly identifies them.  Show bimodal distribution of encoder row magnitude?
+Show that performance is bad with too few ISTA iterations, which doesn't admit a hierarchy.  Try reducing the number of layers in the network one by one, using the weights from the larger network as a seed?
+
+
+
+Introduction:
+
+Like Babel presentation: deep networks are powerful, but depend upon slow and heuristic pretraining.  Sparse coding is effective but depends upon slow, iterative encoders.  We can marry these two techniques to potentially combine their strengths while eliminating their weaknesses.
+
+
+
+
+Main points:
+
+Importance of discriminative training already demonstrated for implicit encoders, but mostly reflect improvement in features, rather than feature combination
+ 
+Recurrence is one of the dominant structural features of the cortex.  In contrast, the machine learning community has found that deep networks can be extremely powerful, but has not realized much benefit from recurrence.  We unroll a recurrent network into a hierarchical network, but discriminative training induces hierarchical structure within the recurrent network.  A recurrent network is simply a hierarchical network with shared weights.  Moreover, sharing weights is not very burdensome if they are subject to similar gradients (which is the case in a LISTA network if all layers are subject to the L1 and L2 losses (only exact if network hits a fixed point)).  
+
+We don't want or expect the network to develop a purely feedforward (hierarchical) architecture, since then there was no purpose for the recurrence to begin with, and the extra connections are purely extraneous.
+
+Interpretable mid-level and digit-ID features arise spontaneously with discriminative training in a deep (but thin) LISTA network
+
+Higher-level features are actually composed from low-level features; they are not simply discriminative parts or templates
+  - show evolution of reconstructed dictionaries
+  - show evolution in discrimination accuracy with layer (mutual information between a single unit and the class?)
+
+The emergence of hierarchy within a recurrent network is consistent with the observation of simple and complex cells in primary visual cortex.  
+Functional connectivity between simple cells and complex cells in cat striate cortex - Jose-Manuel Alonso and Luis M. Martinez (1998)
+
+Normalization of the encoders is necessary for good performance
+
+L1 regularization on a hierarchical network of rectified linear units is equivalent to $\sum_{ij} \frac{\partial h_i}{\partial x_j} \cdot x_j$ where $i$ runs over the hidden units and $j$ runs over the inputs.  
+\begin{align*}
+z_j &= \Theta\left(\sum_i W_{ji} \cdot y_i \right) \\
+\frac{d z_j}{d x_k} &= \left( \sum_i W_{ji} \cdot y_i > 0 \right) \cdot \sum_i W_{ji} \cdot \frac{d y_i}{d x_k} 
+\end{align*}
+This applies until the last layer, at which point $\frac{d x_i}{d x_k} = \delta_{ik}$.  Taking $L = \sum_k \frac{d z_j}{d x_k} \cdot x_k$ and pushing the sum over $k$ all the way back to the final $\delta$, we can then show that $L$ is identical to $z_j$.  THIS ONLY WORKS if we add L1 regularizers into the loss function complementary to the biases of the encoder.
+
+Our LISTA encoder can be understood as a learned approximation to a second-order minimization of the loss (L2 reconstruction plus L1 sparsifying).  The learned matrices are effectively the optimal matrices from ISTA multiplied by a (fixed) approximation to the inverse Hessian.  In general, encoders that are complementary to a given decoder can sensibly be of the form of (first- or second-order) gradient descent on the decoder's loss function. 
+
+
+
+Future directions:
+
+Consider adding to the encoder a term corresponding to the gradient of a weighted L2 norm, corresponding to group sparsity.  The most obvious thing lacking in the current linear decoder is clustering amongst groups of related units.  Note that the structure of the sparsity is completely enforced by the encoder; the decoder is agnostic to sparsity considerations.  It might be easier to introduce structured sparsity to the encoder than the loss function, since the parameters of the structured sparsity must themselves be trained, and will become degenerate if unconstrained.
+Obvious desirable additions to the decoder include translation and rotation of the dictionary elements (although these make the network non-permutation invariant).  However, this seems likely to require an encoder that is similarly able to translate or rotate its filters.
+
+Can we formulate an encoder structure that captures the operation of FISTA (i.e., momentum)?  It seems like this would only require adding in an explaining-away-type matrix to layer n-2, rather than just n-1; the first explaining matrix would need to be initialized so that the sum of the n-1 and n-2 contributions effectively implements momentum. 
+
+
+
+Citations:
+
+Learning Efficient Structured Sparse Models - Sprechmann, Bronstein, Sapiro (2012) ICML - Very similar, but does not backpropagate the classification loss through the encoder; just directly hooks the encoder to the decoder and trains as a (structured) sparse autoencoder.  A separate dictionary is trained for each digit class, and classification is done on the basis of minimum reconstruction-plus-sparsifying loss.  Performance is poor; > 2\%.  
+
+IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, VOL. 34, NO. 4, APRIL 2012 791
+Task-Driven Dictionary Learning Julien Mairal, Francis Bach, and Jean Ponce
+Get great MNIST performance, but use shifted images in the dataset.  Minimization of sparse coding objective is direct/implicit.
+
+J. Mairal, F. Bach, J. Ponce, G. Sapiro, and A. Zisserman, “Supervised Dictionary Learning,” Proc. Advances in Neural Information Processing Systems, D. Koller, D. Schuurmans, Y. Bengio, and L. Bottou, eds., vol. 21, pp. 1033-1040, 2009.
+
+
+
+Deep Sparse Rectifier Neural Networks - Xavier Glorot, Antoine Bordes and Yoshua Bengio
+Find that softplus works better than rectified-linear; don't find significant advantage to pretraining; don't link weights between layers; don't feed input into all layers
+
+Deep convex networks
+Do feed input into all layers
+
+Yoshua's deep learning review paper
+
+LISTA paper from Karol
+
+PSD paper from Koray
+
+Gated softmax classification - R Memisevic, C Zach, G Hinton - equivalent to soft-plus; smooth version of rectified-linear
+
+Hinton paper recovering softplus (smoothed rectified linear) from RBM using replicated units with different biases - Nair and Hinton
+
+Differentiable Sparse Coding - Bradley and Bagnell - Find the gradient of true sparse coding output with respect to the parameters and use it for discriminative gradient descent training - requires inversion of large matrix - MNIST error 1.3\%
+
+
+R. Raina, A. Battle, H. Lee, B. Packer, and A.Y. Ng, “Self-Taught Learning: Transfer Learning from Unlabeled Data,” Proc. Int’l Conf. Machine Learning, 2007.
+
+Sparse coding (or at least linear reconstruction with L2 reconstruction loss) seems to be the basis of A Large-Scale Model of the Functioning Brain - Chris Eliasmith et al. (2012), published in Science
+
+
+Contractive Auto-Encoders: Explicit Invariance During Feature Extraction - Rifai, ..., Bengio (2011) - provide performance data on MNIST (1.14\%) and CIFAR-bw (47.86\%) - L1 loss on rectified linear stack minimizes something similar to the Frobenius norm of the Jacobian
+
+
+
+Babel site visit:
+
+Motivation:
+Deep networks are powerful, but depend upon heuristic, computationally intensive pretraining
+Want a simple, direct way to pretrain a deep encoder
+
+Sparse coding is powerful, but depends upon slow iterative procedures for encoding
+Want a simple, direct encoder for sparse coding
+
+%Deep belief networks provide an effective heuristic for training deep networks, but only weak bounds on log likelihood can be optimized efficiently
+% Importance of discriminative training already demonstrated for implicit encoders, but mostly reflect improvement in features, rather than feature combination
+
+Approach:
+Unroll the ISTA sparse coding algorithm into a deep feedforward network with rectified-linear nonlinearities
+Weights are tied between layers
+  - Convolutional architecture encodes translational invariance
+  - Tied weights between layers encodes depth invariance
+  - Each unit has a consistent meaning between layers, but accuracy evolves across layers (accuracy defined by loss function)
+  - Equivalent to extended temporal processing in a fixed one-layer network
+Decoding dictionary allows hidden units to be interpretted
+Pretrain as a sparse autoencoder, then add in a cross-entropy classification loss and backpropagate
+
+PRELIMINARY RESULTS
+Preliminary experiments with small networks yield good performance on MNIST (200 units, ~1.2; 400 units, ~1.1 \%)
+In addition to ``part'' units formed during unsupervised pretraining, discriminative training  creates mid-level features and classifier units
+FIGURE: evolution of reconstructed dictionary, classification dictionary
+
+Future steps:
+Increase size
+Convolutionalize

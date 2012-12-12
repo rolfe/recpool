@@ -25,12 +25,9 @@ ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
-MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
+--MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
 CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 
-if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then
-   error('trying to normalize rows of explaining away while explicitly including the diagonal in the explaining away matrix')
-end
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -95,10 +92,10 @@ end
 
 -- the input is a table of three elments: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], the untransformed input x [3], and possibly the offset shrink [4]
-local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST, last_iteration, offset_shrink)
+local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST, last_iteration, offset_shrink, manually_maintain_explaining_away_diagonal)
    local ista_seq = nn.Sequential()
 
-   if MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL then
+   if manually_maintain_explaining_away_diagonal then
       -- copy z so we can add it back in after applying the explaining away matrix
       ista_seq:add(nn.CopyTable(1, 2))
 
@@ -548,12 +545,17 @@ end
 
 
 
--- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
+-- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval, manually_maintain_explaining_away_diagonal
 -- lambdas consists of an array of arrays, so it's difficult to make an off-by-one-error when initializing
 -- build a stack of reconstruction-pooling layers, followed by a classfication dictionary and associated criterion
 function build_recpool_net(layer_size, lambdas, classification_criterion_lambda, lagrange_multiplier_targets, lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data_set, RUN_JACOBIAN_TEST)
    -- lambdas: {ista_L2_reconstruction_lambda, ista_L1_lambda, pooling_L2_shrink_reconstruction_lambda, pooling_L2_orig_reconstruction_lambda, pooling_L2_shrink_position_unit_lambda, pooling_L2_orig_position_unit_lambda, pooling_output_cauchy_lambda, pooling_mask_cauchy_lambda}
    -- disable_pooling specifies that the pooling layers should be created (otherwise all of the test code that depends on their existence will fail), but that they should not be added to model = nn.Sequential().  As a result, they should not slow down the running time at all.  
+
+   if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and not(recpool_config_prefs.manually_maintain_explaining_away_diagonal) then
+      error('trying to normalize rows of explaining away while explicitly including the diagonal in the explaining away matrix')
+   end
+
 
    local criteria_list = {criteria = {}, names = {}} -- list of all criteria and names comprising the loss function.  These are necessary to run the Jacobian unit test forwards
    RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST or false
@@ -882,7 +884,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
       base_explaining_away.weight:mul(0) 
    --]]
-   if not(MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL) then -- add the identity matrix into base_explaining_away, assuming this isn't done explicitly by the network dynamics
+   if not(recpool_config_prefs.manually_maintain_explaining_away_diagonal) then -- add the identity matrix into base_explaining_away, assuming this isn't done explicitly by the network dynamics
       for i = 1,base_explaining_away.weight:size(1) do 
 	 base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
       end
@@ -988,7 +990,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
 
       explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = this_explaining_away, this_shrink
-      ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST, (i == recpool_config_prefs.num_ista_iterations), this_offset_shrink) -- last argument indicates whether this is the last ISTA iteration, in which case we should also pass on the offset shrink
+      ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST, (i == recpool_config_prefs.num_ista_iterations), this_offset_shrink, recpool_config_prefs.manually_maintain_explaining_away_diagonal) -- last argument indicates whether this is the last ISTA iteration, in which case we should also pass on the offset shrink
       this_layer:add(ista_seq)
    end
    

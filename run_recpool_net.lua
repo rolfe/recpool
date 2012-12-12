@@ -24,7 +24,7 @@ local RESTRICT_TO_WINDOW = false
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
@@ -55,7 +55,7 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -65,6 +65,7 @@ recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
+recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
 
 
 -- choose the dataset
@@ -109,7 +110,7 @@ data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 
 -- the code required to set the structural parameters of a network is messy, so it's been moved to a separate file
-layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors = 
+local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors = 
    set_recpool_net_structural_params(recpool_config_prefs, data, params, L1_scaling)
 
 
@@ -167,6 +168,8 @@ if params.load_file ~= '' then
    else
       load_parameters(trainer:get_flattened_parameters(), params.load_file)
    end
+   --model.layers[1].module_list.explaining_away.weight:add(-1, torch.diag(torch.ones(model.layers[1].module_list.explaining_away.weight:size(1))))
+   --print(torch.diag(model.layers[1].module_list.explaining_away.weight):unfold(1,10,10))
 end
 
 os.execute('rm -rf ' .. opt.log_directory)

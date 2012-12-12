@@ -794,6 +794,7 @@ function rec_pool_test.full_network_test()
    recpool_config_prefs.use_squared_weight_matrix = true
    recpool_config_prefs.normalize_each_layer = false
    recpool_config_prefs.repair_interval = 1
+   recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
 
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
@@ -945,6 +946,7 @@ function rec_pool_test.ISTA_reconstruction()
    recpool_config_prefs.use_squared_weight_matrix = true
    recpool_config_prefs.normalize_each_layer = false
    recpool_config_prefs.repair_interval = 1
+   recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
 
 
    local minibatch_size = 0
