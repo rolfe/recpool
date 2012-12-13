@@ -18,6 +18,7 @@ cmd:option('-data_set','train', 'data set on which to perform experiment experim
 cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
+-- set parameters, both from the command line and with fixed values
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
 local RESTRICT_TO_WINDOW = false
 
@@ -28,6 +29,7 @@ local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2
 local quick_train_epoch_size = 50000
 local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
+local parameter_save_interval = 50
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
@@ -65,7 +67,12 @@ recpool_config_prefs.use_squared_weight_matrix = true
 recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED!!!
 recpool_config_prefs.randomize_pooling_dictionary = true
 recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
-recpool_config_prefs.manually_maintain_explaining_away_diagonal = false
+recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
+
+
+-- seed the random number generator
+--torch.manualSeed(46393475) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
+torch.seed()
 
 
 -- choose the dataset
@@ -131,7 +138,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
-   L1_weight_decay = 0, --1e-5, -- L1 weight decay (SGD only)
+   L1_weight_decay = 1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
@@ -140,9 +147,6 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
 }
 
 print('Using opt.learning_rate = ' .. opt.learning_rate)
-
-torch.manualSeed(46393475) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
---torch.seed()
 
 
 local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
@@ -169,7 +173,7 @@ if params.load_file ~= '' then
    else
       load_parameters(trainer:get_flattened_parameters(), params.load_file)
    end
-   --model.layers[1].module_list.explaining_away.weight:add(-1, torch.diag(torch.ones(model.layers[1].module_list.explaining_away.weight:size(1))))
+   --model.layers[1].module_list.explaining_away.weight:add(1, torch.diag(torch.ones(model.layers[1].module_list.explaining_away.weight:size(1))))
    --print(torch.diag(model.layers[1].module_list.explaining_away.weight):unfold(1,10,10))
 end
 
@@ -197,7 +201,7 @@ end
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
 
 for i = 1,num_epochs_no_classification do
-   if (i % 50 == 1) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
+   if ((i % parameter_save_interval == 1) or (parameter_save_interval == 1)) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
       save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 
@@ -255,7 +259,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
       print('resetting learning rate to ' .. final_scale_factor * opt.learning_rate)
    end
    
-   if (i % 50 == 1) and (i > 1) then
+   if ((i % parameter_save_interval == 1) or (parameter_save_interval == 1)) and (i > 1) then
       save_parameters(trainer:get_output_flattened_parameters(), opt.log_directory, i) -- defined in display_recpool_net
    end
 
