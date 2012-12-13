@@ -26,7 +26,7 @@ local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does mat
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 50000
+local quick_train_epoch_size = 10000
 local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50
@@ -57,7 +57,7 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 5 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -138,7 +138,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
-   L1_weight_decay = 1e-4, --1e-5, -- L1 weight decay (SGD only)
+   L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
    t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 

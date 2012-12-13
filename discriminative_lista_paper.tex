@@ -3,7 +3,8 @@ Overall concept:
 Focus on structure learning.  LIke the group sparsity papers, we want to show that a simple training algorithm leads to the emergence of biologically suggestive structure that is present in the data, rather than the algorithm itself.  This frees us from having to beat state-of-the-art performance, so we can focus on smaller networks.  
 Switch to 11 ISTA iterations to allow emergence of more structural tiers.  
 Can get a sense of hierarchy by looking at when a unit turns on.  Maybe cluster activation trajectories?  Stroke units quickly plateau; categorical units grow monotonically?  Empirically, stroke units tend to turn on immediately, whereas categorical units generally wait an iteration before turning on.  A unit that waited two iterations before turning on would probably be on a third layer of the hierarchy.  
-***Add small L1 loss on weights to make units beyond the first layer of the hierarchy have no encoder input, which clearly identifies them.  Show bimodal distribution of encoder row magnitude?
+***Add small L1 loss on weights to make units beyond the first layer of the hierarchy have no encoder input, which clearly identifies them.  - This doesn't seem to work!  While the categorical units may have no activation on the first iteration, even a disruptively strong L1 weight regularization fails to set their encoder weights to zero.
+Show bimodal distribution of encoder row magnitude?
 Show that performance is bad with too few ISTA iterations, which doesn't admit a hierarchy.  Try reducing the number of layers in the network one by one, using the weights from the larger network as a seed?
 
 

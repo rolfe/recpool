@@ -612,8 +612,8 @@ rose4 - 12/12 400 fe units, *manual* explaining away diag, decoding FE dict boun
 rose6 - 12/12 400 fe units, *automatic* explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - 12/12 fixed seed, 200 fe units, *manual* explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 12/12 fixed seed, 200 fe units, *automatic* explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-iago - 12/10 200 fe units, 11 ista iterations, learning rate 5e-3, manual explaining away diag, decoding FE dict bounded above but not fixed, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-macbeth - 12/10 200 fe units, 11 ista iterations, learning rate 2.5e-3, manual explaining away diag, decoding FE dict bounded above but not fixed, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+iago - 12/13 1e-4 L1 weight decay, 200 fe units, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+macbeth - 
 banquo - 
 ceres - 
 iris - 

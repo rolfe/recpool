@@ -860,25 +860,29 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    -- Initialize the parameters to consistent values -- this should probably go in a separate function
    --base_decoding_feature_extraction_dictionary.weight:apply(function(x) return ((x < 0) and 0) or x end) -- make the feature extraction dictionary non-negative, so activities don't need to be balanced in order to get a zero background
    if data_set and (layer_id == 1) then
-      for i = 1,0 do --base_decoding_feature_extraction_dictionary.weight:size(2) do
-	 base_decoding_feature_extraction_dictionary.weight:select(2,i):copy(data_set.data[math.random(data_set:size())])
+      for i = 1,base_decoding_feature_extraction_dictionary.weight:size(2) do
+	 local selected_column = base_decoding_feature_extraction_dictionary.weight:select(2,i)
+	 selected_column:add(0.25, data_set.data[math.random(data_set:nExample())]) -- 1 is too much; many units don't train quickly
+	 --selected_column:add(-1*selected_column:mean()) -- this is necessary to keep the dynamics stable; otherwise, unit activities tend to oscillate, since the inner product between columns is large, so explaining-away suppression overwhelms the input activation
       end
    end
    base_decoding_feature_extraction_dictionary:repair(true) -- make sure that the norm of each column is 1
    --print(base_decoding_feature_extraction_dictionary.weight)
    --io.read()
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
+   local init_dictionary_min_scaling = 0.1 --0.1
+   local init_dictionary_max_scaling = 1
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
    if recpool_config_prefs.shrink_style == 'SoftPlus' then
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(recpool_config_prefs.num_ista_iterations + 1)))
    else
       -- WAS 1.25 rather than 2
-      encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1))) -- the first ista iteration doesn't count towards num_ista_iterations
+      encoding_feature_extraction_dictionary.weight:mul(math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) -- the first ista iteration doesn't count towards num_ista_iterations
    end
-   encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
+   encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1))))
 
-   base_explaining_away.weight:mul(-math.max(0.1, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1))) -- WAS 1.25 rather than 2
+   base_explaining_away.weight:mul(-math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) -- WAS 1.25 rather than 2
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
