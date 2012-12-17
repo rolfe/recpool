@@ -26,10 +26,11 @@ local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does mat
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 10000
+local quick_train_epoch_size = 50000
 local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50
+local classification_scale_factor = 0.2 -- 1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
@@ -37,7 +38,7 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 100 --200 --501 --201
+local num_epochs_no_classification = 1 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
@@ -122,7 +123,7 @@ local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_
 
 
 
-local model = build_recpool_net(layer_size, layered_lambdas, 1, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
+local model = build_recpool_net(layer_size, layered_lambdas, classification_scale_factor, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
 local default_pretraining_minibatches = default_pretraining_num_epochs * this_data_set:train_set_size() / math.max(1, desired_minibatch_size)
@@ -130,7 +131,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = optimization_algorithm, -- optimization method: SGD | ASGD | CG | LBFGS
-   init_eval_counter = ((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 0, 
+   init_eval_counter = ((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 0, 
    learning_rate = ((params.run_type == 'full_train') and full_train_learning_rate) or 
       ((params.run_type == 'quick_train') and quick_train_learning_rate) or 
       (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic')) and 0), --1e-3, -- learning rate at t=0
@@ -140,7 +141,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    weight_decay = 0, -- weight decay (SGD only)
    L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0, -- momentum (SGD only)
-   t0 = (((num_epochs_no_classification <= 1) and default_pretraining_minibatches) or 
+   t0 = (((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
       num_classification_epochs_before_averaging_SGD * (data:nExample() / math.max(1, desired_minibatch_size)), -- start averaging at t0 (ASGD only), measured in ASGD calls
    max_iter = 2 -- maximum nb of iterations for CG and LBFGS
@@ -152,7 +153,7 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
 local receptive_field_builder = nil
 if params.run_type == 'full_diagnostic' then
-   receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations)
+   receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
 end
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
 
@@ -214,12 +215,16 @@ for i = 1,num_epochs_no_classification do
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
       if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
+      if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
+	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+					  model.layers[1].module_list.explaining_away.weight, opt)
+      end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
-model:reset_classification_lambda(1) -- 0.2 seems to strike an even balance between reconstruction and classification
+model:reset_classification_lambda(classification_scale_factor) -- 0.2 seems to strike an even balance between reconstruction and classification
 if ((opt.weight_decay > 0) or (opt.L1_weight_decay > 0)) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
    model:reset_classification_dictionary() -- ensure that weight decay during the unsupervised pretraining doesn't cause the classification dictionary to grow too small
 end
@@ -274,6 +279,10 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
       if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
+      if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
+	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+					  model.layers[1].module_list.explaining_away.weight, opt)
+      end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end

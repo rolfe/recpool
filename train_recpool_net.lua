@@ -327,6 +327,7 @@ function RecPoolTrainer:train(train_data, test_epoch)
    end
 
    self.confusion:zero()
+
    for i = 1,#self.model.criteria_list.criteria do
       if self.track_criteria_outputs then
 	 print('Criterion: ' .. self.model.criteria_list.names[i] .. ' = ' .. self.loss_hist[i]/train_data:nExample() .. '; grad = ' .. self.grad_loss_hist[i]/train_data:nExample())
@@ -558,12 +559,14 @@ function RecPoolTrainer:train(train_data, test_epoch)
    end
    print('C row norms are ', norms:unfold(1,10,10))
    
-   if this_epoch_batch_size == 0 then
-      print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
-      print('target is ' .. self.model.current_target)
-   else
-      print('logsoftmax output is ', self.model.module_list.logsoftmax.output:select(1,1):unfold(1,10,10))
-      print('target is ', self.model.current_target[1])
+   if self.model.module_list.logsoftmax.output:nElement() > 0 then -- make sure the logsoftmax is used before trying to display its output
+      if this_epoch_batch_size == 0 then
+	 print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
+	 print('target is ' .. self.model.current_target)
+      else
+	 print('logsoftmax output is ', self.model.module_list.logsoftmax.output:select(1,1):unfold(1,10,10))
+	 print('target is ', self.model.current_target[1])
+      end
    end
    print('classification bias is ', self.model.module_list.classification_dictionary.bias:unfold(1,10,10))
 
@@ -572,6 +575,7 @@ function RecPoolTrainer:train(train_data, test_epoch)
    local index_list = {11, 12, 13, 14, 15, 16, 4, 7, 8, 10, 42, 52, 63, 64, 67, 78}
    --local index_list = {1, 2, 3, 11, 12, 13, 4, 9, 21, 32, 72, 83, 88}
    --local index_list = {32, 34, 41, 58, 69, 70, 91, 103, 114, 121, 123, 138, 171, 201, 203, 213, 217, 238, 244, 290, 304, 327, 1, 2, 3, 4, 5, 6, 7, 8} -- for 11/30 400 units
+   --local index_list = {30, 47, 53, 55, 77, 119, 172, 192, 196, 199, 206, 209, 232, 241, 255, 269, 290, 302, 303, 305, 311, 313, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10} -- for 12/12 400 units manual
    local num_shrink_output_tensor_elements = #index_list -- self.model.layers[1].module_list.shrink.output:size(1)
    local shrink_output_tensor = torch.Tensor(num_shrink_output_tensor_elements, 1 + #self.model.layers[1].module_list.shrink_copies)
 
@@ -588,6 +592,13 @@ function RecPoolTrainer:train(train_data, test_epoch)
       end
    end
    print('evolution of selected shrink elements', shrink_output_tensor)
+
+   local exp_away_grad_mags = torch.Tensor(#self.model.layers[1].module_list.explaining_away_copies)
+   for j = 1,#self.model.layers[1].module_list.explaining_away_copies do 	 
+      exp_away_grad_mags[j] = self.model.layers[1].module_list.explaining_away_copies[j].gradInput:norm()
+   end
+   print('explaining away grad mags are ', exp_away_grad_mags)
+
 
    --[[
    -- save/log current net

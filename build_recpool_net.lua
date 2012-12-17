@@ -28,6 +28,11 @@ CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
 CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 
+GROUP_SPARISTY_TEN_FIXED_GROUPS = true -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
+if GROUP_SPARISTY_TEN_FIXED_GROUPS then
+   CLASS_DICT_GRAD_SCALING = 0
+end
+
 
 -- the input is x [1] (already wrapped in a table)
 -- the output is a table of three elements: the subject of the shrink operation z [1], the transformed input W*x [2], and the untransformed input x [3]
@@ -583,8 +588,10 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
       end
    end
-   local this_class_nll_criterion 
-   if CLASS_NLL_CRITERION_TYPE == 'soft' then
+   local this_class_nll_criterion
+   if GROUP_SPARISTY_TEN_FIXED_GROUPS then
+      this_class_nll_criterion = nn.L1Cost()
+   elseif CLASS_NLL_CRITERION_TYPE == 'soft' then
       this_class_nll_criterion = nn.SoftClassNLLCriterion()
    elseif CLASS_NLL_CRITERION_TYPE == 'hinge' then
       this_class_nll_criterion = nn.HingeClassNLLCriterion()
@@ -596,6 +603,16 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    --local classification_criterion = nn.L1CriterionModule(nn.MSECriterion(), classification_criterion_lambda) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
 
    classification_dictionary.bias:zero()
+   if GROUP_SPARISTY_TEN_FIXED_GROUPS then
+      classification_dictionary.weight:zero()
+      local num_cols = classification_dictionary.weight:size(2)
+      for i = 1,10 do
+	 classification_dictionary.weight:select(1,i):narrow(1,1+(i-1)*num_cols/10, num_cols/10):fill(1)
+      end
+   end
+   if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
+      classification_dictionary:repair(false, CLASS_DICT_BOUND)
+   end
 
    -- make the criteria_list and filters accessibel from the nn.Sequential module for ease of debugging and reporting
    model.criteria_list = criteria_list
@@ -641,15 +658,26 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    table.insert(model.filter_name_list, 'classification dictionary')
 
    local logsoftmax_module = nn.LogSoftMax()
+   local safe_sqrt_const = 1e-10
    model:add(nn.SelectTable{1}) -- unwrap the pooled output from the table
+   if GROUP_SPARISTY_TEN_FIXED_GROUPS then
+      model:add(nn.Square())
+   end
    model:add(classification_dictionary)
    if NORMALIZE_CLASS_DICT_OUTPUT then
       local normalize_classification_dictionary_output = nn.NormalizeTensor()
       model:add(normalize_classification_dictionary_output) 
       --model:add(nn.MulConstant(nil, 5))
    end
-   model:add(logsoftmax_module)
-   --model:add(nn.SoftMax()) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
+   
+   if GROUP_SPARISTY_TEN_FIXED_GROUPS then
+      model:add(nn.AddConstant(classification_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
+      model:add(nn.Sqrt())
+      model:add(nn.AddConstant(classification_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
+   else
+      model:add(logsoftmax_module)
+      --model:add(nn.SoftMax()) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
+   end
    
    model.module_list = {classification_dictionary = classification_dictionary, 
 			logsoftmax = logsoftmax_module}

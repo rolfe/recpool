@@ -1,6 +1,6 @@
 Overall concept:
 
-Focus on structure learning.  LIke the group sparsity papers, we want to show that a simple training algorithm leads to the emergence of biologically suggestive structure that is present in the data, rather than the algorithm itself.  This frees us from having to beat state-of-the-art performance, so we can focus on smaller networks.  
+Focus on structure learning.  Like the group sparsity papers, we want to show that a simple training algorithm leads to the emergence of biologically suggestive structure that is present in the data, rather than the algorithm itself.  This frees us from having to beat state-of-the-art performance, so we can focus on smaller networks.  
 Switch to 11 ISTA iterations to allow emergence of more structural tiers.  
 Can get a sense of hierarchy by looking at when a unit turns on.  Maybe cluster activation trajectories?  Stroke units quickly plateau; categorical units grow monotonically?  Empirically, stroke units tend to turn on immediately, whereas categorical units generally wait an iteration before turning on.  A unit that waited two iterations before turning on would probably be on a third layer of the hierarchy.  
 ***Add small L1 loss on weights to make units beyond the first layer of the hierarchy have no encoder input, which clearly identifies them.  - This doesn't seem to work!  While the categorical units may have no activation on the first iteration, even a disruptively strong L1 weight regularization fails to set their encoder weights to zero.
@@ -11,13 +11,42 @@ Show that performance is bad with too few ISTA iterations, which doesn't admit a
 
 Figures:
 
-Dictionaries reconstructed for early, middle, and late layer
+Categoricalness is measured by the angle between the encoder and the decoder: dot product of vectors divided by the product of their magnitudes
+Dictionaries reconstructed for early, middle, and late layer - note that this is identical to the encoding matrix if we're doing ISTA, and so better reflect the meaning of the unit than the optimal linear regressor from the input to unit activity (the optimal linear encoding matrix), which will be distorted by correlations in the data.
 Histogram of explaining away row magnitudes
-Average first unit activation versus explaining away row magnitude (or histograms of row magnitudes separated by whether first activation is 0 or 1, if there is no variation in first activation iteration)
+Probability of activation on the first ISTA iteration, given that the unit is active on some iterations, versus categoricalness (or histograms of row magnitudes separated by whether first activation is 0 or 1, if there is no variation in first activation iteration)
+Average recurrent connection strength versus categoricalness
+Recurrent connection magnitude versus categoricalness
+Weighted average angle between decoding dictionary column and decoding dictionary columns of units to which the unit is connected by the explaining away matrix, for both positive and negative connections
+Use the angle between encoder and decoder as an explicit measure of categoricalness, and compute the weighted-average-categoricalness of the input to each unit, and plot against the units own categoricalness to show that part-units only receive input from other part-units, whereas categorical-units receive input from both part-units and categorical-units.  It will probably be important to ignore the diagonal in this calculation, or it will skew the results.
 Decoding dictionary cols for units to which a given categorical unit is strongly connected (substantiate claim of pooling over similar units)
 Decoding dictionary cols for units to which a given stroke unit is strongly connected (substantiate claim of anti-pooling)
+Angle between encoder and decoder versus percentage of inputs for which unit is active at the end of processing (categorical units turn on no more than 10\% of the time, whereas part units are less sparse)
+Max classifier dictionary connection versus some measure of categoricalness (e.g. recurrent connection magnitude) - show that the logistic classifier primarily uses the categorical units
+
+
+Figures to do:
+
+
+***Max (over digit ID) of correlation coefficient of unit activity with digit ID - show that categorical units are actually categorical
+***Max (over digit ID) of angle between decoder and average digit
+***Trajectory of angle between encoding matrix and optimal decoding dictionary over time/iterations
+***Angle between optimal decoder for each layer and actual decoding dictionary; maybe difference between first and last such angle
+REPEAT ALL PLOTS FOR NETWORK BEFORE SUPERVISED FINE-TUNING to show structural change induced by discriminative training; consider putting both sets of points on one plot but with different colors to emphasize the difference
+
+
+Figures to consider:
+
 Optimal encoding dictionary?
-Backpropagate to find optimal stimulus
+Backpropagate to find optimal stimulus (but this is subject to weak correlations in the data.  perhaps find the input that comes closest to only activating the selected unit)
+Plot trajectories of layer activities (across layers) in PCA or embedded space
+Average explaining away input versus encoder input at the last layer ISTA layer?  Use the weighted sum of input norms (take absolute value of unit activities before multiplying by explaining away matrix), rather than the actual input (explaining away matrix times signed unit activities), so it is apparent when excitation and inhibition are large but balanced.
+
+Modification to try:
+Try using higher learning rate for unsupervised pretraining, particularly with 800 hidden units, and then reverting back to the standard rate for discriminative fine-tuning
+Try unhooking the repeated explaining away matrices, to demonstrate that weight-sharing helps deep learning
+Try using two ista iterations
+*Try turning off L1 sparsifying loss for units for which the L1 loss passes below some threshold.  Once the reconstruction loss passes below a critical threshold, the gradient of the L2 reconstruction loss will be less than that of the L1 sparsifying loss.  Receptive fields seem to be learned progressively.  Once the reconstruction loss is sufficiently low, turning on a poorly trained unit will increase the loss more than its contribution to reconstruciton decreases the loss, and untrained units should simply be turned off completely.  We need all units to learn to be more sparse and accurate, but this can only occur if the untrained units be bootstrapped to a sensible representation.  
 
 
 Introduction:
@@ -29,22 +58,25 @@ Like Babel presentation: deep networks are powerful, but depend upon slow and he
 
 Main points:
 
-Importance of discriminative training already demonstrated for implicit encoders, but mostly reflect improvement in features, rather than feature combination
- 
 Recurrence is one of the dominant structural features of the cortex.  In contrast, the machine learning community has found that deep networks can be extremely powerful, but has not realized much benefit from recurrence.  We unroll a recurrent network into a hierarchical network, but discriminative training induces hierarchical structure within the recurrent network.  A recurrent network is simply a hierarchical network with shared weights.  Moreover, sharing weights is not very burdensome if they are subject to similar gradients (which is the case in a LISTA network if all layers are subject to the L1 and L2 losses (only exact if network hits a fixed point)).  
 
-We don't want or expect the network to develop a purely feedforward (hierarchical) architecture, since then there was no purpose for the recurrence to begin with, and the extra connections are purely extraneous.
+Interpretable mid-level and digit-ID features arise spontaneously with discriminative training in a deep (but thin) LISTA network.  Discriminative fine-tuning does not (just) discover ``parts'' that are more discriminative; it constructs categorical units which have strong, predominantly negative recurrent connections and encoders that are not aligned with their decoders.  There is no sharp boundary between part and categorical units.  Strong recurrent connections imply that the unit is effectively deeper in the hierarchy, since the activity is more determined by other hidden units and less by the input (since the magnitude of the input connections is bounded and thereby fixed).
 
-Interpretable mid-level and digit-ID features arise spontaneously with discriminative training in a deep (but thin) LISTA network
+Properties of categorical units: encoder poorly aligned with decoder; positive recurrent connections better aligned with the decoder and slightly less categorical (but keep in mind that stroke units tend to have very weak positive recurrent connections); negative recurrent connections less aligned with the decoder and more categorical; strong, disproportionately negative recurrent connections; strong connections through the classification dictionary; units don't activate solely in response to the encoder (first iteration); active at the end of processing no more than 10\% of the time; activity refines dramatically over time.  Categorical units thus perform something closer to conventional pooling than part-units: they take their input primarily from part-units and other categorical-units, summing activity from similar units and subtracting activity from dissimilar units.  
 
-Higher-level features are actually composed from low-level features; they are not simply discriminative parts or templates
+Higher-level features (categorical units) are actually composed from low-level features (part units); they are not simply discriminative parts or templates
   - show evolution of reconstructed dictionaries
   - show evolution in discrimination accuracy with layer (mutual information between a single unit and the class?)
+
+Importance of discriminative training already demonstrated for implicit encoders, but mostly reflect improvement in features, rather than feature combination.  Show that performance is much worse if we just train a classifier on top of a fixed unsupervised-pretrained LISTA encoder; categorical units are essential for good classification.  
+ 
+We don't want or expect the network to develop a purely feedforward (hierarchical) architecture, since then there was no purpose for the recurrence to begin with, and the extra connections are purely extraneous.  The fact that encoder inputs to categorical units don't disappear even given strong L1 weight regularization suggests that the direct input to these units remains important, even if it isn't a template and is difficult to interpret.
+
 
 The emergence of hierarchy within a recurrent network is consistent with the observation of simple and complex cells in primary visual cortex.  
 Functional connectivity between simple cells and complex cells in cat striate cortex - Jose-Manuel Alonso and Luis M. Martinez (1998)
 
-Normalization of the encoders is necessary for good performance
+Bounding the magnitude of the encoder rows is necessary for good performance.  Why?!?  Probably forces the network to use the full ISTA stack, rather than just the last layer.  Yann says this is one of Geoff's standard tricks; citation?
 
 L1 regularization on a hierarchical network of rectified linear units is equivalent to $\sum_{ij} \frac{\partial h_i}{\partial x_j} \cdot x_j$ where $i$ runs over the hidden units and $j$ runs over the inputs.  
 \begin{align*}
@@ -55,6 +87,10 @@ This applies until the last layer, at which point $\frac{d x_i}{d x_k} = \delta_
 
 Our LISTA encoder can be understood as a learned approximation to a second-order minimization of the loss (L2 reconstruction plus L1 sparsifying).  The learned matrices are effectively the optimal matrices from ISTA multiplied by a (fixed) approximation to the inverse Hessian.  In general, encoders that are complementary to a given decoder can sensibly be of the form of (first- or second-order) gradient descent on the decoder's loss function. 
 
+Gradient magnitudes (presently approximated with backprop messages) seem to drop off by a factor of 20 between the last and first layer with 11 ista iterations in an untrained network.  This decay would obviously be eliminated if the reconstruction loss were applied to each layer, but that strategy is incommensurable with the concept of deep networks (although, similar to deep convex networks, each layer could be trained to classify through an independent logistic regressor).  Linked weights/recurrent dynamics allow the large gradients of the early layers to bootstrap the training of the early layers; if the weights are small, then hidden units activities and inputs are small even deep in the network, which renders the network similar to a shallow network.
+
+
+
 
 
 Future directions:
@@ -64,11 +100,20 @@ Obvious desirable additions to the decoder include translation and rotation of t
 
 Can we formulate an encoder structure that captures the operation of FISTA (i.e., momentum)?  It seems like this would only require adding in an explaining-away-type matrix to layer n-2, rather than just n-1; the first explaining matrix would need to be initialized so that the sum of the n-1 and n-2 contributions effectively implements momentum. 
 
+After the first layer, consider using the reconstruction pooling loss with an ISTA encoder for all layers.  This does not directly apply group sparsity, since we don't take the square root of the sum of squares at any point, but does capture the notion that we want to identify the active low-dimensional subspaces, without caring much about the exact position within a subspace
+
+Since categorical units produce outputs that are much larger than part units, any part unit in a group with an active categorical unit will effectively not be subject to L1 sparsification.  This is basically what we want; the network is penalized for turning on each new low-dimensional subspace, but not for the position within the subspace.  
+
+Class-based maximum-log-likelihood training is in some ways similar to group sparsity.  Rather than applying a constant L1 sparsifying regularizer to the square-root-of-sum-of-squares, a variably-weighted L1 regularizer is applied to the logistically transformed input.  However, like group sparsity, the elements of one group (connected to the correct class output) are encouraged to be large, while the elements of the other groups are encouraged to be small.  The similarity is not perfect, in that the off-groups are not driven to be exactly zero; only much smaller than the on-group.  The penalty for the largest group is basically linear.  This suggests that similar results may be achieved with group sparsity rather than discriminative MAP/cross-entropy training.  What happens if we apply group sparsity with ten groups on MNIST?!?  If the grouping is fixed, it must be applied from the very beginning.  Categorial units generally produce very large outputs, and may be dependent upon the strong positive drive provided by the cross-entropy loss.  However, this might still occur if group sparsity is applied after global L2 normalization, since large absolute activity of one group reduces the normalized activity of the other groups.  Remember that L1 sparsification is applied to the categorical units even with the cross-entropy loss, and L2 group sparsity is no harsher than the individual L1 term.  We just want to exchange a group term that encourages a single trainable group to be on with one that encourages a sparse set of fixed groups to be on.  Note that after group-L2 normalization, L1 loss is minimized by making the inputs to one of the groups very large.
+
+
 
 
 Citations:
 
 Learning Efficient Structured Sparse Models - Sprechmann, Bronstein, Sapiro (2012) ICML - Very similar, but does not backpropagate the classification loss through the encoder; just directly hooks the encoder to the decoder and trains as a (structured) sparse autoencoder.  A separate dictionary is trained for each digit class, and classification is done on the basis of minimum reconstruction-plus-sparsifying loss.  Performance is poor; > 2\%.  
+
+ICA with Reconstruction Cost for Efficient Overcomplete Feature Learning - Le, Karpenko,Ngiam, \& Ng - uses pure linear encoder, rather than LISTA stack
 
 IEEE TRANSACTIONS ON PATTERN ANALYSIS AND MACHINE INTELLIGENCE, VOL. 34, NO. 4, APRIL 2012 791
 Task-Driven Dictionary Learning Julien Mairal, Francis Bach, and Jean Ponce
