@@ -21,14 +21,14 @@ CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NORMALIZE_ROWS_OF_EXPLAINING_AWAY = false
 EXPLAINING_AWAY_BOUND_SCALE_FACTOR = 3 -- keep in mind that the expected row magnitude of the explaining away matrix increases linearly with the number of hidden units, and thus will tend to be larger than the rows of the encoding_feature_extraction_dictionary
-ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25
+ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25 -- USE 0.2 FOR STRONG TEMPLATE PRIMING
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
 CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 
-GROUP_SPARISTY_TEN_FIXED_GROUPS = true -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
+GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
    CLASS_DICT_GRAD_SCALING = 0
 end
@@ -890,6 +890,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    if data_set and (layer_id == 1) then
       for i = 1,base_decoding_feature_extraction_dictionary.weight:size(2) do
 	 local selected_column = base_decoding_feature_extraction_dictionary.weight:select(2,i)
+	 -- USE 2 FOR STRONG TEMPLATE PRIMING
 	 selected_column:add(0.25, data_set.data[math.random(data_set:nExample())]) -- 1 is too much; many units don't train quickly
 	 --selected_column:add(-1*selected_column:mean()) -- this is necessary to keep the dynamics stable; otherwise, unit activities tend to oscillate, since the inner product between columns is large, so explaining-away suppression overwhelms the input activation
       end
@@ -898,7 +899,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    --print(base_decoding_feature_extraction_dictionary.weight)
    --io.read()
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
-   local init_dictionary_min_scaling = 0.1 --0.1
+   local init_dictionary_min_scaling = 0.1 -- USE 0 FOR STRONG TEMPLATE PRIMING
    local init_dictionary_max_scaling = 1
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice

@@ -576,6 +576,7 @@ function RecPoolTrainer:train(train_data, test_epoch)
    --local index_list = {1, 2, 3, 11, 12, 13, 4, 9, 21, 32, 72, 83, 88}
    --local index_list = {32, 34, 41, 58, 69, 70, 91, 103, 114, 121, 123, 138, 171, 201, 203, 213, 217, 238, 244, 290, 304, 327, 1, 2, 3, 4, 5, 6, 7, 8} -- for 11/30 400 units
    --local index_list = {30, 47, 53, 55, 77, 119, 172, 192, 196, 199, 206, 209, 232, 241, 255, 269, 290, 302, 303, 305, 311, 313, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10} -- for 12/12 400 units manual
+   --local index_list = {3, 7, 11, 16, 51, 77, 88, 107, 109, 127, 129, 1, 2, 4, 5, 8} -- 12/13 400 units 11 ista iterations 5e-3 training rate
    local num_shrink_output_tensor_elements = #index_list -- self.model.layers[1].module_list.shrink.output:size(1)
    local shrink_output_tensor = torch.Tensor(num_shrink_output_tensor_elements, 1 + #self.model.layers[1].module_list.shrink_copies)
 

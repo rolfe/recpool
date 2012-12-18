@@ -19,7 +19,7 @@ cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
 -- set parameters, both from the command line and with fixed values
-local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
+local L1_scaling = 1.5 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
 local RESTRICT_TO_WINDOW = false
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
@@ -30,7 +30,7 @@ local quick_train_epoch_size = 50000
 local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50
-local classification_scale_factor = 0.2 -- 1
+local classification_scale_factor = 1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
@@ -38,7 +38,7 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 1 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300

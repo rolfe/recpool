@@ -12,7 +12,8 @@ local function plot_training_error(t)
    gnuplot.closeall()
 end
 
-local function save_filter(current_filter, filter_name, log_directory)
+local function save_filter(current_filter, filter_name, log_directory, num_display_columns)
+   num_display_columns = num_display_columns or 10
    local current_filter_side_length 
    if current_filter:size(1) % 3 == 0 then -- make sure that CIFAR input filters align the R, G, and B channels coherently
       current_filter_side_length = math.sqrt(current_filter:size(1)/3) 
@@ -24,7 +25,7 @@ local function save_filter(current_filter, filter_name, log_directory)
       current_filter_side_length = math.sqrt(current_filter:size(1))
       current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
    end
-   local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=10,symmetric=true}
+   local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=num_display_columns,symmetric=true}
    
    -- ideally, the pdf viewer should refresh automatically.  This 
    image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
@@ -150,6 +151,9 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       local activated_ever = torch.gt(shrink_val_tensor:sum(1):select(1,1), 0):double():sum(1):select(1,1) -- works since activities are non-negative
       -- activated after zero but not at zero = activated_ever - activated_at_zero
       activated_ever[torch.le(activated_ever, 1)] = 1
+      local safe_activated_at_end = activated_at_end:clone()
+      safe_activated_at_end[torch.le(activated_at_end, 1)] = 1
+      local average_value_when_activated = torch.sum(shrink_val_tensor:select(1,shrink_val_tensor:size(1)), 1):select(1,1):cdiv(safe_activated_at_end)
 
       local percentage_late_activation = torch.cdiv(torch.add(activated_ever, -1, activated_at_zero), activated_ever)
       local percentage_first_iter_activation = torch.cdiv(activated_at_zero, activated_ever)
@@ -166,6 +170,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       local average_recurrent_neg_connection_angle = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
       local average_recurrent_pos_connection_categoricalness = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
       local average_recurrent_neg_connection_categoricalness = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
+      local average_recurrent_total_connection_categoricalness = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
       --torch.diag(torch.mm(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)), 
 	 
       for i = 1,model.layers[1].module_list.explaining_away.weight:size(1) do
@@ -205,6 +210,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	 average_recurrent_neg_connection_angle[i] = neg_weighted_sum_angle / neg_norm
 	 average_recurrent_pos_connection_categoricalness[i] = pos_weighted_sum_categoricalness / pos_norm
 	 average_recurrent_neg_connection_categoricalness[i] = neg_weighted_sum_categoricalness / neg_norm
+	 average_recurrent_total_connection_categoricalness[i] = (pos_weighted_sum_categoricalness + neg_weighted_sum_categoricalness) / (pos_norm + neg_norm)
       end		  	  
 
       local norm_classification_connection = torch.Tensor(model.module_list.classification_dictionary.weight:size(2))
@@ -258,6 +264,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('classification dictionary connection magnitude')
 
+      --[[
       gnuplot.figure() -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
       gnuplot.plot(angle_between_encoder_and_decoder, average_recurrent_pos_connection_categoricalness)
       gnuplot.xlabel('angle between encoder and decoder')
@@ -267,8 +274,28 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.plot(angle_between_encoder_and_decoder, average_recurrent_neg_connection_categoricalness)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('weighted average categoricalness between decoder and negatively recurrently connected decoders')
+      --]]
 
+      gnuplot.figure() -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
+      gnuplot.plot(angle_between_encoder_and_decoder, average_recurrent_total_connection_categoricalness)
+      gnuplot.xlabel('angle between encoder and decoder')
+      gnuplot.ylabel('weighted average categoricalness between decoder and total recurrently connected decoders')
 
+      print(angle_between_encoder_and_decoder:unfold(1,10,10))
+      print(average_value_when_activated:unfold(1,10,10))
+      print(average_value_when_activated:size())
+
+      gnuplot.figure() 
+      gnuplot.plot(angle_between_encoder_and_decoder, average_value_when_activated)
+      gnuplot.xlabel('angle between encoder and decoder')
+      gnuplot.ylabel('average final value of unit when activated')
+
+      gnuplot.figure() 
+      gnuplot.plot(norm_classification_connection, average_value_when_activated)
+      gnuplot.xlabel('classification_dictionary_connection_magnitude')
+      gnuplot.ylabel('average final value of unit when activated')
+
+      plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)):narrow(1,1,200), data_set_tensor:narrow(1,1,200), opt, 20)
 
       --[[
       first_activation:zero()
@@ -310,6 +337,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    return receptive_field_builder
 end
 
+-- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units
 function plot_explaining_away_connections(decoding_filter, explaining_away_filter, opt)
    local num_sorted_inputs = 10
    local explaining_away_mag_filter = explaining_away_filter:clone():add(torch.diag(torch.ones(explaining_away_filter:size(2)))):abs() -- correct for the fact that the identity matrix needs to be added in manually
@@ -327,6 +355,42 @@ function plot_explaining_away_connections(decoding_filter, explaining_away_filte
       end
    end
    save_filter(sorted_recurrent_connection_filter, 'sorted recurrent connections', opt.log_directory) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
+end
+
+-- plot the decoding dictionaries of the n units with the largest activations in response to each network input, scaled by the activation strength.  This gives a sense of how each input is reconstructed by the hidden activity
+function plot_reconstruction_connections(decoding_filter, activation_tensor, input_tensor, opt, num_display_columns)
+   -- different network inputs (elements of the dataset) go along the first dimension of activation_tensor
+   -- different hidden units go along the second dimension of activation_tensor
+   num_display_columns = num_display_columns or 10
+
+   if activation_tensor:size(1) ~= input_tensor:size(1) then
+      error('number of data set elements in activation tensor ' .. activation_tensor:size(1) .. ' does not match the number in input tensor ' .. input_tensor:size(1))
+   end
+   local num_sorted_inputs = num_display_columns - 2
+   local activation_mag_tensor = activation_tensor:clone():abs() -- this probably isn't necessary, since units are non-negative by default
+   local activation_mag_tensor_sorted, activation_mag_tensor_sort_indices = activation_mag_tensor:sort(2, true)
+   local desired_indices = activation_mag_tensor_sort_indices:narrow(2,1,num_sorted_inputs)
+   --local flattened_desired_indices = desired_indices:reshape(desired_indices:nElement()) -- takes element row-wise, and it is the rows that have been sorted and narrowed
+   local sorted_reconstruction_filter = torch.Tensor(decoding_filter:size(1), num_display_columns * activation_tensor:size(1))
+   local output_filter_index = 1
+   for i = 1,desired_indices:size(1) do
+      local current_column = sorted_reconstruction_filter:select(2,output_filter_index)
+      current_column:copy(input_tensor:select(1,i))
+      output_filter_index = output_filter_index + 1
+
+      current_column = sorted_reconstruction_filter:select(2,output_filter_index)
+      torch.mv(current_column, decoding_filter, activation_tensor:select(1,i))
+      output_filter_index = output_filter_index + 1
+
+      
+      for j = 1,desired_indices:size(2) do
+	 current_column = sorted_reconstruction_filter:select(2,output_filter_index)
+	 current_column:copy(decoding_filter:select(2,desired_indices[{i,j}]))
+	 current_column:mul(activation_tensor[{i,desired_indices[{i,j}]}]) 
+	 output_filter_index = output_filter_index + 1
+      end
+   end
+   save_filter(sorted_reconstruction_filter, 'sorted reconstruction dictionary columns', opt.log_directory, num_display_columns) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
 end
 
 function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)

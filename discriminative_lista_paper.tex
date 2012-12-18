@@ -23,6 +23,9 @@ Decoding dictionary cols for units to which a given categorical unit is strongly
 Decoding dictionary cols for units to which a given stroke unit is strongly connected (substantiate claim of anti-pooling)
 Angle between encoder and decoder versus percentage of inputs for which unit is active at the end of processing (categorical units turn on no more than 10\% of the time, whereas part units are less sparse)
 Max classifier dictionary connection versus some measure of categoricalness (e.g. recurrent connection magnitude) - show that the logistic classifier primarily uses the categorical units
+Mean final activity when activated versus categoricalness - categorical units are much more active than part units, since as shown in the next figure, the decomposition used is template-plus-perturbation, so most of the energy of the input is accounted for by the templates of the categorical units, requiring little further activation
+Largest parts used to reconstruct an input - shows that the strategy used is template-plus-correction, as in Simoncelli's work
+
 
 
 Figures to do:
@@ -47,6 +50,7 @@ Try using higher learning rate for unsupervised pretraining, particularly with 8
 Try unhooking the repeated explaining away matrices, to demonstrate that weight-sharing helps deep learning
 Try using two ista iterations
 *Try turning off L1 sparsifying loss for units for which the L1 loss passes below some threshold.  Once the reconstruction loss passes below a critical threshold, the gradient of the L2 reconstruction loss will be less than that of the L1 sparsifying loss.  Receptive fields seem to be learned progressively.  Once the reconstruction loss is sufficiently low, turning on a poorly trained unit will increase the loss more than its contribution to reconstruciton decreases the loss, and untrained units should simply be turned off completely.  We need all units to learn to be more sparse and accurate, but this can only occur if the untrained units be bootstrapped to a sensible representation.  
+Note that even incorrectly classified inputs, with prominent template activations, are reconstructed almost perfectly.  This suggests that the learned representations are insufficiently sparse (with 400 units) since an incorrect template can be perturbed until it looks like a different input class.  If fewer perturbations were made, restricting the data manifold to a lower-dimensional space, it should be harder to fold from the region associated with one template to that associated with another.
 
 
 Introduction:
@@ -89,6 +93,13 @@ Our LISTA encoder can be understood as a learned approximation to a second-order
 
 Gradient magnitudes (presently approximated with backprop messages) seem to drop off by a factor of 20 between the last and first layer with 11 ista iterations in an untrained network.  This decay would obviously be eliminated if the reconstruction loss were applied to each layer, but that strategy is incommensurable with the concept of deep networks (although, similar to deep convex networks, each layer could be trained to classify through an independent logistic regressor).  Linked weights/recurrent dynamics allow the large gradients of the early layers to bootstrap the training of the early layers; if the weights are small, then hidden units activities and inputs are small even deep in the network, which renders the network similar to a shallow network.
 
+The small set of categorical units is apparently *not* induced by the need to produce large outputs to satisfy the cross-entropy loss, in conjunction with the L1 regularization of the hidden units.  Since the sparse code is subject to L2 normalization before passing through the logistic classifier, scaling up the maximum unit is equivalent to scaling down the other units.  Moreover, cross-entropy loss is dependent upon the L1 norm within the group selected by the classification matrix, which has been normalized to have constant L2 norm.  This sum is maximized when all units have equal activity, since n/sqrt(n) = sqrt(n) > 1, rather than by a single large unit.  Moreover, the L2 magnitude of each classification matrix column is bounded; multiplying the sparse code by a row of the classification matrix is like computing and L2 norm squared, rather than an L1 norm (consider the case where the two vectors are equal).  Since both vectors are L2 normalized, the magnitude of their product is identical (and maximized) when they are aligned, regardless of how sparse they are.  The direct L1 norm on the sparse coding units then probably induces the sparse code to be as sparse as possible; this is not achieved by a disproportionately large categorical unit, which obviously hurts the unnormalized L1 loss.  But why bother making the categorical units so large, when the effect of the part units on the classification can be eliminated by just setting their connections in the classification dictionary to zero (which is already basically done).  These considerations suggest that group sparsity alone is not sufficient to induce categorical units.
+
+Consider the possibility that large categorical-unit outputs are necessary to classify effectively based upon part units.  The magnitude of part unit activations is controlled by their reconstruction of the input; once the input is fully reconstructed, part units are not subject to further activation.  Categorical units, in contrast, do not have such an obvious indicator of semantic saturation, although one could be built by effectively including an extra unit in the input with constant activation 1, which needs to be reconstructed from the categorical units; the resulting constant input could be incorporated into the encoding matrix bias, and the resulting contribution to the explaining-away matrix would take the form of negative connections between categorical units, which are in fact observed.  Note that the output of the categorical units does not by any means grow without bound.  Rather, it seems to consistently be less than 0.5.  Correspondingly, the decoding matrix column norms remain at or near 1, so these units actually make a substantial contribution to the reconstruction, and the network does use something like a template-plus-correction structure as suggested by Eero's student.  
+
+
+
+
 
 
 
@@ -104,7 +115,10 @@ After the first layer, consider using the reconstruction pooling loss with an IS
 
 Since categorical units produce outputs that are much larger than part units, any part unit in a group with an active categorical unit will effectively not be subject to L1 sparsification.  This is basically what we want; the network is penalized for turning on each new low-dimensional subspace, but not for the position within the subspace.  
 
-Class-based maximum-log-likelihood training is in some ways similar to group sparsity.  Rather than applying a constant L1 sparsifying regularizer to the square-root-of-sum-of-squares, a variably-weighted L1 regularizer is applied to the logistically transformed input.  However, like group sparsity, the elements of one group (connected to the correct class output) are encouraged to be large, while the elements of the other groups are encouraged to be small.  The similarity is not perfect, in that the off-groups are not driven to be exactly zero; only much smaller than the on-group.  The penalty for the largest group is basically linear.  This suggests that similar results may be achieved with group sparsity rather than discriminative MAP/cross-entropy training.  What happens if we apply group sparsity with ten groups on MNIST?!?  If the grouping is fixed, it must be applied from the very beginning.  Categorial units generally produce very large outputs, and may be dependent upon the strong positive drive provided by the cross-entropy loss.  However, this might still occur if group sparsity is applied after global L2 normalization, since large absolute activity of one group reduces the normalized activity of the other groups.  Remember that L1 sparsification is applied to the categorical units even with the cross-entropy loss, and L2 group sparsity is no harsher than the individual L1 term.  We just want to exchange a group term that encourages a single trainable group to be on with one that encourages a sparse set of fixed groups to be on.  Note that after group-L2 normalization, L1 loss is minimized by making the inputs to one of the groups very large.
+Class-based maximum-log-likelihood training is in some ways similar to group sparsity.  Rather than applying a constant L1 sparsifying regularizer to the square-root-of-sum-of-squares, a variably-weighted L1 regularizer is applied to the logistically transformed input.  However, like group sparsity, the elements of one group (connected to the correct class output) are encouraged to be large, while the elements of the other groups are encouraged to be small.  The similarity is not perfect, in that the off-groups are not driven to be exactly zero; only much smaller than the on-group.  The penalty for the largest group is basically linear.  This suggests that similar results may be achieved with group sparsity rather than discriminative MAP/cross-entropy training.  What happens if we apply group sparsity with ten groups on MNIST?!?  If the grouping is fixed, it must be applied from the very beginning.  Categorial units generally produce very large outputs, and may be dependent upon the strong positive drive provided by the cross-entropy loss.  However, this might still occur if group sparsity is applied after global L2 normalization, since large absolute activity of one group reduces the normalized activity of the other groups.  Remember that L1 sparsification is applied to the categorical units even with the cross-entropy loss, and L2 group sparsity is no harsher than the individual L1 term.  We just want to exchange a group term that encourages a single trainable group to be on with one that encourages a sparse set of fixed groups to be on.  Note that after group-L2 normalization, L1 loss is minimized by making the inputs to one of the groups very large.  NOT TRUE - see above discussion on normalizations.
+
+
+The sum of these losses is minimized by a small number of large outputs, which given the bounds on the encoding matrix, can only be achieved by large-magnitude rows in the explaining-away matrix.  It's a little surprising that this isn't achieved by reducing the magnitude of units that don't contribute to the desired classification, but this might be due to the nature of the logistic classifier; note that the classification matrix itself becomes sparse.  In contrast, the L2 loss is minimized when all units in a group have equal activity, and so will not induce categorical units.  Part of the issue is probably that L1 sparsification is done before L2 normalization.  
 
 
 
@@ -121,6 +135,9 @@ Get great MNIST performance, but use shifted images in the dataset.  Minimizatio
 
 J. Mairal, F. Bach, J. Ponce, G. Sapiro, and A. Zisserman, “Supervised Dictionary Learning,” Proc. Advances in Neural Information Processing Systems, D. Koller, D. Schuurmans, Y. Bengio, and L. Bottou, eds., vol. 21, pp. 1033-1040, 2009.
 
+Basis pursuit: S. Chen, D. Donoho, and M. Saunders, “Atomic decomposition by basis pursuit,” SIAM J. Scientific Computing, vol. 20, no. 1, pp. 33–61, 1999.
+Lasso: R. Tibshirani, “Regression shrinkage and selection via the LASSO,” J. Royal Stat. Society: Series B, vol. 58, no. 1, pp. 267–288, 1996.
+
 
 
 Deep Sparse Rectifier Neural Networks - Xavier Glorot, Antoine Bordes and Yoshua Bengio
@@ -131,7 +148,9 @@ Do feed input into all layers
 
 Yoshua's deep learning review paper
 
-LISTA paper from Karol
+K. Gregor and Y. LeCun, “Learning fast approximations of sparse coding,” in ICML, 2010, pp. 399–406. - LISTA paper from Karol
+
+Standard citation for sparse autoencoders? - I. Goodfellow, Q. Le, A. Saxe, H. Lee, and A. Y. Ng, “Measuring invariances in deep networks,” in In NIPS, 2009, pp. 646–654.
 
 PSD paper from Koray
 
