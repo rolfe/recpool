@@ -536,6 +536,10 @@ With learning rate 10e-3 and 0.25 template initialization, almost all units trai
 12/13 400 fe units, 11 ista iterations, learning rate 5e-3, manual explaining away - performance peaks at an average of about 98.9 (relatively high variance) and decays to a plateau of 98.75
 12/13 1e-4 weight decay, 200 fe units, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats - encoding dictionary rows of categorical units does not go to zero, although weight decay is strong enough to completely silence some units
 
+12/17 ixed group sparsity loss with 0.2 scaling, 11 ista iterations, learing rate *10e-3,* manual explaining away diag, decoding FE dict bounded above but not fixed, class dict mag bounded by 5, class dict grad scaled by *0,* *1* epoch pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+ 12/17 rerun - fixed group sparsity loss with 0.2 scaling, 11 ista iterations, learing rate *10e-3,* manual explaining away diag, decoding FE dict bounded above but not fixed, class dict mag bounded by 5, class dict grad scaled by *0,* *1* epoch pretraining, learning rates scaled down in proportion to the number of ISTA repeats - these two runs do not produce categorical units as I had originally hoped, although in retrospect this is sensible.  Categorical units seem to be induced by the needs of classification, rather than group sparsity
+
+
 
 Consider adding in -(1/s)*tanh(s*x) to FIxedShrink to make it continuous
 Instabilities in validation error late in training correspond to instabilities in the reconstruction loss on the training set; it seems as if the training procedure is actually unstable, as opposed to the variation in validation loss being a result of the fact that the validation set is distinct from the training set.
@@ -614,14 +618,14 @@ The sort of loss function that would induce pooling seems like it would be somet
 
 
 
-rose1 - 12/17 rerun - fixed group sparsity loss with 0.2 scaling, 11 ista iterations, learing rate *10e-3,* manual explaining away diag, decoding FE dict bounded above but not fixed, class dict mag bounded by 5, class dict grad scaled by *0,* *1* epoch pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-rose2 - 
+rose1 - 12/18 1.5 L1 scaling, 400 fe units, 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose2 - 12/18 2.0 L1 scaling, 400 fe units, 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - 
 rose4 - 12/12 400 fe units, *manual* explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 12/12 400 fe units, *automatic* explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 othello - hosed
 duncan - 
-iago - 12/17 fixed group sparsity loss with 0.2 scaling, 11 ista iterations, learing rate *10e-3,* manual explaining away diag, decoding FE dict bounded above but not fixed, class dict mag bounded by 5, class dict grad scaled by *0,* *1* epoch pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+iago - 
 macbeth - 
 banquo - 
 ceres - 
