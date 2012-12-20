@@ -217,7 +217,9 @@ for i = 1,num_epochs_no_classification do
       if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
       if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
 	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-					  model.layers[1].module_list.explaining_away.weight, opt)
+					  model.layers[1].module_list.explaining_away.weight, opt, false)
+	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+					  model.layers[1].module_list.explaining_away.weight, opt, true)
       end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
@@ -281,7 +283,9 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
       if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
       if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
 	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-					  model.layers[1].module_list.explaining_away.weight, opt)
+					  model.layers[1].module_list.explaining_away.weight, opt, false)
+	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+					  model.layers[1].module_list.explaining_away.weight, opt, true)
       end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
