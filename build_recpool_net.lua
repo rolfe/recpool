@@ -899,7 +899,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    --print(base_decoding_feature_extraction_dictionary.weight)
    --io.read()
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
-   local init_dictionary_min_scaling = 0.1 -- USE 0 FOR STRONG TEMPLATE PRIMING
+   local init_dictionary_min_scaling = 0.01 -- USE 0 FOR STRONG TEMPLATE PRIMING
    local init_dictionary_max_scaling = 1
 
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
