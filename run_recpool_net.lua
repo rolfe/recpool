@@ -24,8 +24,8 @@ local RESTRICT_TO_WINDOW = false
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 5e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
 local full_diagnostic_epoch_size = 10000 --40000
 local RESET_CLASSIFICATION_DICTIONARY = false
@@ -58,7 +58,7 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 20 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 1 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'

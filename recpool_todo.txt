@@ -543,7 +543,7 @@ With learning rate 10e-3 and 0.25 template initialization, almost all units trai
 12/18 1.5 L1 scaling, 400 fe units, 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 12/18 2.0 L1 scaling, 400 fe units, 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 
-WITH ONLY ONE ISTA ITERATION, MANY UNITS DON'T TRAIN.  WHAT'S GOING ON?!?!?
+WITH ONLY ONE ISTA ITERATION, MANY UNITS DON'T TRAIN.  WHAT'S GOING ON?!?!?  This continues to happen even if the training rate is very low or if the L1 sparsifying term is greatly reduced.  It seems to be fixed by reducing the maximum encoder row norm.  
 WHAT HAPPENS IF WE USE 20 ITERATIONS?!?
 KEEP IN MIND that doubling the number of hidden units effectively doubles the contribution of the encoder.  This might partially explain why I've been having difficulty scaling up to 800 units.
 
@@ -636,8 +636,8 @@ rose3 -
 rose4 - 12/18 1.0 L1 scaling, 400 fe units, 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 
 othello - 12/21 200 units, 21 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
-duncan - 
-iago - 
+duncan - 12/21 200 units, 2 ista iterations, encoding dictionary max 1.25/(2*num_ista_iterations), manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+iago - 12/21 200 units, 2 ista iterations, encoding dictionary max 1.25/(4*num_ista_iterations), manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 10e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 macbeth - 
 banquo - 
 ceres - 
