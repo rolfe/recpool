@@ -630,12 +630,12 @@ The sort of loss function that would induce pooling seems like it would be somet
 
 
 
-rose1 - 12/20 800 fe units, 0.5 fe encoder scaling (for real!), 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
+rose1 - 12/21 800 fe units, 0.5 fe encoder scaling (for real!), 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose2 - 12/20 800 fe units, 0.5 fe encoder scaling (but bounded below at 0.1), 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose3 - 
 rose4 - 12/18 1.0 L1 scaling, 400 fe units, 11 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 rose6 - 
-othello - hosed
+othello - 12/21 200 units, 21 ista iterations, manual explaining away diag, decoding FE dict bounded above but not fixed, learning rate 5e-3, class dict mag bounded by 5, class dict grad scaled by 0.2, 100 epochs pretraining, learning rates scaled down in proportion to the number of ISTA repeats
 duncan - 
 iago - 
 macbeth - 
