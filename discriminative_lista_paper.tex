@@ -77,6 +77,27 @@ Introduction:
 Like Babel presentation: deep networks are powerful, but depend upon slow and heuristic pretraining.  Sparse coding is effective but depends upon slow, iterative encoders.  We can marry these two techniques to potentially combine their strengths while eliminating their weaknesses.
 
 
+Main point figures:
+
+Input is decomposed into a template and perturbation.  The same template is used for very different inputs, since the space of perturbations is rich enough to encompass diverse transformations
+  - For selected inputs (choose a few that are very different but from the same class; particularly 4's and 8's, for which many hidden units have strong classification dictionary entries), show the gradual reconstruction of the input, adding in an ever larger number of parts (from largest to smallest contribution).  Below that, show the gradual reduction of the residual input (minus the part that's already been reconstructed).  This shows whether the classification units take out the entire template, or only a small fraction of it.  Below that, show the parts that are being added, possibly scaled by their contribution magnitude (otherwise, show this magnitude e.g. via the length of a bar)
+  - Histograms of mean decoder column weight, separated by part/classification unit - shows that classfication units are net-positive, whereas part units are mean-zero perturbations
+Part units do sparse coding on the residual input after the classification-unit template is subtracted out
+  - For part units (defined by classification dictionary column norm), show connected decoders sorted by explaining-away connection magnitude
+  - Show connection weight versus ISTA ideal
+Classification units are excited by aligned part units and inhibited by orthogonal part units; part units are compatible with certain class IDs and not with others; a single part unit generally activates all compatible classification units; there is a hierarchy of classification units; almost every part unit projects to the most template-like classification units
+  - For part units (defined by classification dictionary column norm), show connected classification-unit decoders sorted by explaining-away connection magnitude and class ID
+  - V plot: average explaining-away connection weight, binned by alignment between decoders, for connections from part-units to categorical units (defined by classification dictionary column norm)
+Classification units enforce a winner-take-all choice over input class
+  - For classification units (defined by classification dictionary column norm), show connected classification-unit decoders sorted by explaining-away connection magnitude, separated by sign of connection 
+  - Histogram of connection magnitudes between classification units, with separate overlaid histograms for connections between units with positive/negative dot products between classification dictionary columns
+Part units are driven directly by the input; classification units are driven primarily by part units
+  - Histogram of angle between encoder and decoder, with separate overlaid histograms for part units and classification units defined by classification dictionary column norm
+  - Overlaid trajectories of units in response to a single input, with lines colored by classification dictionary column norm; show that part units turn on first and plateau, while classification units turn on later and grow without bound.  Since the part-units that are most diagnostic of a categorical unit will likely be turned off as the categorical unit increases its activation and subtracts out those features from the input, it makes sense to integrate part-unit excitations to categorical units over time.
+  - Scatterplot of angle between decoder and encoder / probability of activating on the second iteration versus classification dictionary column norm
+  - Scatterplot of weighted average categoricalness of recurrent connections versus categoricalness
+The classification/part unit distinction has a number of other manifestations
+  - Scatterplot of classification dictionary column norm versus: norm of explaining away dictionary row, average final value when activated
 
 
 Main points:
@@ -130,6 +151,8 @@ The part-units that connect to a categorical-unit should not primarily be part-u
 
 This is different from classification based upon a sparse coding decomposition, since it projects into the space of deviations from a template, which is not the same as the space of template-free parts.  For instance, a 4 can easily be constructed using the parts of a 9, making it difficult to distinguish the two.  However, starting from a 9 template, the parts required to break the top loop or add an extension to the side are outside the data manifold of the 9 class, and so will tend to change the active template.  It is related to but distinct from group sparsity (and Simoncelli's template-plus-perturbation approach) in that the encoder does not perform any explicit energy minimization, and the group structure is based upon the need to produce very large outputs for the classifier.  Just as the units fragment into part- and categorical- units, the sparsification performed by the L1 regularizer separates into the creation of a sparse set of classifiers, and then a separate sparse set of perturbations of the classifier templates.  The categorical units must be large to saturate the softmax, and the network doesn't waste their ability to reconstruct the input.  However, the categorical unit activations must be calculated based upon the very categorical and part units that induce the final reconstruction and classification.
 
+Only a subset of the perturbations are available for each template because of the explaining-away connections from part units to categorical units.  Part units with strong negative connections to a categorical unit cannot be used to perturb the template of that categorical unit.
+
 An ISTA-like algorithm, where activity of the parts effectively decreases the input (e.g. via the categorical units) converges so long as the change in the input is small enough and the templates contribution induced by a part is weak.  Effectively, the categorical unit's template output is added to the part-unit's output (although it is delayed by an iteration; the steady state is identical), but the encoder input to the part-unit remains unchanged, so it minimizes the reconstruction error of the residual including the categorical units, assuming that it will not make a contribution based upon the categorical-unit/template.  If the contribution of the categorical-unit induced by the part-unit is smaller than the part contribution, the loss should still go down.  In order for the loss to be a Lyapunov function, we only need that the step in activation-space have a positive dot-product with the gradient; it doesn't need to follow the gradient exactly.
 
 The most categorical units integrate their inputs over time, as is evidenced by their disproportionately large diagonal elements in the explaining-away matrix.
@@ -140,7 +163,10 @@ How does the classification output evolve over time?  Does the network ever chan
 Restrictions on the encoder row magnitude may make sense even independent of discriminative fine-tuning.  ISTA depends upon a small step size.  As I've observed when I've tried to initialize the matrices based upon elements of the dataset, if the step size is large, it's easy to get oscillating dynamics, where the hidden units are over-activated by the encoding matrix, and then silence each other on the next iteration.  With hundreds of elements, it is likely that many units will be activated in response to each part of the input.  If the resulting total input explained is greater than the actual input, then all of these units will be inhibited on the next iteration.  As the number of units increases, it seems likely that the ISTA step size must decrease.  This might also hold for the classification dictionary.
 
 
+Inhibition between categorical units is akin to explaining-away between part units; the fact that there is a classification needs to be explained, so the more the magnitude of the classification output is accounted for by one unit, the less needs to be explained by others.  The diagonal of the explaining away matrix for part units would probably go more negative if the optimal output were bounded (e.g. cross entropy loss with an optimal distribution other than 1,0,0,...)
 
+
+Merely having perturbation features available, rather than the standard sparse features, allows the generalization of these perturbations to multiple templates.  In tangent-propagation (related to contractive autoencoders), the network learns that certain transformations of the input have no impact on the classification.  Similarly, if a perturbation/part unit makes no contribution to the classification (which is generally the case), then combined with the ISTA-like dynamics of the part units, that perturbation can be applied to any template.  The part/perturbation untis do influence the template selected, but not the classification associated with that template.
 
 
 
@@ -193,6 +219,8 @@ Do feed input into all layers
 Yoshua's deep learning review paper
 
 K. Gregor and Y. LeCun, “Learning fast approximations of sparse coding,” in ICML, 2010, pp. 399–406. - LISTA paper from Karol
+Gregor, Szlam, LeCun - Structured sparse coding via lateral inhibition
+
 
 Standard citation for sparse autoencoders? - I. Goodfellow, Q. Le, A. Saxe, H. Lee, and A. Y. Ng, “Measuring invariances in deep networks,” in In NIPS, 2009, pp. 646–654.
 

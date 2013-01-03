@@ -21,8 +21,8 @@ CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NORMALIZE_ROWS_OF_EXPLAINING_AWAY = false
 EXPLAINING_AWAY_BOUND_SCALE_FACTOR = 3 -- keep in mind that the expected row magnitude of the explaining away matrix increases linearly with the number of hidden units, and thus will tend to be larger than the rows of the encoding_feature_extraction_dictionary
-ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25/4 --1.25/2 -- USE 0.2 FOR STRONG TEMPLATE PRIMING
-ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25/4 --1.25/2 --1.25
+ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25 -- USE 0.2 FOR STRONG TEMPLATE PRIMING
+ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
@@ -571,23 +571,21 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    local layer_list = {} -- an array of the component layers for easy access
    -- size of the classification dictionary depends upon whether we're using pooling or not
    local classification_dictionary
+   local num_rows_class_dict
    if not(recpool_config_prefs.disable_pooling) then
-      if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
-	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-1], layer_size[#layer_size], 
-							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT}, RUN_JACOBIAN_TEST)
-      else
-	 classification_dictionary = nn.Linear(layer_size[#layer_size-1], layer_size[#layer_size])
-      end
-   else
-      -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
-      if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
-	 classification_dictionary = nn.ConstrainedLinear(layer_size[#layer_size-2], layer_size[#layer_size], 
-							  {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT},
-							  RUN_JACOBIAN_TEST, CLASS_DICT_GRAD_SCALING)
-      else
-	 classification_dictionary = nn.Linear(layer_size[#layer_size-2], layer_size[#layer_size])
-      end
+      num_rows_class_dict = layer_size[#layer_size-1]
+   else  -- if we're not pooling, then the classification dictionary needs to map from the feature extraction layer to the classes, rather than from the pooling layer to the classes
+      num_rows_class_dict = layer_size[#layer_size-2]
    end
+
+   if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
+      classification_dictionary = nn.ConstrainedLinear(num_rows_class_dict, layer_size[#layer_size], 
+						       {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT},
+						       RUN_JACOBIAN_TEST, CLASS_DICT_GRAD_SCALING)
+   else
+      classification_dictionary = nn.Linear(num_rows_class_dict, layer_size[#layer_size])
+   end
+
    local this_class_nll_criterion
    if GROUP_SPARISTY_TEN_FIXED_GROUPS then
       this_class_nll_criterion = nn.L1Cost()

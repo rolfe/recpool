@@ -1,0 +1,511 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{nips12submit_e,times}
+%\documentstyle[nips12submit_09,times,art10]{article} % For LaTeX 2.09
+\usepackage{amsmath, amsthm, amssymb}
+\usepackage[mathcal]{eucal}
+\usepackage{graphicx}
+%\usepackage[text={7.5in,10in},centering]{geometry} %USE THIS ONE
+%\usepackage[text={7in,9.4in},centering]{geometry} 
+\usepackage{verbatim}
+\usepackage{setspace}
+\usepackage[numbers,sort]{natbib}
+
+
+
+
+%\title{Tangent distance-based classification induced by discriminative training of a deep sparse coder}
+%\title{Template-based representations in a deep sparse coder}
+%\title{Automatically decomposing data into a template and tangent space by discriminatively training a deep sparse coder}
+\title{Inducing tangent space representations by discriminatively training a deep sparse coder}
+
+\author{
+Jason Tyler Rolfe \& Yann LeCun \\ %\thanks{further information} \\
+Courant Institute of Mathematical Sciences, New York University\\ 
+719 Broadway, 12th Floor \\
+New York, NY 10003\\
+\texttt{\{rolfe, yann\}@cs.nyu.edu} \\
+%\texttt{rolfe@cs.nyu.edu} \\
+%\And
+%Yann LeCun \\
+%Courant Institue of Mathematical Sciences \\
+%New York University \\
+%New York, NY 10003\\
+%\texttt{yann@cs.nyu.edu} \\
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\nipsfinalcopy % Uncomment for camera-ready version
+
+
+%\newcommand{\Tv}{\vec{T}}
+%\newcommand{\altF}{\mathrm{F}}
+%\newcommand{\logistic}{\text{logistic}}
+%\newcommand{\nodot}{}
+\newcommand{\bv}{\mathbf{b}}
+\newcommand{\p}{\mathbf{p}}
+\newcommand{\x}{\mathbf{x}}
+\newcommand{\y}{\mathbf{y}}
+\newcommand{\C}{\mathbf{C}}
+\newcommand{\D}{\mathbf{D}}
+\newcommand{\E}{\mathbf{E}}
+\newcommand{\I}{\mathbf{I}}
+\newcommand{\M}{\mathbf{M}}
+\newcommand{\Sm}{\mathbf{S}}
+\newcommand{\logistic}{\text{logistic}}
+
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+%Discriminative training substantially improves the classification performance of traditional sparse coders, but while the resulting encoders implicitly use a deep architecture, the learned features do not have a hierarchical organization.  
+Natural datasets that consist of a low-dimensional manifold within a high-dimensional space are parsimoniously classified based upon the distance along the manifold to the elements of a template set.  While such tangent distance methods are powerful, prior implementations have been inefficient and biologically implausible.  We unroll an implicit sparse coder into an explicit deep network, and fine-tune using a discriminative classification loss in addition to a sparse autoencoder loss.  The resulting network naturally organizes into a hierarchy of features.  The most abstract units pool over the lower-level units and implement templates for each supervised class.  The lower-level units directly implement a sparse, part-based decomposition of the residual input after the template is subtracted, and thus measure a low-dimensional tangent distance around the template.  Even using a small number of hidden units per layer, these networks can achieve near state-of-the-art performance on permutation-invariant handwritten digit recognition.
+\end{abstract}
+
+\section{Introduction}
+
+It is widely believed that natural stimuli, such as images and sounds, fall on a low-dimensional manifold within a higher-dimensional space \cite{lee2003, olshausen2004, bengio2012}.  This hypothesis is consistent with the observation that certain continuous deformations of a natural stimulus, such as shifts, rotations, and scalings of visual stimuli, yield other well-formed natural stimuli \cite{simard1998}.  An orthogonal set of such deformations at a given datapoint constitutes a basis for the low-dimensional manifold, called the tangent space.  In contrast, the overwhelming majority of possible inputs, such as white noise constructed by choosing each visual pixel or auditory pressure level independently, are obviously not natural.  Correspondingly, perturbations of natural stimuli in most directions move off of the manifold and yield stimuli that are perceived as noise.  
+
+Contractive autoencoders implicitly learn to only represent the tangent space \cite{rifai2011a, rifai2011b}.  Explicit representations of the tangent space also yield state-of-the-art performance \cite{simard1998}.  However, they are (computationally inefficient / biologically implausible).
+In this paper, we show that discriminative training of a biologically plausible deep sparse coder is alone sufficient to induce an explicit tangent space representation.
+
+\subsection{From sparse coding and exemplars to tangent spaces}
+
+%Data representations and models that match this structure serve as strong regularizers for machine learning, and potential hypotheses for neural coding.  %, requiring that the learned model match this structure in the data.  
+Sparse coding manifests a prior even stronger than the tangent space hypothesis; each hidden unit is associated with a vector from the origin, and every datapoint is required to lie near a low-dimensional linear manifold consisting of a small subset of these vectors \cite{olshausen1997}. %, although no restrictions are imposed on the combination of the active units   
+These basis vectors constitute simple ``parts'' into which the input is additively decomposed \cite{lee1999}.
+Sparse coding conforms to the sparse neural activity observed in the brain \cite{vinje2000, olshausen2004}.  
+Consistent with receptive fields observed in the brain, Gabors are the sparse components learned in the visual domain\cite{saxe2011}, and gammatones are the sparse components of the auditory domain \cite{lewicki2002, smith2006}.  
+
+
+While sparse coding reproduces important structure of the natural world, it fails to represent the larger-scale organization of objects and scenes.  The low-dimensional manifold of natural stimuli bends, and the basis set changes throughout the manifold.  For instance, the perturbation induced by a small visual shift, rotation, or scaling depends upon the current image; the additive transformation that shifts one image will move most other images off the manifold of natural stimuli \cite{simard1998}.  In the context of sparse coding, this implies that not all collections of parts can be used together.  
+Moreover, while the exemplar points through which the low-dimensional manifold passes can in principle be represented by a very large set of additional basis vectors, the symmetry of traditional sparse coding algorithms fails to break the dictionary into such distinct sets even when more structure is imposed on sparse coding models, as in topographic, \cite{hyvarinen2001}, group \cite{kavukcuoglu2009}, tree-based \cite{gregor2011}, or discriminatively trained sparse coding \cite{mairal2012, sprechmann2012}.
+
+%the input can be understood as being additively decomposed into a small number of simple, local parts. % Cite Huang and Metaxas?
+
+%In the context of classification, while an increase in the thickness of the rounded top is an identity-preserving transformation of the digit 9, it cannot be applied to the digit 4.  
+%Otherwise, in the limit, PCA would work perfectly.  K-means assumes all directions are available from template points.  Expect better performance if direction of perturbation from template can be used to infer the template present; e.g. 4 closed on top is probably a 9.  
+
+%Sparse coding, as well as its more structured variants like topographic/group and tree-based sparse coding, effectively maximize the likelihood of an undirected graphical model.
+ %In general, sparse coding, as well as its more structured variants like group and tree-based sparse coding, posits a bottom-up model\footnote{That is, an undirected graphical model.} in which the input is explained by a set of dimensions which are symmetric in their representational structure.  Tree-based models are hierarchical!  Can only have a child if the parent is present, right?  Tree-structured sparse coding would probably learn templates if it had a smaller number of very wide, shallow trees.  
+%Especially when all coefficients and vectors are restricted to be positive, 
+
+The true nonlinear structure of the data manifold can trivially be taken into account if, rather than view the space of natural stimuli as characterized by a continuous manifold, we define it in terms of a set of representative points.  Such an exemplar-based approach underlies successful classification techniques such as K-nearest-neighbor and support vector machines \cite{bishop2006}.  Similarly, cognitive psychology has long posited the existence of such exemplar-based representations in the brain \cite{reisberg1997}.  However, the standard implementations of these methods implicitly assume a position-independent distance metric.  %uses high-dimensional subspaces surrounding templates, but low-dimensional subspaces are more effective.  
+
+Combining these two approaches, the low-dimensional data manifold can be effectively modeled by by a union of low-dimensional linear subspaces passing through each datapoint, called the tangent space \cite{simard1998, ekanadham2011, rifai2011b}.  
+%A linear approximation to the low-dimensional manifold around each exemplar is known as the tangent space, and the distance within the tangent space is called the tangent distance.  
+However, it has proven difficult to implement tangent space-based classification efficiently, especially when the set of allowed perturbations must be learned from the data.  In this paper, we demonstrate that discriminative training of a computationally efficient and biologically plausible sparse autoencoder can induce an effective tangent space-based representation.  
+%We find that interpretable mid-level and categorical features arise spontaneously with discriminative training in a deep (but thin) LISTA network.  
+Discriminative fine-tuning does not just discover ``parts'' that are more discriminative.  Rather, it constructs mid-level and categorical units, which have strong recurrent connections, encoders that are not aligned with their decoders, and template-like decoders.  In contrast to traditional highly-overcomplete sparse coding, the part-units of our networks are only compatible with a subset of the categorical units, consistent with the globally nonlinear nature of the low-dimensional data manifold.  
+
+Unlike contractive autoencoders \cite{rifai2011a} or tangent propagation \cite{simard1998}, the selected template is represented explicitly, facilitating natural and accurate classification.  This is potentially useful, in datapoints belonging to different classes may be composed of a common set of parts.  Indeed, it is often the case that the manifolds corresponding to two different classes touch.  For instance, it is possible to continuously deform a 4 into a 9 while remaining on the data manifold.  The tangent distance provides a consistent and intuitive way to deal with ambiguous points near the intersection of two manifolds.  Tangent propagation alone provides no a priori information about how to deal with these points.  Just as contractive autoencoders extend tangent propagation by requiring that the input distribution be modeled while minimizing the volatility of the output in all directions (and thus certainly in directions of allowed deformations), our networks induce the usage of a particularly natural and informative hidden representation.  
+
+
+%There is no sharp boundary between part and categorical units.  
+
+\section{Network structure}
+
+In the following, we use lower-case bold letters to denote vectors, upper-case bold letters to denote matrices, superscripts to indicate copies of a vector, and subscripts (without boldface) to index within a vector.
+We consider deep hierarchical networks of rectified linear units in which each hidden layer also receives a projection from the input:
+\begin{equation} \label{layer-dynamics}
+\x^{t+1} = \max\left(0, \E \cdot \y + \Sm \cdot \x^t - \bv \right)
+\end{equation}
+for $t = 1, \ldots, T$, where $n$-dimensional vector $\x^t$ is the activity of the units at layer $t$, $m$-dimensional vector $\y$ is the input, and $\x^0 = 0$.  We call the $n \times m$ parameter matrix $\E$ the encoding matrix, and the $n \times n$ parameter matrix $\Sm$ the explaining-away matrix.\footnote{In the LISTA algorithm \cite{gregor2010}, which motivates this functional form, $\Sm$ accounts for the part of the input already explained by the hidden units.}
+Connections from the input to each layer, and between adjacent layers, are all-to-all, so the network is insensitive to permutations of the input.    
+For the sake of expositional simplicity, we present the network as a deep and feedforward, but the parameter matrices are tied between the layers.  As a result, equation~\ref{layer-dynamics} equivalently describes a recurrent network of rectified linear units, in which the recurrent computation is performed a fixed number of times.  Equation~\ref{layer-dynamics} is also equivalent to the Learned Iterative Shrinkage and Thresholding Algorithm (LISTA) with non-negative units \cite{gregor2010}; given an $m \times n$ decoding matrix $\D$ and the restrictions
+\begin{equation*}
+\E = \alpha \cdot \D^{\top} , \hspace{1cm}
+\Sm = \I - \alpha \cdot \D^{\top} \cdot \D \, , \hspace{0.5cm}
+\text{and} \hspace{0.5cm} x_i^t \geq 0
+\end{equation*}
+for some small constant $\alpha$, and where $\I$ is the $n \times n$ identity matrix, then as the number of iterations $T \rightarrow \infty$, equation~\ref{layer-dynamics} becomes a proximal method for minimizing the loss the L1-regularized reconstruction loss 
+\begin{equation} \label{reconstruction-loss}
+L^U = \left| \left| \y - \D \cdot \x^T \right| \right|_2^2 + \sum_i b_i \cdot \left| x_i^t \right| \, .
+\end{equation}
+
+We pretrain the network by gradient descent on equation~\ref{reconstruction-loss}, with the magnitude of the columns of $\D$ normalized to one,\footnote{This is required to set the scale of $\x$; otherwise, the magnitude of $\x$ will shrink to zero and the magnitude of the columns of $\D$ will explode.} and the magnitude of the rows of $\E$ bounded by $\frac{1.25}{T-1}$.  We then fine-tune by adding in the loss function
+\begin{equation*} \label{discriminative-loss}
+L^S = \logistic_z \left( \C \cdot \frac{\x_T}{\left|\left| \x_T \right|\right|} \right) \, ,
+\end{equation*}
+where $z$ is the index of the desired class, we call the $l \cdot n$ parameter matrix $\C$ the classification matrix, and the multinomial logistic function is defined by 
+\begin{equation*}
+  \logistic_z(\x) = x_z - \log\left( \sum_i e^{x_i} \right) \, .
+\end{equation*}
+We fine-tune by gradient descent on $L^U + L^S$, with the magnitude of the columns of $\C$ bounded by ???.  Scaling of learning rates?
+Encoding and decoding matrices learned via this procedure are depicted in figure ???
+
+%Gradients of the loss function with respect to the parameters are computed via backpropagation.
+%LISTA, L2 normalization, classification dictionary, softmax, cross-entropy loss (logistic regression).  Encoder and classification dictionary rows are bounded; decoder columns are normalized.
+
+Our network is similar in structure to the deep sparse rectifier neural network \cite{glorot2011}, but differs in that the parameter matrices at each layer are tied, the input projects to all layers, the outputs are normalized (CHECK), and the reconstruction loss is used in training.  %It is also similar to reconstruction ICA, but is deep and utilizes a different discriminative training procedure.
+It is also similar to the discriminatively trained LISTA encoders of \cite{sprechmann2012}, but we use a common set of matrices for all classes, and explicitly learn a logistic classifier output.  %Finally, it is similar to predictive sparse decomposition, but 
+In both cases, these are in fact the critical properties necessary to induce a tangent space representation.
+
+
+
+\section{Encoder computation}
+
+Part units are driven directly by the input; classification units are driven primarily by part units
+\begin{itemize}
+\item Histogram of angle between encoder and decoder, with separate overlaid histograms for part units and classification units defined by classification dictionary column norm
+\item Overlaid trajectories of units in response to a single input, with lines colored by classification dictionary column norm; show that part units turn on first and plateau, while classification units turn on later and grow without bound.  Since the part-units that are most diagnostic of a categorical unit will likely be turned off as the categorical unit increases its activation and subtracts out those features from the input, it makes sense to integrate part-unit excitations to categorical units over time.
+\item Scatterplot of angle between decoder and encoder / probability of activating on the second iteration versus classification dictionary column norm
+\item Scatterplot of weighted average categoricalness of recurrent connections versus categoricalness
+\end{itemize}
+
+
+\subsection{Part units}
+
+Part units do sparse coding on the residual input after the classification-unit template is subtracted out
+\begin{itemize}
+\item For part units (defined by classification dictionary column norm), show connected decoders sorted by explaining-away connection magnitude
+\item Show connection weight versus ISTA ideal
+\end{itemize}
+
+\subsubsection{Priors on the encoder}
+
+Bounding the magnitude of the encoder rows is necessary for good performance.  %Probably forces the network to use recurrence to generate very large outputs that saturate the softmax (although remember that outputs are normalized before the softmax).  
+Given that some units are going to be very large and categorical, they might as well represent the template.  Bounding the L2 norm of the weights is similar to standard L2 regularization, and is mentioned in Hinton's A Practical Guide to Training Restricted Boltzmann Machines.  
+
+Restrictions on the encoder row magnitude may make sense even independent of discriminative fine-tuning.  ISTA depends upon a small step size.  As I've observed when I've tried to initialize the matrices based upon elements of the dataset, if the step size is large, it's easy to get oscillating dynamics, where the hidden units are over-activated by the encoding matrix, and then silence each other on the next iteration.  With hundreds of elements, it is likely that many units will be activated in response to each part of the input.  If the resulting total input explained is greater than the actual input, then all of these units will be inhibited on the next iteration.  As the number of units increases, it seems likely that the ISTA step size must decrease.  This might also hold for the classification dictionary.
+
+
+\subsection{Categorical units}
+
+Classification units are excited by aligned part units and inhibited by orthogonal part units; part units are compatible with certain class IDs and not with others; a single part unit generally activates all compatible classification units; there is a hierarchy of classification units; almost every part unit projects to the most template-like classification units.  Categorical units are actually composed from part units; they are not simply discriminative parts or linear templates
+\begin{itemize}
+\item For part units (defined by classification dictionary column norm), show connected classification-unit decoders sorted by explaining-away connection magnitude and class ID
+\item V plot: average explaining-away connection weight, binned by alignment between decoders, for connections from part-units to categorical units (defined by classification dictionary column norm)
+\item Show evolution of reconstructed dictionaries, prob of second-iteration activation versus categoricalness, strength of classification dictionary connection versus categoricalness
+\end{itemize}
+
+Classification units enforce a winner-take-all choice over input class
+\begin{itemize}
+\item For classification units (defined by classification dictionary column norm), show connected classification-unit decoders sorted by explaining-away connection magnitude, separated by sign of connection 
+\item Histogram of connection magnitudes between classification units, with separate overlaid histograms for connections between units with positive/negative dot products between classification dictionary columns
+\end{itemize}
+
+\subsection{Interpretation}
+
+The network does not develop a purely feedforward (hierarchical) architecture.  The fact that encoder inputs to categorical units don't disappear even given strong L1 weight regularization suggests that the direct input to these units remains important, even if it isn't a template and is difficult to interpret.  Strong recurrent connections imply that the unit is effectively deeper in the hierarchy, since the activity is more determined by other hidden units and less by the input (since the magnitude of the input connections is bounded and thereby fixed).
+
+Inhibition between categorical units is akin to explaining-away between part units; the fact that there is a classification needs to be explained, so the more the magnitude of the classification output is accounted for by one unit, the less needs to be explained by others.  The diagonal of the explaining away matrix for part units would probably go more negative if the optimal output were bounded (e.g. cross entropy loss with an optimal distribution other than 1,0,0,...)
+
+
+The small set of categorical units is not directly induced by the need to produce large outputs to satisfy the cross-entropy loss, in conjunction with the L1 regularization of the hidden units.  Since the sparse code is subject to L2 normalization before passing through the logistic classifier, scaling up the maximum unit is equivalent to scaling down the other units.  The rows of the classification matrix are L2 normalized, so the maximum input to the softmax occurs when a group of units have equal activation, and all other units are zero: $\sum_i \frac{1}{\sqrt{n}} \cdot \frac{c}{\sqrt{n}} = c$, independent of the size $n$ of the group.  
+The direct L1 norm on the sparse coding units then probably induces the sparse code to be as sparse as possible; this is not achieved by a disproportionately large categorical unit, which obviously hurts the unnormalized L1 loss.  However, part units are naturally used for multiple input classes, and the scale of their activity is set by the normalized decoding matrix.  The network aligns the normalized representation with the classfication dictionary row while simultaneously allowing accurate reconstruction by making the categorical units very large.  Group sparsity alone is not sufficient to induce categorical units because it does not force the representation of the different categories to be disjoint.  The classification-matrix connection is directly related to the amount of categorical information carried by a unit.  Note that the output of the categorical units does not by any means grow without bound.  Rather, it seems to consistently be less than 0.5.  Correspondingly, the decoding matrix column norms remain at or near 1.
+
+
+It's initially surprising that categorical units have significant decoding column magnitude.  The decoding column magnitudes are only bounded above, so when discriminative training is applied, it would be possible for a subset of units to learn to produce the correct classification without affecting the reconstruction; the remaining plurality of part-units could then adjust to fully reconstruct the input.  The fact that categorical units maintain large decoder columns despite the disproportionately large activations they achieve indicates that they are actually an important part of the reconstruction process.  Note that part-units adjust to the contribution of the decoder, since the categorical-part connections are ISTA-compatible, so the magnitude of the categorical-unit contribution to the reconstruction need not be tightly regulated.  The categorical units need to be very active to satisfy the discriminative classification loss, and the network doesn't want to waste this potential contribution to the reconstruction, but they don't need to be precise.
+
+How do the categorical units compute their activation?  The alignment between encoder and decoder, and the match between explaining-away weights and the dot product of the associated decoder columns, indicate that part units use ISTA even after discriminative training, and thus follow the gradient of the sum of the L2 reconstruction loss and the L1 sparsifying loss.  Categorical units, in contrast, do not have well-structured encoders, and have explaining-away connections that poorly match the dot product of the corresponding decoding columns, and so are probably not following the gradient of the L2 reconstruction loss, even though they make a substantial contribution to the reconstruction.  Their strongest connections seem to be negative links to other categorical units, which suggests they're implementing winner-take-all dynamics.  
+
+Part-units don't seem to receive disproportionately strong connections from categorial units (which could be used to silence parts incompatible with the chosen template) (BUT keep in mind that categorical units have higher activities, so part-units could be silenced even by connections from categorical units that aren't substantially larger than those to other part-units), suggesting that the space of perturbations available from a template is not restricted by the choice of the template.  Rather, the each part unit is compatible with only a subset of the categorical units, so the template chosen is determined by the part-unit activations.  
+%Based upon the observed connections to categorical units, I would think that categorical units are activated by a very unselective encoder, and then refined by excitation and inhibition from part-units.
+
+The most categorical units integrate their inputs over time, as is evidenced by their disproportionately large diagonal elements in the explaining-away matrix.
+
+
+
+\section{Decoder decomposition into template and tangent-space}
+
+Input is decomposed into a template and perturbation.  The same template is used for very different inputs, since the space of perturbations is rich enough to encompass diverse transformations
+\begin{itemize}
+\item For selected inputs (choose a few that are very different but from the same class; particularly 4's and 8's, for which many hidden units have strong classification dictionary entries), show the gradual reconstruction of the input, adding in an ever larger number of parts (from largest to smallest contribution).  Below that, show the gradual reduction of the residual input (minus the part that's already been reconstructed).  This shows whether the classification units take out the entire template, or only a small fraction of it.  Below that, show the parts that are being added, possibly scaled by their contribution magnitude (otherwise, show this magnitude e.g. via the length of a bar)
+\item Show complementary part-based reconstruction with network trained using only unsupervised loss functions; make templates clearer
+\item Histograms of mean decoder column weight, separated by part/classification unit - shows that classfication units are net-positive, whereas part units are mean-zero perturbations
+\end{itemize}
+
+The classification/part unit distinction has a number of other manifestations
+\begin{itemize}
+\item Scatterplot of classification dictionary column norm versus: norm of explaining away dictionary row, average final value when activated
+\end{itemize}
+
+An ISTA-like algorithm, where activity of the parts effectively decreases the input (e.g. via the categorical units) converges so long as the change in the input is small enough and the templates contribution induced by a part is weak.  Effectively, the categorical unit's template output is added to the part-unit's output (although it is delayed by an iteration; the steady state is identical), but the encoder input to the part-unit remains unchanged, so it minimizes the reconstruction error of the residual including the categorical units, assuming that it will not make a contribution based upon the categorical-unit/template.  If the contribution of the categorical-unit induced by the part-unit is smaller than the part contribution, the loss should still go down.  In order for the loss to be a Lyapunov function, we only need that the step in activation-space have a positive dot-product with the gradient; it doesn't need to follow the gradient exactly.
+
+The part-unit's ISTA-like dynamics operate slowly, so there is little reason to expect that the activation of the categorical-units' templates will suppress the part-units; the part-units will just plateau earlier than they would in the absence of the template.  
+
+
+The part-units that connect to a categorical-unit should not primarily be part-units that align perfectly with the categorical-unit's template; these part-units should only be weakly co-activated with the categorical unit, since the categorical unit itself can account for these components of the input.  Rather that part-units that connect most strongly to a categorical unit should be those that are slightly misaligned with the template, and so can deform the template in category-consistent ways.  (This account is consistent with the mean-zero nature of the part-based decoders, versus the positive-mean categorical-unit decoders)  The encoder for a categorical-unit needs to be diffuse, since assuming it regulates the overall activity of the categorical-unit, it must respond to all manifestations of the category, rather than just the optimal one.  HOWEVER, the most categorical units seem to have extremely weak self-connections (aside from the implicit identity component of the explaining-away matrix); that is, they integrate the evidence they receive, rather than looking at the difference between their input and their prediction.
+
+%It would make sense for the projection from part to categorical units to be related to the degree to which the part is orthogonal to the local tangent space.  
+If only a single template is active (enforced by winner-take-all connections after convergence), the weighted sum of negative projections from the part units to the selected categorical unit \emph{is} the L1 tangent distance if the connection weights are the angle between the decoder and the tangent space.  %hidden units that have decoder parts that are orthogonal to the tangent space of a template \emph{is} the tangent
+
+
+If the wrong template is turned on, it will explain the input relatively poorly.  Assuming that the part-units continue to obey ISTA-type dynamics, a relatively large set of part-units will need to be significantly activated to explain the residual input.  Moreover, the residual input will presumably look very unlike the class associated with the active template.  As a result, the active part units will activate categorical units associated with the true class, and the spuriously activated categorical unit will not be able to sustain activity, since few of the associated part units will be active.  Discrepancies between the template and the input explained by category-appropriate part units correspond to the data manifold, centered on the template, and only serve to further activate the categorical-unit/template.  Discrepancies between the template and the input explained by category-incompatible part units correspond to errors orthogonal to the data manifold, and serve to suppress the categorical-unit/template, either directly or via activation of incompatible categorical units.  Given that a categorical unit is on, show that connections to it from the active part units are almost all positive.
+
+
+
+\section{Discussion}
+
+
+
+%Properties of categorical units: encoder poorly aligned with decoder; positive recurrent connections better aligned with the decoder and slightly less categorical (but keep in mind that stroke units tend to have very weak positive recurrent connections); negative recurrent connections less aligned with the decoder and more categorical; strong, disproportionately negative recurrent connections; strong connections through the classification dictionary; units don't activate solely in response to the encoder (first iteration); active at the end of processing no more than 10\% of the time; activity refines dramatically over time.  Categorical units thus perform something closer to conventional pooling than part-units: they take their input primarily from part-units and other categorical-units, summing activity from similar units and subtracting activity from dissimilar units.  
+
+
+Importance of discriminative training already demonstrated for implicit encoders, but mostly reflect improvement in features, rather than feature combination.  Show that performance is much worse if we just train a classifier on top of a fixed unsupervised-pretrained LISTA encoder; categorical units are essential for good classification.  
+ 
+
+This is different from classification based upon a sparse coding decomposition, since it projects into the space of deviations from a template, which is not the same as the space of template-free parts.  For instance, a 4 can easily be constructed using the parts of a 9, making it difficult to distinguish the two.  However, starting from a 9 template, the parts required to break the top loop or add an extension to the side are outside the data manifold of the 9 class, and so will tend to change the active template.  It is related to but distinct from group sparsity (and Yann's or Simoncelli's template-plus-perturbation approach) in that the encoder does not perform any explicit energy minimization, and the group structure is based upon the need to produce class-specific outputs for the classifier.  Just as the units fragment into part- and categorical- units, the sparsification performed by the L1 regularizer separates into the creation of a sparse set of classifiers, and then a separate sparse set of perturbations of the classifier templates.  The categorical units must be large to saturate the L2 normalization and suppress the non-class-specific part units, and the network doesn't waste their ability to reconstruct the input.  However, the categorical unit activations must be calculated based upon the very categorical and part units that induce the final reconstruction and classification.
+
+Only a subset of the perturbations are available for each template because of the explaining-away connections from part units to categorical units.  Part units with strong negative connections to a categorical unit cannot be used to perturb the template of that categorical unit.
+
+Merely having perturbation features available, rather than the standard sparse features, allows the generalization of these perturbations to multiple templates.  In tangent-propagation (related to contractive autoencoders), the network learns that certain transformations of the input have no impact on the classification.  Similarly, if a perturbation/part unit makes no contribution to the classification (which is generally the case), then combined with the ISTA-like dynamics of the part units, that perturbation can be applied to any template.  The part/perturbation untis do influence the template selected, but not the classification associated with that template.
+
+
+\subsection{Efficient encoding and training}
+
+Our LISTA encoder can be understood as a learned approximation to a second-order minimization of the loss (L2 reconstruction plus L1 sparsifying).  The learned matrices are effectively the optimal matrices from ISTA multiplied by a (fixed) approximation to the inverse Hessian.  In general, encoders that are complementary to a given decoder can sensibly be of the form of (first- or second-order) gradient descent on the decoder's loss function. 
+
+Gradient magnitudes (presently approximated with backprop messages) seem to drop off by a factor of 20 between the last and first layer with 11 ista iterations in an untrained network.  This decay would obviously be eliminated if the reconstruction loss were applied to each layer, but that strategy is incommensurable with the concept of deep networks (although, similar to deep convex networks, each layer could be trained to classify through an independent logistic regressor).  Linked weights/recurrent dynamics allow the large gradients of the early layers to bootstrap the training of the early layers; if the weights are small, then hidden units activities and inputs are small even deep in the network, which renders the network similar to a shallow network.
+
+
+
+
+
+%QUESTIONABLE: The average final magnitude of categorical units is strongly correlated with their recurrent connection magnitude when they turn on.  Does this indicate that it's a constant, independent of the input, once the categorical unit is selected?  Consider looking at the variance of unit activity, given that the unit is on.  
+
+
+%How does the classification output evolve over time?  Does the network ever change its mind?  The part-units seem to perform something close to ISTA, with the caveat that they only need explain the portion of the input not explained by the categorical units.  As a result, part-units that are essential for explaining the full input may well turn off as the network evolves, and categorical units come to explain much of the input.  In particular, part-units that initially activated the categorical units may not remain on if they align well with the decoders of the categorical units.  If a categorical unit is chosen poorly, its decoding column will not align with the input, and part-units will be activated to explain the negative image of the categorical-unit's template.  This might be an effective sign that a categorical-unit is poorly chosen.  
+
+
+
+
+
+\subsection{Biological plausibility}
+
+A discrepancy between neuroscience and machine learning is apparent in the structure of the network.  Recurrence is one of the dominant structural features of the cortex \cite{douglas2004}.  In contrast, while the machine learning community has found that deep networks can be extremely powerful, it has not realized much benefit from recurrence for static classification problems \cite{bengio2009}.  This is perhaps surprising, since a recurrent network is equivalent to a deep network in which parameters are shared between layers.  Success in training deep networks often relies upon alternating feature extraction and pooling layers.  More abstract high-level features are composed of lower-level features.  It would seem as if this accretive process would require unshared weights for each layer, since higher-level composite features appear to be conceptually distinct from the lower-level features from which they are composed.  Even in computational neuroscience, this bias is evident in models of simple and complex cells of the primary visual cortex, whose receptive fields are traditionally conceived as forming via a strict hierarchy, although there is little evidence for such structure in the brain.  In this paper, we show that discriminatively training of a recurrent network can induce hierarchical structure within the network.  %Moreover, sharing weights is not very burdensome if they are subject to similar gradients (which is the case in a LISTA network if all layers are subject to the L1 and L2 losses (only exact if network hits a fixed point)).  
+
+Rectified linear units are biologically plausible.
+
+The emergence of hierarchy within a recurrent network is reminiscent of simple and complex cells in primary visual cortex.  
+Functional connectivity between simple cells and complex cells in cat striate cortex - Jose-Manuel Alonso and Luis M. Martinez (1998)
+
+
+In the limit of long recurrent computations, LISTA networks can calculate the gradient using Hebbian learning on their final activity.
+L1 regularization on a hierarchical network of rectified linear units is equivalent to $\sum_{ij} \frac{\partial h_i}{\partial x_j} \cdot x_j$ where $i$ runs over the hidden units and $j$ runs over the inputs.  
+\begin{align*}
+z_j &= \Theta\left(\sum_i W_{ji} \cdot y_i \right) \\
+\frac{d z_j}{d x_k} &= \left( \sum_i W_{ji} \cdot y_i > 0 \right) \cdot \sum_i W_{ji} \cdot \frac{d y_i}{d x_k} 
+\end{align*}
+This applies until the last layer, at which point $\frac{d x_i}{d x_k} = \delta_{ik}$.  Taking $L = \sum_k \frac{d z_j}{d x_k} \cdot x_k$ and pushing the sum over $k$ all the way back to the final $\delta$, we can then show that $L$ is identical to $z_j$.  THIS ONLY WORKS if we add L1 regularizers into the loss function complementary to the biases of the encoder.  The real issue is that the gradient can be calculated for a loss function which includes information which is not present in the initial inputs.  We can do discriminative training with only local signals, by separating the backwards and forwards pass in time, so long as the backpropagating discriminative gradient does not change the set of active units.
+
+
+
+%\subsubsection*{Acknowledgments}
+%Use unnumbered third level headings for the acknowledgments. All acknowledgments go at the end of the paper. Do not include  acknowledgments in the anonymized submission, only in the final paper. 
+
+
+\begin{thebibliography}{100}
+\providecommand{\natexlab}[1]{#1}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
+  \providecommand{\doi}{doi:\discretionary{}{}{}\begingroup
+  \urlstyle{rm}\Url}\fi
+
+\addcontentsline{toc}{chapter}{Bibliography}
+
+\bibitem[{Bengio(2009)}]{bengio2009}
+Bengio, Y. (2009). 
+\newblock Learning deep architectures for AI. 
+\newblock \emph{Foundations and Trends in Machine Learning}, \emph{2}(1), 1--127.
+
+\bibitem[{Bengio, Courville, \& Vincent(2012)}]{bengio2012}
+Bengio, Y., Courville, A., \& Vincent, P. (2012).
+\newblock Representation learning: A review and new perspectives
+\newblock arXiv:1206.5538 [cs.LG]
+
+\bibitem[{Bishop(2006)}]{bishop2006}
+Bishop, C. M. (2006).
+\newblock \emph{Pattern recognition and machine learning.}
+\newblock New York: Springer.
+
+\bibitem[{Douglas \& Martin(2004)}]{douglas2004}
+Douglas, R. J., \& Martin, K. A. C. (2004).
+\newblock Neuronal circuits of the neocortex.
+\newblock \emph{Annual Review of Neuroscience}, \emph{27}, 419--451.
+
+\bibitem[{Ekanadham, Tranchina, \& Simoncelli(2011)}]{ekanadham2011}
+Ekanadham, C., Tranchina, D., \& Simoncelli, E. P. (2011). 
+\newblock Recovery of sparse translation-invariant signals with continuous basis pursuit.
+\newblock \emph{IEEE Transactions on Signal Processing}, \emph{59}(10), 4735--4744.
+
+%\bibitem[{Garrigues \& Olshausen (2010)
+%Garrigues, P., & Olshausen, B. (2010). Group sparse coding with a laplacian scale mixture prior. Advances in Neural Information Processing Systems, 24.
+
+\bibitem[{Glorot, Bordes, \& Bengio(2011)}]{glorot2011}
+Glorot, X., Bordes, A., \& Bengio, Y. (2011).
+\newblock Deep sparse rectifier neural networks. 
+\newblock In G. Gordon, D. Dunson, \& M. Dudik (Eds.) \emph{JMLR W\&CP: Proceedings of the Fourteenth International Conference on Artificial Intelligence and Statistics (AISTATS 2011)\emph} (pp. 315--323).
+
+\bibitem[{Gregor \& LeCun(2010)}]{gregor2010}
+Gregor, K., \& LeCun, Y. (2010).
+\newblock Learning fast approximations of sparse coding.
+\newblock In J. F{\"u}rnkranz \& T. Joachims (Eds.) \emph{Proceedings of the 27th International Conference on Machine Learning (ICML 2010)} (pp. 399--406).
+
+\bibitem[{Gregor, Szlam, \& LeCun(2011)}]{gregor2011}
+Gregor, K., Szlam, A., \& LeCun, Y. (2011).
+\newblock Structured sparse coding via lateral inhibition. 
+\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 1116--1124). %Cambridge, MA: MIT Press.
+
+\bibitem[{Hyv{\"a}rinen, Hoyer, \& Inki (2001)}]{hyvarinen2001}
+Hyv{\"a}rinen, A. Hoyer, P. O., \& Inki, M.  (2001).
+\newblock Topographic independent component analysis. 
+\newblock \emph{Neural Computation}, \emph{13}(7), 1527--1558.
+
+\bibitem[{Kavukcuoglu et~al.(2009)Kavukcuoglu, Ranzato, Fergus, \& LeCun}]{kavukcuoglu2009}
+Kavukcuoglu, K., Ranzato, M. A., Fergus, R., \& LeCun, Y. (2009). 
+\newblock Learning invariant features through topographic filter maps. 
+\newblock In \emph{IEEE Conference on Computer Vision and Pattern Recognition (CVPR 2009)} (pp. 1605-1612).
+
+%\bibitem[{Le et~al.(2011)Le, Karpenko, Ngiam, \& Ng}]{le2011}
+%Le, Q. V., Karpenko, A., Ngiam, J., \& Ng, A. Y. (2011). 
+%\newblock ICA with reconstruction cost for efficient overcomplete feature learning. 
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 1116--1124). %Cambridge, MA: MIT Press.
+
+\bibitem[{Lee \& Seung(1999)}]{lee1999}
+Lee, D. D., \& Seung, H. (1999). 
+\newblock Learning the parts of objects by non-negative matrix factorization. 
+\newblock \emph{Nature}, \emph{401}(6755), 788--791.
+
+\bibitem[{Lee, Pedersen, \& Mumford (2003)}]{lee2003}
+Lee, A. B., Pedersen, K. S., \& Mumford, D. (2003). 
+\newblock The nonlinear statistics of high-contrast patches in natural images. 
+\newblock \emph{International Journal of Computer Vision}, \emph{54}(1), 83--103.
+
+\bibitem[{Lewicki (2002)}]{lewicki2002}
+Lewicki, M. S. (2002). 
+\newblock Efficient coding of natural sounds. 
+\newblock \emph{Nature Neuroscience}, \emph{5}(4), 356--363.
+
+\bibitem[{Mairal, Bach, \& Ponce(2012)}]{mairal2012}
+Mairal, J., Bach, F., \& Ponce, J. (2012). 
+\newblock Task-driven dictionary learning. 
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence}, \emph{34}(4), 791--804.
+
+\bibitem[{Olshausen \& Field(1997)}]{olshausen1997}
+Olshausen, B. A., \& Field, D. J. (1997). 
+\newblock Sparse coding with an overcomplete basis set: A strategy employed by VI?
+\newblock \emph{Vision Research}, \emph{37}(23), 3311--3326.
+
+\bibitem[{Olshausen \& Field (2004)}]{olshausen2004}
+Olshausen, B. A., \& Field, D. J. (2004). 
+\newblock Sparse coding of sensory inputs. 
+\newblock \emph{Current opinion in neurobiology}, \emph{14}(4), 481--487.
+
+\bibitem[{Reisberg (1997)}]{reisberg1997}
+Reisberg, D. (1997). 
+\newblock \emph{Cognition: Exploring the science of the mind.}
+\newblock New York: WW Norton.
+
+\bibitem[{Rifai et~al.(2011)Rifai, Vincent, Muller, Glorot, \& Bengio}]{rifai2011a}
+Rifai, S., Vincent, P., Muller, X., Glorot, X., \& Bengio, Y. (2011). 
+\newblock Contractive auto-encoders: Explicit invariance during feature extraction. 
+\newblock L. Getoor \& T. Scheffer (Eds.) \emph{Proceedings of the 28th International Conference on Machine Learning (ICML 2011)} (pp. 833--840).
+
+\bibitem[{Rifai et~al.(2011)Rifai, Dauphin, Vincent, Bengio, \& Muller}]{rifai2011b}
+Rifai, S., Dauphin, Y., Vincent, P., Bengio, Y., \& Muller, X. (2011). 
+\newblock The manifold tangent classifier. 
+\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 2294--2302). %Cambridge, MA: MIT Press.
+
+\bibitem[{Saxe et~al.(2011)Saxe, Bhand, Mudur, Sures, \& Ng}]{saxe2011}
+Saxe, A., Bhand, M., Murdur, R., Suresh, B., \& Ng, A. Y. (2011).
+\newblock Unsupervised learning models of primary cortical receptive ﬁelds and receptive ﬁeld plasticity.
+\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 1971--1979). %Cambridge, MA: MIT Press.
+
+\bibitem[{Simard et~al.(1998)Simard, LeCun, Denker, \& Victorri}]{simard1998}
+Simard, P., LeCun, Y., Denker, J., \& Victorri, B. (1998). 
+\newblock Transformation invariance in pattern recognition: Tangent distance and tangent propagation. 
+\newblock In G. Orr,  \& K. Muller (Eds.), \emph{Neural networks: Tricks of the trade}. Berlin: Springer. 
+%\newblock \emph{Neural networks: Tricks of the trade}, 549-550.
+
+\bibitem[{Smith \& Lewicki(2006)}]{smith2006}
+Smith, E. C., \& Lewicki, M. S. (2006). 
+\newblock Efficient auditory coding. 
+\newblock \emph{Nature}, \emph{439}(7079), 978--982.
+
+\bibitem[{Sprechmann, Bronstein, \& Sapiro (2012)}]{sprechmann2012}
+Sprechmann, P., Bronstein, A., \& Sapiro, G. (2012).
+\newblock Learning efficient structured sparse models.
+\newblock In J. Langford \& J. Pineau (Eds.) \emph{Proceedings of the 29th International Conference on Machine Learning (ICML 12)} (pp. 615--622).
+
+\bibitem[{Vinje \& Gallant(2000)}]{vinje2000}
+Vinje, W. E., \& Gallant, J. L. (2000). 
+\newblock Sparse coding and decorrelation in primary visual cortex during natural vision. 
+\newblock \emph{Science}, \emph{287}(5456), 1273--1276.
+
+\end{thebibliography}
+
+\end{document} 
+
+@InProceedings{icml2010_052,
+  author =    {Karol Gregor and Yann LeCun},
+  title =     {Learning Fast Approximations of Sparse Coding},
+  booktitle = {Proceedings of the 27th International Conference on Machine Learning (ICML-10)},
+  pages =     {399--406},
+  year =      2010,
+  editor =    {Johannes F{\"u}rnkranz and Thorsten Joachims},
+  address =   {Haifa, Israel},
+  month =     {June},
+  URL =       {http://www.icml2010.org/papers/449.pdf},
+  publisher = {Omnipress}
+}
+
+
+@incollection{NIPS2011_1115,
+ title ={Unsupervised learning models of primary cortical receptive fields and receptive field plasticity},
+ author={Andrew M. Saxe and Maneesh Bhand and Ritvik Mudur and Bipin Suresh and Andrew Y. Ng},
+ booktitle = {Advances in Neural Information Processing Systems 24},
+ editor = {J. Shawe-Taylor and R.S. Zemel and P. Bartlett and F.C.N. Pereira and K.Q. Weinberger},
+ pages = {1971--1979},
+ year = {2011}
+}
+
+@article{hyvarinen2001topographic,
+  title={Topographic independent component analysis},
+  author={Hyv{\"a}rinen, A. and Hoyer, P.O. and Inki, M.},
+  journal={Neural computation},
+  volume={13},
+  number={7},
+  pages={1527--1558},
+  year={2001},
+  publisher={MIT Press}
+}
+
+\subsubsection*{References}
+
+References follow the acknowledgments. Use unnumbered third level heading for
+the references. Any choice of citation style is acceptable as long as you are
+consistent. It is permissible to reduce the font size to `small' (9-point) 
+when listing the references. {\bf Remember that this year you can use
+a ninth page as long as it contains \emph{only} cited references.}
+
+\small{
+[1] Alexander, J.A. \& Mozer, M.C. (1995) Template-based algorithms
+for connectionist rule extraction. In G. Tesauro, D. S. Touretzky
+and T.K. Leen (eds.), {\it Advances in Neural Information Processing
+Systems 7}, pp. 609-616. Cambridge, MA: MIT Press.
+
+[2] Bower, J.M. \& Beeman, D. (1995) {\it The Book of GENESIS: Exploring
+Realistic Neural Models with the GEneral NEural SImulation System.}
+New York: TELOS/Springer-Verlag.
+
+[3] Hasselmo, M.E., Schnell, E. \& Barkai, E. (1995) Dynamics of learning
+and recall at excitatory recurrent synapses and cholinergic modulation
+in rat hippocampal region CA3. {\it Journal of Neuroscience}
+{\bf 15}(7):5249-5262.
+}
+
+\end{document}

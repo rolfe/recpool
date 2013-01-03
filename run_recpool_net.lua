@@ -13,7 +13,7 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
-cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic)
+cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic), connection_diagram, receptive_fields; full_diagnostic generates progressive reconstruction diagram and other figures; increase epoch size to generate final figures!!!
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
@@ -27,7 +27,8 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 10e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 50000
-local full_diagnostic_epoch_size = 10000 --40000
+local full_diagnostic_epoch_size = 1000 --10000
+local plot_receptive_fields_epoch_size = 10000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50
 local classification_scale_factor = 1
@@ -50,7 +51,8 @@ local params = cmd:parse(arg)
 params.num_layers = tonumber(params.num_layers)
 params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
 params.p_layer_size = 50 --200 --50
-if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') then
+if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') or 
+   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') then
    num_epochs_no_classification = 0
    num_epochs = 1
 end
@@ -58,7 +60,7 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 1 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -93,6 +95,7 @@ if params.data_set == 'train' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
       ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
       ((params.run_type == 'full_diagnostic') and full_diagnostic_epoch_size) or
+      ((params.run_type == 'receptive_fields') and plot_receptive_fields_epoch_size) or
       quick_train_epoch_size
    if params.run_type == 'full_train' then
       -- also load the validation set for inline testing
@@ -101,9 +104,9 @@ if params.data_set == 'train' then
       data_inline_test:normalizeL2()
    end
 elseif params.data_set == 'test' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:test_set_size()) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:test_set_size()) or 5000
 elseif params.data_set == 'validation' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic')) and this_data_set:validation_set_size()) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:validation_set_size()) or 5000
    data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
    data_set_options.offset = this_data_set:train_set_size()
 else
@@ -134,7 +137,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    init_eval_counter = ((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 0, 
    learning_rate = ((params.run_type == 'full_train') and full_train_learning_rate) or 
       ((params.run_type == 'quick_train') and quick_train_learning_rate) or 
-      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic')) and 0), --1e-3, -- learning rate at t=0
+      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram')) and 0) or 0, --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
@@ -152,7 +155,7 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 
 local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
 local receptive_field_builder = nil
-if params.run_type == 'full_diagnostic' then
+if (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields') then
    receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
 end
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
@@ -198,6 +201,42 @@ if shrink_style == 'ParameterizedShrink' then
 end
 
 
+if params.run_type == 'connection_diagram' then
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt)
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt, 'restrict to positive')
+
+   --[[
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'part', 'categorical'},
+				    model.module_list.classification_dictionary.weight)
+   --]]
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'part', 'categorical', true},
+				    model.module_list.classification_dictionary.weight)
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'categorical', 'categorical', true},
+				    model.module_list.classification_dictionary.weight)
+   --[[
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'categorical', 'categorical', true},
+				    model.module_list.classification_dictionary.weight)
+   --]]
+
+
+   
+   return
+end
+
+
+
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
 
@@ -214,13 +253,6 @@ for i = 1,num_epochs_no_classification do
    --print('iterations so far: ' .. trainer.config.evalCounter)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
-      if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
-      if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
-	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-					  model.layers[1].module_list.explaining_away.weight, opt, false)
-	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-					  model.layers[1].module_list.explaining_away.weight, opt, true)
-      end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
@@ -280,15 +312,12 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    trainer:train(data)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
-      if receptive_field_builder then receptive_field_builder:plot_receptive_fields(opt) end
-      if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
-	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-					  model.layers[1].module_list.explaining_away.weight, opt, false)
-	 plot_explaining_away_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-					  model.layers[1].module_list.explaining_away.weight, opt, true)
-      end
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
+
+   if (receptive_field_builder and (params.run_type == 'receptive_fields')) then receptive_field_builder:plot_receptive_fields(opt) end
+   if (receptive_field_builder and (params.run_type == 'full_diagnostic')) then receptive_field_builder:plot_other_figures(opt) end
+
 end
 
 
