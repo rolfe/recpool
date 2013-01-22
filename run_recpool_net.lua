@@ -13,7 +13,7 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
-cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic), connection_diagram, receptive_fields; full_diagnostic generates progressive reconstruction diagram and other figures; increase epoch size to generate final figures!!!
+cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic), connection_diagram, receptive_fields, reconstruction_connections; full_diagnostic generates other figures; increase epoch size to generate final figures!!!
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
@@ -52,7 +52,7 @@ params.num_layers = tonumber(params.num_layers)
 params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
 params.p_layer_size = 50 --200 --50
 if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') or 
-   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') then
+   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') then
    num_epochs_no_classification = 0
    num_epochs = 1
 end
@@ -94,7 +94,7 @@ local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternat
 if params.data_set == 'train' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
       ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
-      ((params.run_type == 'full_diagnostic') and full_diagnostic_epoch_size) or
+      (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and full_diagnostic_epoch_size) or
       ((params.run_type == 'receptive_fields') and plot_receptive_fields_epoch_size) or
       quick_train_epoch_size
    if params.run_type == 'full_train' then
@@ -104,9 +104,9 @@ if params.data_set == 'train' then
       data_inline_test:normalizeL2()
    end
 elseif params.data_set == 'test' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:test_set_size()) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
 elseif params.data_set == 'validation' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:validation_set_size()) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
    data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
    data_set_options.offset = this_data_set:train_set_size()
 else
@@ -155,7 +155,7 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 
 local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
 local receptive_field_builder = nil
-if (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields') then
+if (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'reconstruction_connections') then
    receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
 end
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
@@ -202,6 +202,9 @@ end
 
 
 if params.run_type == 'connection_diagram' then
+   save_filter(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:t():narrow(2,90,40), 'selected_encoding_fe_dict', opt.log_directory, 20)
+   save_filter(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:narrow(2,90,40), 'selected_decoding_fe_dict', opt.log_directory, 20)
+
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt)
@@ -209,20 +212,26 @@ if params.run_type == 'connection_diagram' then
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, 'restrict to positive')
 
-   --[[
+
+   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'any', 'part'},
+				    model.module_list.classification_dictionary.weight, 6, 3)
+
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'part', 'categorical'},
-				    model.module_list.classification_dictionary.weight)
-   --]]
+				    model.module_list.classification_dictionary.weight, 16, 3)
+
+
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'part', 'categorical', true},
-				    model.module_list.classification_dictionary.weight)
+				    model.module_list.classification_dictionary.weight, 6, 3)
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'categorical', 'categorical', true},
-				    model.module_list.classification_dictionary.weight)
+				    model.module_list.classification_dictionary.weight, 16, 3)
    --[[
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
@@ -230,8 +239,6 @@ if params.run_type == 'connection_diagram' then
 				    model.module_list.classification_dictionary.weight)
    --]]
 
-
-   
    return
 end
 
@@ -249,7 +256,7 @@ for i = 1,num_epochs_no_classification do
       trainer:reset_learning_rate(fast_pretraining_scale_factor * opt.learning_rate)
    end
 
-   trainer:train(data)
+   trainer:train(data, (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and 'display'))
    --print('iterations so far: ' .. trainer.config.evalCounter)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
@@ -304,19 +311,23 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
 
    if (i % 2 == 1) and (i > 1) and data_inline_test then
       print('starting test epoch')
-      trainer:train(data_inline_test, true) --second argument specifies that this is a test epoch
+      trainer:train(data_inline_test, 'validation') --second argument specifies that this is a test epoch
       print('writing performance ' .. trainer.current_performance)
       save_performance_history(trainer.current_performance, opt.log_directory, i) -- defined in display_recpool_net
    end
 
-   trainer:train(data)
+   trainer:train(data, (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and 'display'))
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 
-   if (receptive_field_builder and (params.run_type == 'receptive_fields')) then receptive_field_builder:plot_receptive_fields(opt) end
+   if (receptive_field_builder and (params.run_type == 'receptive_fields')) then 
+      receptive_field_builder:plot_receptive_fields(opt, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+						    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) 
+   end
    if (receptive_field_builder and (params.run_type == 'full_diagnostic')) then receptive_field_builder:plot_other_figures(opt) end
+   if (receptive_field_builder and (params.run_type == 'reconstruction_connections')) then receptive_field_builder:plot_reconstruction_connections(opt) end
 
 end
 

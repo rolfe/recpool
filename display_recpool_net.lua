@@ -12,7 +12,10 @@ local function plot_training_error(t)
    gnuplot.closeall()
 end
 
-local function save_filter(current_filter, filter_name, log_directory, num_display_columns)
+-- symmetric == false -> the filters have already been scaled, and should be plotted as-is (or something like that; check!)
+-- symmetric == true or nil -> scale colormap between -max and max, with gray = 0
+function save_filter(current_filter, filter_name, log_directory, num_display_columns, symmetric)
+   if symmetric == nil then symmetric = true end -- default value of symmetric is true
    num_display_columns = num_display_columns or 10
    local current_filter_side_length 
    if current_filter:size(1) % 3 == 0 then -- make sure that CIFAR input filters align the R, G, and B channels coherently
@@ -25,7 +28,8 @@ local function save_filter(current_filter, filter_name, log_directory, num_displ
       current_filter_side_length = math.sqrt(current_filter:size(1))
       current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length):transpose(1,2)
    end
-   local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=num_display_columns,symmetric=true}
+   if symmetric then current_filter = current_filter:clone():mul(-1) end -- flip the current filter from white to black; make a copy so we don't risk corrupting the original data
+   local current_image = image.toDisplayTensor{input=current_filter,padding=1,nrow=num_display_columns,symmetric=symmetric}
    
    -- ideally, the pdf viewer should refresh automatically.  This 
    image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
@@ -34,7 +38,9 @@ end
 -- dataset is nExamples x input_dim
 -- hidden_activation is nExamples x hidden_dim
 -- construct a dictionary matrix that optimally reconstructs the data_set from the hidden_activation
-function construct_optimal_dictionary(data_set, hidden_activation, optimal_dictionary_matrix, odm_offset, odm_stride, filter_name, log_directory)
+-- odm stands for optimal dictionary matrix
+-- output_matrix is of size hidden_dim x input_dim ; it is already restricted to the correct hidden unit
+function construct_optimal_dictionary(data_set, hidden_activation, output_matrix)
    -- gels only works properly if hidden_activation is full rank, and is unstable if hidden_activation is ill-conditioned.  Remove any hidden units that do not have sufficient activation.
    local num_active_units = 0
    local activation_norms = torch.Tensor(hidden_activation:size(2)):zero()
@@ -65,13 +71,12 @@ function construct_optimal_dictionary(data_set, hidden_activation, optimal_dicti
    for i=1,hidden_activation:size(2) do
       if hidden_activation:select(2,i):norm() > 0.05 then
 	 num_active_units = num_active_units + 1
-	 optimal_dictionary_matrix:select(1,(i-1)*odm_stride + odm_offset):copy(conservative_optimal_dictionary_matrix:select(1,num_active_units)):div(conservative_optimal_dictionary_matrix:select(1,num_active_units):norm()) -- this ignores the extra rows --:narrow(1,1,hidden_activation:size(2)))
+	 local selected_filter = conservative_optimal_dictionary_matrix:select(1,num_active_units)
+	 --output_matrix:select(1,(i-1)*odm_stride + odm_offset):copy(selected_filter:div(selected_filter:norm())) -- this ignores the extra rows --:narrow(1,1,hidden_activation:size(2)))
+	 -- select the desired row of the output matrix
+	 output_matrix:select(1,i):copy(selected_filter):div(selected_filter:norm()) -- this ignores the extra rows --:narrow(1,1,hidden_activation:size(2)))
 	 optimal_dictionary_matrix_slice:select(1,i):copy(conservative_optimal_dictionary_matrix:select(1,num_active_units))
       end
-   end
-
-   if filter_name and log_directory then
-      save_filter(optimal_dictionary_matrix:t(), filter_name, log_directory)
    end
 
    print('actual error is ' .. data_set:dist(hidden_activation*optimal_dictionary_matrix_slice))
@@ -105,7 +110,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       end
    end
    
-   -- this is the interface ot the outside world
+   -- this is the interface to the outside world
    function receptive_field_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies)
       local batch_size = new_input:size(1)
       if data_set_index >= nExamples then
@@ -133,18 +138,99 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       return receptive_field_output
    end
    
-   function receptive_field_builder:plot_receptive_fields(opt)
+   function receptive_field_builder:plot_receptive_fields(opt, encoding_filter, decoding_filter)
       --shrink_val_tensor:select(2,nExamples+1):zero()
       --data_set_tensor:select(1,nExamples+1):fill(1)
 
-      -- show evolution of optimal dictionaries in a single figure
-      local optimal_dictionary_matrix = torch.Tensor(shrink_val_tensor:size(3) * shrink_val_tensor:size(1), data_set_tensor:size(2)):zero()
-      for i = 1,#accumulated_inputs do
+      -- show evolution of optimal dictionaries in a single figure -- hidden_layer_size, total_num_shrink_copies, input_size
+      --local optimal_dictionary_matrix = torch.Tensor(shrink_val_tensor:size(3) * shrink_val_tensor:size(1), data_set_tensor:size(2)):zero()
+      local optimal_dictionary_matrix = torch.Tensor(hidden_layer_size, total_num_shrink_copies, input_size):zero()
+      for i = 1,#accumulated_inputs do -- iterate over shrink copies/hidden layers
 	 local receptive_field_output = self:extract_receptive_fields(i)
 	 save_filter(receptive_field_output, 'shrink receptive field ' .. i, opt.log_directory)
-	 construct_optimal_dictionary(data_set_tensor, shrink_val_tensor:select(1,i), optimal_dictionary_matrix, i, shrink_val_tensor:size(1), 'shrink dictionary ' .. i, opt.log_directory)
+	 --construct_optimal_dictionary(data_set_tensor, shrink_val_tensor:select(1,i), optimal_dictionary_matrix, i, shrink_val_tensor:size(1), 'shrink dictionary ' .. i, opt.log_directory)
+	 construct_optimal_dictionary(data_set_tensor, shrink_val_tensor:select(1,i), optimal_dictionary_matrix:select(2,i))
       end
-      save_filter(optimal_dictionary_matrix:t(), 'shrink dictionary', opt.log_directory, shrink_val_tensor:size(1))
+
+      local max_val = math.max(math.abs(optimal_dictionary_matrix:min()), math.abs(optimal_dictionary_matrix:max()))
+      optimal_dictionary_matrix:mul(-1)
+      optimal_dictionary_matrix:add(max_val):div(2*max_val)
+      
+      print('total min and max are ' .. optimal_dictionary_matrix:min() .. ', ' .. optimal_dictionary_matrix:max())
+
+
+      local function categoricalness_enc_dec_alignment(i)
+	 local enc = encoding_filter:select(1,i)
+	 local dec = decoding_filter:select(2,i)
+	 local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
+	 if angle > 0.7 then return 'categorical' 
+	 elseif angle < 0.5 then return 'part' 
+	 else return 'intermediate' end 
+      end
+
+      local part_indices, categorical_indices = {}, {}
+      local first_part = 6
+      local first_categorical = 16
+
+      -- Use indices 6,7,8, restricted to part units, for the part-unit-only figure
+      -- Use indices 16,17,18, restricted to categorical units, for the categorical-unit-only figure
+      if encoding_filter and decoding_filter then
+	 for current_index = 1,encoding_filter:size(1) do
+	    if categoricalness_enc_dec_alignment(current_index) == 'part' then
+	       if first_part > 1 then first_part = first_part - 1 
+	       elseif #part_indices < 3 then part_indices[#part_indices + 1] = current_index end
+	    elseif categoricalness_enc_dec_alignment(current_index) == 'categorical' then
+	       if first_categorical > 1 then first_categorical = first_categorical - 1
+	       elseif #categorical_indices < 3 then categorical_indices[#categorical_indices + 1] = current_index end
+	    end
+	    if (#part_indices >= 3) and (#categorical_indices >= 3) then 
+	       break 
+	    end
+	 end
+      end
+
+      local max_encoder = math.max(math.abs(encoding_filter:min()), math.abs(encoding_filter:max()))
+      local max_decoder = math.max(math.abs(decoding_filter:min()), math.abs(decoding_filter:max()))
+
+      -- construct the full image from the composite pieces
+      local function make_figure(num_rows, row_mapper, file_name)
+	 local filter_side_length = math.sqrt(input_size)
+	 local padding = 1
+	 local extra_padding = 8
+	 local total_extra_padding = 2*extra_padding
+	 local xmaps = total_num_shrink_copies + 2
+	 local ymaps = num_rows
+	 local height = filter_side_length + padding
+	 local width = filter_side_length + padding
+	 local white_value = 1 --(args.symmetric and math.max(math.abs(args.input:min()),math.abs(args.input:max()))) or args.input:max()
+	 local image_out = torch.Tensor(height*ymaps, width*xmaps + total_extra_padding):fill(white_value)
+
+	 for y = 1,ymaps do
+	    for x = 1,xmaps do
+	       local current_extra_padding = (math.min(x - 1, 1) + math.max(x - (total_num_shrink_copies + 1), 0)) * extra_padding
+	       local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length)
+	       local selected_transfer_image
+	       if x == 1 then -- flip the color maps and normalize the encoder and decoder filters; we can multiply by -1 before normalizing because the normalization is symmetric around 0
+		  selected_transfer_image = encoding_filter:select(1,row_mapper(y)):clone():mul(-1):add(max_encoder):div(2*max_encoder)
+	       elseif x == total_num_shrink_copies + 2 then
+		  selected_transfer_image = decoding_filter:select(2,row_mapper(y)):clone():mul(-1):add(max_decoder):div(2*max_decoder)
+	       else 
+		  selected_transfer_image = optimal_dictionary_matrix[{row_mapper(y), x-1, {}}]
+	       end
+		  
+	       selected_image_region:copy(selected_transfer_image:unfold(1, filter_side_length, filter_side_length))
+	    end
+	 end
+	 image.savePNG(paths.concat(opt.log_directory, file_name), image_out)
+      end
+
+      make_figure(#part_indices, function(x) return part_indices[x] end, 'shrink_dictionary_part.png')
+      make_figure(#categorical_indices, function(x) return categorical_indices[x] end, 'shrink_dictionary_categorical.png')
+      make_figure(hidden_layer_size, function(x) return x end, 'shrink_dictionary.png')
+   end
+
+   function receptive_field_builder:plot_reconstruction_connections(opt)
+      plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 20)
    end
 
    function receptive_field_builder:plot_other_figures(opt)
@@ -171,6 +257,9 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       local dec_norm_vec = torch.Tensor(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(2))
       local classification_norm_vec = torch.Tensor(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(2))
       local prod_norm_vec = torch.Tensor(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(2))
+      local ista_ideal_prod = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
+      local ista_ideal_norm_vec = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
+      
       local average_recurrent_pos_connection_angle = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
       local average_recurrent_neg_connection_angle = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
       local average_recurrent_pos_connection_categoricalness = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
@@ -199,6 +288,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       local connection_weight_counts_part_to_categorical = torch.Tensor(cwm_pc_num_bins):zero()
       local connection_weight_dot_products_part_to_categorical = torch.linspace(-1,1,cwm_pc_num_bins)
 
+      local ista_ideal_matrix = torch.mm(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:t(), model.layers[1].module_list.decoding_feature_extraction_dictionary.weight):mul(-1) --:add(-1, torch.diag(torch.ones(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(2)))) -- NOT NECESSARY since the identity matrix is already added in explicitly
 
       --torch.diag(torch.mm(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)), 
 	 
@@ -209,9 +299,14 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	 classification_norm_vec[i] = model.module_list.classification_dictionary.weight:select(2,i):norm()
 	 prod_norm_vec[i] = torch.dot(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:select(1,i), 
 				      model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:select(2,i))
+
+	 ista_ideal_prod[i] = torch.dot(model.layers[1].module_list.explaining_away.weight:select(1,i),
+				  ista_ideal_matrix:select(1,i))
+	 ista_ideal_norm_vec[i] = ista_ideal_matrix:select(1,i):norm()
       end
       --print(norm_vec:unfold(1,10,10))
       local angle_between_encoder_and_decoder = torch.cdiv(prod_norm_vec, torch.cmul(enc_norm_vec, dec_norm_vec)):acos()
+      local angle_between_recurrent_input_and_ISTA_ideal = torch.cdiv(ista_ideal_prod, torch.cmul(norm_vec, ista_ideal_norm_vec)):acos()
 
       for i = 1,model.layers[1].module_list.explaining_away.weight:size(1) do
 	 local pos_norm, neg_norm, pos_weighted_sum_angle, neg_weighted_sum_angle, pos_weighted_sum_categoricalness, neg_weighted_sum_categoricalness = 0, 0, 0, 0, 0, 0
@@ -308,15 +403,23 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	 norm_classification_connection[i] = model.module_list.classification_dictionary.weight:select(2,i):norm()
       end
 
+
+      gnuplot.pngfigure(opt.log_directory .. '/scat_recurrent_weight_match_to_ista_ideal.png') 
+      gnuplot.plot(angle_between_encoder_and_decoder, angle_between_recurrent_input_and_ISTA_ideal)
+      gnuplot.xlabel('angle between encoder and decoder')
+      gnuplot.ylabel('angle between recurrent input and ista ideal')
+      gnuplot.plotflush()
+
       gnuplot.figure() -- percentage of inputs for which the unit is activated at some point, but the first activation occurs after the first iteration; versus the magnitude of the recurrent connections; categorical units turn on later, since they have poorly structured encoder inputs but strong connections to part-units.
       gnuplot.plot(angle_between_encoder_and_decoder, percentage_late_activation)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('prob of late activation')
 
-      gnuplot.figure() -- percentage of inputs for which the unit is activated at some point, but the first activation occurs at the second iteration; versus the magnitude of the recurrent connections; categorical units turn on later, since they have poorly structured encoder inputs but strong connections to part-units.
+      gnuplot.pngfigure(opt.log_directory .. '/scat_prob_of_second_iter_activation.png') -- percentage of inputs for which the unit is activated at some point, but the first activation occurs at the second iteration; versus the magnitude of the recurrent connections; categorical units turn on later, since they have poorly structured encoder inputs but strong connections to part-units.
       gnuplot.plot(angle_between_encoder_and_decoder, percentage_second_iter_activation)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('prob of second iter activation')
+      gnuplot.plotflush()
 
       gnuplot.figure() -- percentage of inputs for which the unit is activated at the end
       gnuplot.plot(angle_between_encoder_and_decoder, percentage_activated_at_end)
@@ -346,11 +449,12 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('recurrent connection mean without diagonal')
       --]]
 
-      gnuplot.figure() -- mean decoder column versus categoricalness
+      gnuplot.pngfigure(opt.log_directory .. '/scat_decoder_mean.png') -- mean decoder column versus categoricalness
       gnuplot.plot(angle_between_encoder_and_decoder,
 		   model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:mean(1):select(1,1)) -- argument to mean is the dimension collapsed
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('decoder mean')
+      gnuplot.plotflush()
 
       gnuplot.figure() -- mean decoder column versus categoricalness
       gnuplot.plot(angle_between_encoder_and_decoder,
@@ -359,10 +463,11 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('encoder mean')
 
       
-      gnuplot.figure() -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
+      gnuplot.pngfigure(opt.log_directory .. '/scat_recurrent_connection_magnitude.png') -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
       gnuplot.plot(angle_between_encoder_and_decoder, norm_vec)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('recurrent connection magnitude')
+      gnuplot.plotflush()
 
       gnuplot.figure() -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
       gnuplot.plot(angle_between_encoder_and_decoder, average_recurrent_pos_connection_angle)
@@ -391,10 +496,12 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('weighted average angle between decoder and categorical-restricted decoders - pi/2')
       --]]
 
-      gnuplot.figure() 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_classification_dictionary_connection_magnitude.png') 
       gnuplot.plot(angle_between_encoder_and_decoder, norm_classification_connection)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('classification dictionary connection magnitude')
+      gnuplot.plotflush()
+      
 
       --[[
       gnuplot.figure() -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
@@ -408,24 +515,27 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('weighted average categoricalness between decoder and negatively recurrently connected decoders')
       --]]
 
-      gnuplot.figure() -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
+      gnuplot.pngfigure(opt.log_directory .. '/scat_weighted_average_categoricalness.png') -- cos(angle) between encoder and decoder versus magnitude of recurrent input; categorical units have unaligned encoder/decoder pairs and larger recurrent connections
       gnuplot.plot(angle_between_encoder_and_decoder, average_recurrent_total_connection_categoricalness)
       gnuplot.xlabel('angle between encoder and decoder')
-      gnuplot.ylabel('weighted average categoricalness between decoder and total recurrently connected decoders')
+      gnuplot.ylabel('weighted average afferent enc-dec angle')
+      gnuplot.plotflush()
 
       print(angle_between_encoder_and_decoder:unfold(1,10,10))
       print(average_value_when_activated:unfold(1,10,10))
       print(average_value_when_activated:size())
 
-      gnuplot.figure() 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_average_final_value_when_activation.png') 
       gnuplot.plot(angle_between_encoder_and_decoder, average_value_when_activated)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('average final value of unit when activated')
+      gnuplot.plotflush()
 
-      gnuplot.figure() 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_class_dict_mag_versus_final_activation.png')
       gnuplot.plot(norm_classification_connection, average_value_when_activated)
-      gnuplot.xlabel('classification_dictionary_connection_magnitude')
+      gnuplot.xlabel('classification dictionary column magnitude')
       gnuplot.ylabel('average final value of unit when activated')
+      gnuplot.plotflush()
 
       gnuplot.figure() 
       gnuplot.plot(categoricalness_of_recurrent_weight_recipient, deviation_of_recurrent_weight_from_ISTA, '.')
@@ -439,15 +549,19 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('ratio between recurrent weight and ISTA ideal restricted to parts inputs')
       --]]
 
-      gnuplot.figure() 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_ista_weights_part_to_part.png')
+      --gnuplot.figure() 
       gnuplot.plot(dot_product_between_decoders_per_connection_from_part_to_part, weight_of_connections_from_part_to_part, '.')
       gnuplot.xlabel('dot product between decoders from part to part')
       gnuplot.ylabel('connection weight')
+      gnuplot.plotflush()
 
-      gnuplot.figure() 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_ista_weights_categorical_to_part.png')
+      --gnuplot.figure() 
       gnuplot.plot(dot_product_between_decoders_per_connection_from_categorical_to_part, weight_of_connections_from_categorical_to_part, '.')
       gnuplot.xlabel('dot product between decoders from categorical to part')
       gnuplot.ylabel('connection weight')
+      gnuplot.plotflush()
 
       gnuplot.figure() 
       gnuplot.plot(dot_product_between_decoders_per_connection_from_part_to_categorical, weight_of_connections_from_part_to_categorical, '.')
@@ -459,10 +573,11 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.xlabel('dot product between decoders from categorical to categorical')
       gnuplot.ylabel('connection weight')
 
-      gnuplot.figure() 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_v_diagram.png') 
       gnuplot.plot(connection_weight_dot_products_part_to_categorical, connection_weight_means_part_to_categorical:cdiv(connection_weight_counts_part_to_categorical))
       gnuplot.xlabel('dot product between decoders from part to categorical')
       gnuplot.ylabel('average connection weight')
+      gnuplot.plotflush()
 
       gnuplot.figure() 
       gnuplot.plot(angle_between_classifiers_per_connection_from_categorical_to_categorical, weight_of_connections_from_categorical_to_categorical, '.')
@@ -470,7 +585,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('connection weight')
 
 
-      plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 30)
+      --plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 20)
       plot_hidden_unit_trajectories(shrink_val_tensor:select(2,1), opt, 400)
       plot_hidden_unit_trajectories(shrink_val_tensor:select(2,1), opt, 400, 1, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size)
@@ -518,69 +633,94 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    return receptive_field_builder
 end
 
--- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units
-function plot_explaining_away_connections(encoding_filter, decoding_filter, explaining_away_filter, opt, restrictions, classification_filter)
-   local num_sorted_inputs = 20
-   local explaining_away_mag_filter = explaining_away_filter:clone() --:add(torch.diag(torch.ones(explaining_away_filter:size(2)))) -- correct for the fact that the identity matrix needs to be added in manually
-   local file_name, source_type, dest_type
-   local separate_by_class = false
-   local restrict_source_and_dest = false
+-- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units.  If restrictions is a table, it is organized like {(rows of fig contain connections from common: source, destination), (restrict source to: any, part, categorical), (restrict dest to: any, part, categorical)}
+function plot_explaining_away_connections(encoding_filter, decoding_filter, explaining_away_filter_orig, opt, restrictions, classification_filter, start_display_row, num_display_rows)
+   local num_sorted_connections = 20 -- number of connections to show for each unit
+   local explaining_away_mag_filter = explaining_away_filter_orig:clone() --:add(torch.diag(torch.ones(explaining_away_filter:size(2)))) -- correct for the fact that the identity matrix needs to be added in manually
+   local explaining_away_filter = explaining_away_filter_orig:clone() -- make a copy so as to avoid corrupting the original filter
+   local file_name, col_type, row_type
+   local separate_by_class = false -- reorder each row of the display so that connections of a given class are grouped together.  This makes it apparent if they tend to have the same sign
+   local restrict_source_and_dest = false -- don't plot all units and connections; rather based upon the value of restrictions, plot only sources and destinations of particular types
+   local dont_restrict_max_on_col = false -- when computing the maximal connection value for scaling the bars on top of the decoders, should the col-restriction be enforced?
+   local dont_restrict_max_on_row = false
+      
    if restrictions == 'restrict to positive' then
       explaining_away_mag_filter:maxZero()
       file_name = 'positive sorted recurrent connections'
-   elseif (type(restrictions) == 'table') and (restrictions[1] == 'source') then
-      explaining_away_mag_filter = explaining_away_mag_filter:abs():t()
-      explaining_away_filter = explaining_away_filter:t() -- transpose this to match the sorting filter; all rows now contain the outgoing rather than incoming connections
-      source_type = ((restrictions[3] == 'categorical') and 1) or ((restrictions[3] == 'part') and -1) or 0
-      dest_type = ((restrictions[2] == 'categorical') and 1) or ((restrictions[2] == 'part') and -1) or 0
-      restrict_source_and_dest = true
-      separate_by_class = restrictions[4]
-      file_name = 'sorted outgoing connections from ' .. (((dest_type == 1) and 'categorical') or 'part') .. ' to ' .. (((source_type == 1) and 'categorical') or 'part')
-   elseif (type(restrictions) == 'table') and (restrictions[1] == 'destination') then
+   elseif type(restrictions) == 'table' then
+      local connection_direction_name
+      if false and (restrictions[3] == 'categorical') then -- the projections to the categorical units are not ISTA-like, and so the diagonal doesn't have any special meaning
+	 print('adding in diagonal')
+	 explaining_away_mag_filter:add(torch.diag(torch.ones(explaining_away_filter:size(2))))
+	 explaining_away_filter:add(torch.diag(torch.ones(explaining_away_filter:size(2))))
+      end
+      
+      -- 'source' plots connections from a common source (cols of the explaining_away matrix); 'destination' plots connections to a common destination (rows of the explaining_away matrix)
+      -- restrictions[2] controls the source of the connections
+      -- restrictions[3] controls the dest of the connections: read as 'from [2] to [3]'
+      if restrictions[1] == 'source' then -- to enable the same code to organize the plot by source or by destination, transpose everything if we want to plot by source; if not transposed, the rows of the explaining_away matrix correspond to a single destination
+	 connection_direction_name = 'outgoing'
+	 col_type = restrictions[3] -- restrictions can be 'part', 'categorical', or 'all', and are implemented with the categoricalness filters and test_cat_restriction() below
+	 row_type = restrictions[2] 
+	 explaining_away_mag_filter = explaining_away_mag_filter:t()
+	 explaining_away_filter = explaining_away_filter:t() -- transpose this to match the sorting filter; all rows now contain the outgoing rather than incoming connections
+	 dont_restrict_max_on_row = true -- normalize magnitude bars based upon all incoming connections; i.e., only restrict based on cols
+      elseif restrictions[1] == 'destination' then
+	 connection_direction_name = 'incoming'
+	 col_type = restrictions[2] 
+	 row_type = restrictions[3] 
+	 dont_restrict_max_on_col = true -- normalize magnitude bars based upon all incoming connections; i.e., only restrict based on rows
+      end
       explaining_away_mag_filter = explaining_away_mag_filter:abs()
-      source_type = ((restrictions[2] == 'categorical') and 1) or ((restrictions[2] == 'part') and -1) or 0
-      dest_type = ((restrictions[3] == 'categorical') and 1) or ((restrictions[3] == 'part') and -1) or 0
       restrict_source_and_dest = true
       separate_by_class = restrictions[4]
-      file_name = 'sorted incoming connections from ' .. (((source_type == 1) and 'categorical') or 'part') .. ' to ' .. (((dest_type == 1) and 'categorical') or 'part')
+      file_name = 'sorted_' .. connection_direction_name .. '_connections_from_' .. (restrictions[2] or 'any') .. '_to_' .. (restrictions[3] or 'any')
    else
       explaining_away_mag_filter:abs()
       file_name = 'sorted recurrent connections'
    end
 
 
-
+   -- two options for defining categoricalness
    local function categoricalness_classification_filter(i)
-      if classification_filter:select(2,i):norm() > 0.5 then return 1
-      elseif classification_filter:select(2,i):norm() < 0.15 then return -1
-      else return 0 end
+      if classification_filter:select(2,i):norm() > 0.5 then return 'categorical' 
+      elseif classification_filter:select(2,i):norm() < 0.15 then return 'part' 
+      else return 'intermediate' end 
    end
    
    local function categoricalness_enc_dec_alignment(i)
       local enc = encoding_filter:select(1,i)
       local dec = decoding_filter:select(2,i)
       local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
-      if angle > 0.7 then return 1
-      elseif angle < 0.5 then return -1
-      else return 0 end
+      if angle > 0.7 then return 'categorical' 
+      elseif angle < 0.5 then return 'part' 
+      else return 'intermediate' end 
    end
 
    -- choose between different definitions of categoricalness
    --local categoricalness = categoricalness_classification_filter 
    local categoricalness = categoricalness_enc_dec_alignment
       
+   local function test_cat_restriction(restriction, index)
+      return (restriction == 'any') or (restriction == categoricalness(index))
+   end
 
-   local max_exp_away, max_decoding = math.max(math.abs(explaining_away_filter:max()), math.abs(explaining_away_filter:min())), decoding_filter:max()
+
+   local max_exp_away = math.max(math.abs(explaining_away_filter:max()), math.abs(explaining_away_filter:min()))
+   local max_decoding = math.max(math.abs(decoding_filter:max()), math.abs(decoding_filter:min()))
    local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)
-   local explaining_away_mag_filter_sorted, desired_indices = explaining_away_mag_filter:sort(2, true)
-   --local desired_indices = explaining_away_mag_filter_sort_indices:narrow(2,1,num_sorted_inputs)  -- THIS IS THE PROBLEM
+
+   -- sort each row (i.e., along the columns) of the explaining_away_mag_filter, and extract the permutation induced
+   local explaining_away_mag_filter_sorted, desired_indices = explaining_away_mag_filter:sort(2, true) 
+   --local desired_indices = explaining_away_mag_filter_sort_indices:narrow(2,1,num_sorted_connections)  -- THIS IS THE PROBLEM
    
-   -- set max_exp_away to the maximum amongst connections from part to categorical units; remember that exp_away has been transposed, so rows contain outgoing rather than incoming connections
+   -- if the considered connections are restricted, set max_exp_away to the maximum amongst connections from part/cat/all to part/cat/all units
    if restrict_source_and_dest then 
       max_exp_away = nil
       for i = 1,explaining_away_filter:size(1) do
 	 for j = 1,explaining_away_filter:size(2) do
-	    if (categoricalness(i) == dest_type) and (categoricalness(j) == source_type) then
+	    if (dont_restrict_max_on_row or test_cat_restriction(row_type, i)) and 
+	       (dont_restrict_max_on_col or test_cat_restriction(col_type, j)) then
 	       max_exp_away = max_exp_away or math.abs(explaining_away_filter[{i,j}])
 	       max_exp_away = math.max(max_exp_away, math.abs(explaining_away_filter[{i,j}]))
 	    end
@@ -592,77 +732,139 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
    -- to organize based upon sources rather than destinations, transpose the explaining-away matrix above
    -- to sort the connections first based on digit ID and then based on connection strength, create an array for each digit ID and use this intermediate storage to organize the data for the figure
 
+   -- determine which rows fit our criterion, so we don't consider irrelevant ones
+   -- it is necessary to do this first, since we may or may not specify a subset of these rows that we want.  If we don't specify the desired subset, we need to determine the number of rows to allocate the appropriate amoutn of memory for sorted_recurrent_connection_filter
+   local desired_display_rows = torch.Tensor(explaining_away_filter:size(1)):zero()
+   local current_test_row = 0
+   for i = 1,explaining_away_filter:size(1) do
+      if not(restrict_source_and_dest) or test_cat_restriction(row_type, i) then
+	 current_test_row = current_test_row + 1
+	 desired_display_rows[current_test_row] = i
+      end
+   end
+   desired_display_rows = desired_display_rows:narrow(1,1,current_test_row)
+   -- restrict attention to only the desired subset of acceptable rows
+   if start_display_row then
+      print('going from ', desired_display_rows:narrow(1,1,20))
+      desired_display_rows = desired_display_rows:narrow(1,start_display_row, num_display_rows)
+      print('to ', desired_display_rows)
+   else
+      num_display_rows = current_test_row
+   end
+
    -- this tensor holds the data for the output image.  The final image is made by unfolding this tensor.  The data for each mini-image is located in a single column.
-   local sorted_recurrent_connection_filter = torch.Tensor(decoding_filter:size(1), (num_sorted_inputs + 1) * explaining_away_filter:size(1)) 
-   local output_filter_index = 1 -- position in the tensor that will be used to generate the output image
-   for i = 1,desired_indices:size(1) do
-      if not(restrict_source_and_dest and (categoricalness(i) ~= dest_type)) then
-	 -- the first column is the decoder of the selected unit
-	 local current_column = sorted_recurrent_connection_filter:select(2,output_filter_index)
-	 current_column:copy(decoding_filter:select(2,i)) --:mul(0.1)
-	 output_filter_index = output_filter_index + 1
+   local sorted_recurrent_connection_filter = torch.Tensor(num_display_rows, num_sorted_connections + 1, decoding_filter:size(1)) 
+   --local output_filter_index = 1 -- position in the tensor that will be used to generate the output image
+   local i = nil -- make sure we don't use this
+   for out_row_index = 1,num_display_rows do
+      in_row_index = desired_display_rows[out_row_index]
+      if restrict_source_and_dest and not(test_cat_restriction(row_type, in_row_index)) then error('prescreened row was not acceptable!') end
 
-	 -- find the num_sorted_inputs largest connections of the desired type, separate them by the digit ID of the source, and then refill desired_indices so it will be grouped by digit ID
-	 if separate_by_class then 
-	    local sorted_index_copy = desired_indices:select(1,i):clone()
-	    local indices_by_class = {}
-	    for k = 1,classification_filter:size(1) do
-	       indices_by_class[k] = {}
-	    end
-	    local col_index = 0 -- search position within the row of sorted_index_copy, which is taken from desired_indices
-	    for j = 1,num_sorted_inputs do
-	       col_index = col_index + 1
-	       while categoricalness(sorted_index_copy[col_index]) ~= source_type do 
-		  col_index = col_index + 1 
-		  if col_index > desired_indices:size(2) then break end
-	       end 
-	       if col_index > desired_indices:size(2) then break end
+      -- the first column is the decoder of the selected unit
+      local current_column = sorted_recurrent_connection_filter[{out_row_index, 1, {}}] -- :select(2,output_filter_index)
+      current_column:copy(decoding_filter:select(2,in_row_index)) --:mul(0.1)
+      --output_filter_index = output_filter_index + 1
 
-	       -- determine the digit ID associated with this unit, and place it accordingly into indices_by_class
-	       local _, index_class = torch.max(classification_filter:select(2,sorted_index_copy[col_index]), 1) 
-	       index_class = index_class[1]
-	       indices_by_class[index_class][#(indices_by_class[index_class]) + 1] = sorted_index_copy[col_index]
-	    end
-
-	    -- refill desired_indices based upon indices_by_class, which is sorted by magnitude within each digit-ID bin
-	    col_index = 0
-	    for j = 1,#indices_by_class do
-	       for k = 1,#(indices_by_class[j]) do
-		  col_index = col_index + 1
-		  desired_indices[{i,col_index}] = indices_by_class[j][k]
-	       end
-	    end
+      -- find the num_sorted_connections largest connections of the desired type, separate them by the digit ID of the source, and then refill desired_indices so it will be grouped by digit ID
+      if separate_by_class then 
+	 local sorted_index_copy = desired_indices:select(1,in_row_index) --:clone()
+	 local indices_by_class = {}
+	 for k = 1,classification_filter:size(1) do
+	    indices_by_class[k] = {}
 	 end
-
+	 local col_index = 0 -- search position within the row of sorted_index_copy, which is taken from desired_indices
+	 for j = 1,num_sorted_connections do
+	    col_index = col_index + 1
+	    while not(test_cat_restriction(col_type, sorted_index_copy[col_index])) do -- consider only columns of the right type, in sorted order 
+	       col_index = col_index + 1 
+	       if col_index > desired_indices:size(2) then break end
+	    end 
+	    if col_index > desired_indices:size(2) then break end
+	    
+	    -- determine the digit ID associated with this unit, and place it accordingly into indices_by_class
+	    local _, index_class = torch.max(classification_filter:select(2,sorted_index_copy[col_index]), 1) 
+	    index_class = index_class[1]
+	    indices_by_class[index_class][#(indices_by_class[index_class]) + 1] = sorted_index_copy[col_index]
+	 end
 	 
-	 -- the remaining columns are the decoders of the units connected to it, sorted and scaled by connection strength
-	 local col_index = 0
-	 for j = 1,num_sorted_inputs do
-	    if restrict_source_and_dest then -- if we're plotting connections from part units to categorical units, skip all connections to part units
+	 -- refill desired_indices based upon indices_by_class, which is sorted by magnitude within each digit-ID bin
+	 col_index = 0
+	 for j = 1,#indices_by_class do
+	    for k = 1,#(indices_by_class[j]) do
 	       col_index = col_index + 1
-	       while categoricalness(desired_indices[{i,col_index}]) ~= source_type do 
-		  col_index = col_index + 1 
-	       end 
-	       if col_index > desired_indices:size(2) then break end
-	    else col_index = j end
-	    current_column = sorted_recurrent_connection_filter:select(2,output_filter_index)
-	    current_column:copy(decoding_filter:select(2,desired_indices[{i,col_index}]))
-	    --current_column:mul(explaining_away_filter[{i,desired_indices[{i,col_index}]}]) -- + (((i == desired_indices[{i,j}]) and 1) or 0))
-
-	    -- draw a bar indicating the size (even if negative) of the recurrent connection; the step size is the sign of the connection
-	    local rec_connection_size = explaining_away_filter[{i,desired_indices[{i,col_index}]}]
-	    local rec_connection_sign = rec_connection_size/math.abs(rec_connection_size)
-	    for i=1,math.ceil((image_edge_length - 2) * math.abs(rec_connection_size)/max_exp_away) do
-	       current_column[image_edge_length + 1 + i] = max_decoding * rec_connection_sign
+	       desired_indices[{in_row_index,col_index}] = indices_by_class[j][k]
 	    end
-	    output_filter_index = output_filter_index + 1
 	 end
-      end -- use this unit as the basis for a row
+	 if col_index ~= num_sorted_connections then
+	    error('col_index did not match num_sorted_connections')
+	 end
+      end
+      
+      -- the remaining columns are the decoders of the units connected to it, sorted and scaled by connection strength
+      local col_index = 0
+      for j = 1,num_sorted_connections do
+	 if restrict_source_and_dest then -- if we're plotting connections from part units to categorical units, skip all connections to part units
+	    col_index = col_index + 1
+	    while not(test_cat_restriction(col_type, desired_indices[{in_row_index,col_index}])) do 
+	       col_index = col_index + 1 
+	    end 
+	    if col_index > desired_indices:size(2) then break end
+	 else col_index = j end
+	 
+	 if separate_by_class and col_index > num_sorted_connections then error('requested unprepared index') end -- only num_sorted_connections columns were properly filled above
+	 
+	 current_column = sorted_recurrent_connection_filter[{out_row_index, j+1, {}}] --:select(2,output_filter_index)
+	 current_column:copy(decoding_filter:select(2,desired_indices[{in_row_index,col_index}]))
+	 --current_column:mul(explaining_away_filter[{i,desired_indices[{i,col_index}]}]) -- + (((i == desired_indices[{i,j}]) and 1) or 0))
+	 
+	 -- draw a bar indicating the size (even if negative) of the recurrent connection; the step size is the sign of the connection
+	 local rec_connection_size = explaining_away_filter[{in_row_index,desired_indices[{in_row_index,col_index}]}]
+	 local rec_connection_sign = rec_connection_size/math.abs(rec_connection_size)
+	 for i=1,math.ceil((image_edge_length - 2) * math.abs(rec_connection_size)/max_exp_away) do
+	    current_column[image_edge_length + 1 + i] = max_decoding * rec_connection_sign
+	 end
+	 --output_filter_index = output_filter_index + 1
+      end
    end -- for all units
    print(sorted_recurrent_connection_filter:size())
+   --[[
    print('narrowing to ' .. (output_filter_index - 1))
    local narrowed_sorted_recurrent_connection_filter = sorted_recurrent_connection_filter:narrow(2,1,output_filter_index - 1)
-   save_filter(narrowed_sorted_recurrent_connection_filter, file_name, opt.log_directory, num_sorted_inputs + 1) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
+   if start_display_row and num_display_rows then
+      print('narrowing further: ' .. start_display_row .. ', ' .. num_display_rows)
+      narrowed_sorted_recurrent_connection_filter = narrowed_sorted_recurrent_connection_filter:narrow(2, 1 + (start_display_row - 1)*(num_sorted_connections + 1), 
+												       num_display_rows*(num_sorted_connections + 1))
+   end
+   save_filter(narrowed_sorted_recurrent_connection_filter, file_name, opt.log_directory, num_sorted_connections + 1) -- this depends upon save_filter using a row length of num_sorted_connections!!!
+   --]]
+
+   -- the image must be bounded between 0 and 1 to be passed into image.savePNG()
+   sorted_recurrent_connection_filter:mul(-1)
+   sorted_recurrent_connection_filter:add(max_decoding):div(2*max_decoding)
+   
+   print('total min and max are ' .. sorted_recurrent_connection_filter:min() .. ', ' .. sorted_recurrent_connection_filter:max())
+   
+   -- construct the full image from the composite pieces
+   local filter_side_length = math.sqrt(decoding_filter:size(1))
+   --local current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length)
+   
+   local padding = 1
+   local extra_padding = 8
+   local total_extra_padding = extra_padding
+   local xmaps = num_sorted_connections + 1
+   local ymaps = num_display_rows
+   local height = filter_side_length + padding
+   local width = filter_side_length + padding
+   local white_value = 1 --(args.symmetric and math.max(math.abs(args.input:min()),math.abs(args.input:max()))) or args.input:max()
+   local image_out = torch.Tensor(height*ymaps, width*xmaps + total_extra_padding):fill(white_value)
+   for y = 1,ymaps do
+      for x = 1,xmaps do
+	 local current_extra_padding = math.min(x - 1, 1) * extra_padding
+	 local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length)
+	 selected_image_region:copy(sorted_recurrent_connection_filter[{y, x, {}}]:unfold(1, filter_side_length, filter_side_length))
+      end
+   end
+   image.savePNG(paths.concat(opt.log_directory, file_name .. '.png'), image_out)
 end
 
 local function plot_bar(args) -- {bar_length, max_bar_length, image_edge_length, max_decoding, current_column}
@@ -706,11 +908,12 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    -- different hidden units go along the second dimension of activation_tensor
    local SHOW_PROGRESSIVE_SUBTRACTION = false
    num_display_columns = num_display_columns or 10
-   local num_reconstructions_to_plot = 50 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
+   local num_reconstructions_to_plot = 3 --500 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
    local num_sorted_inputs = num_display_columns - 2 -- the first two columns are the original input and the final reconstruction
    local num_display_rows_per_input = ((SHOW_PROGRESSIVE_SUBTRACTION and 3) or 2)
    local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)
-   local max_decoding = decoding_filter:max()
+   local max_decoding = math.max(math.abs(decoding_filter:min()), math.abs(decoding_filter:max()))
+   --local min_input, max_input = input_tensor:min(), input_tensor:max()
 
    if activation_tensor:size(1) ~= input_tensor:size(1) then
       error('number of data set elements in activation tensor ' .. activation_tensor:size(1) .. ' does not match the number in input tensor ' .. input_tensor:size(1))
@@ -718,51 +921,101 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
       error('number of data set elements in activation tensor ' .. activation_tensor:size(1) .. ' or the number in input tensor ' .. input_tensor:size(1) .. ' is smaller than the number of requested trajectories ' .. num_reconstructions_to_plot)
    end
 
-   --local flattened_desired_indices = desired_indices:reshape(desired_indices:nElement()) -- takes element row-wise, and it is the rows that have been sorted and narrowed
-   local sorted_reconstruction_filter = torch.Tensor(decoding_filter:size(1), num_display_rows_per_input * num_display_columns * num_reconstructions_to_plot):zero() -- tensor in which the figure will be constructed
+   -- sorted_reconstruction_filter holds all of the small images that will be used to build the larger image.  Its dimensions are: different images to reconstruct, each of which corresponds to two rows; the rows for each reconstruction, the first contains parts, the second contains the accretive reconstruction; columns, corresponding to steps in the reconstruction; the filters themselves
+   local sorted_reconstruction_filter = torch.Tensor(num_reconstructions_to_plot, num_display_rows_per_input, num_display_columns, decoding_filter:size(1)):zero() -- tensor in which the figure will be constructed
    local progressive_accretion_filter = torch.Tensor(decoding_filter:size(1)) -- temporary storage for constructing the built-up output
    local progressive_subtraction_filter = torch.Tensor(decoding_filter:size(1)) -- temporary storage for constructing the built-down residual
-   local output_filter_index = 1
-   for i = 1,num_reconstructions_to_plot do
-      -- plot the initial input
-      local current_column = sorted_reconstruction_filter:select(2,output_filter_index)
-      current_column:copy(input_tensor:select(1,i))
+   --local desired_run_iterations_for_plot = {5, 10, 47} -- different digits: 6,4,7
+   local desired_run_iterations_for_plot = {88, 471, 379} -- all 3's -- 482
+   for counter = 1,num_reconstructions_to_plot do
+      i = (desired_run_iterations_for_plot and desired_run_iterations_for_plot[counter]) or counter
+
       progressive_subtraction_filter:copy(input_tensor:select(1,i))
       progressive_accretion_filter:zero()
-      local initial_input_mag = current_column:norm()
-      output_filter_index = output_filter_index + 1
-
-      -- plot the final reconstruction
-      current_column = sorted_reconstruction_filter:select(2,output_filter_index)
-      torch.mv(current_column, decoding_filter, activation_tensor:select(1,i))
-      output_filter_index = output_filter_index + 1
+      local initial_input_mag = input_tensor:select(1,i):norm()
 
       local activation_mag_vector = activation_tensor:select(1,i):clone():abs() -- this probably isn't necessary, since units are non-negative by default, but we do it to be safe and forward-compatible
       local activation_mag_vector_sorted, activation_mag_vector_sort_indices = activation_mag_vector:sort(true)
       local desired_indices = activation_mag_vector_sort_indices:narrow(1,1,num_sorted_inputs)
+      local current_filter
+      
       -- for each element of the reconstruction, in order of magnitude
       for j = 1,desired_indices:size(1) do
-	 current_column = sorted_reconstruction_filter:select(2,output_filter_index)
-	 current_column:copy(decoding_filter:select(2,desired_indices[j]))
-	 --current_column:mul(activation_tensor[{i,desired_indices[j]}]) 
-	 plot_bar{bar_length = activation_tensor[{i,desired_indices[j]}], max_bar_length = 1.5*initial_input_mag, image_edge_length = image_edge_length, max_decoding = max_decoding, current_column = current_column}
+	 current_filter = sorted_reconstruction_filter[{counter,1,j,{}}] 
+	 current_filter:copy(decoding_filter:select(2,desired_indices[j]))
+	 --current_filter:mul(activation_tensor[{i,desired_indices[j]}]) 
+	 plot_bar{bar_length = activation_tensor[{i,desired_indices[j]}], max_bar_length = 1.5*initial_input_mag, image_edge_length = image_edge_length, max_decoding = max_decoding, current_column = current_filter}
 
 	 progressive_subtraction_filter:add(-activation_tensor[{i,desired_indices[j]}], decoding_filter:select(2,desired_indices[j]))
 	 progressive_accretion_filter:add(activation_tensor[{i,desired_indices[j]}], decoding_filter:select(2,desired_indices[j]))
-	 sorted_reconstruction_filter:select(2,output_filter_index + num_display_columns):copy(progressive_accretion_filter)
+	 sorted_reconstruction_filter[{counter,2,j,{}}]:copy(progressive_accretion_filter)
 	 
 	 if SHOW_PROGRESSIVE_SUBTRACTION then
-	    local sub_column = sorted_reconstruction_filter:select(2,output_filter_index + 2*num_display_columns)
+	    local sub_column = sorted_reconstruction_filter[{counter,3,j,{}}] 
 	    sub_column:copy(progressive_subtraction_filter)
 	    print('bar length ' .. progressive_subtraction_filter:norm(), ' max bar length ', 1.5*initial_input_mag)
 	    plot_bar{bar_length = progressive_subtraction_filter:norm(), max_bar_length = initial_input_mag, image_edge_length = image_edge_length, max_decoding = max_decoding, current_column = sub_column}
 	 end
 
-	 output_filter_index = output_filter_index + 1
       end
-      output_filter_index = output_filter_index + (num_display_rows_per_input - 1) * num_display_columns
+
+      -- plot the final reconstruction
+      current_filter = sorted_reconstruction_filter[{counter,2,desired_indices:size(1)+1,{}}]
+      torch.mv(current_filter, decoding_filter, activation_tensor:select(1,i))
+
+      -- plot the initial input
+      current_filter = sorted_reconstruction_filter[{counter,2,desired_indices:size(1)+2,{}}]
+      current_filter:copy(input_tensor:select(1,i))
+      progressive_subtraction_filter:copy(input_tensor:select(1,i))
+      progressive_accretion_filter:zero()
+      local initial_input_mag = current_filter:norm()
+
+      -- white out the filter space above the final reconstruction and initial input
+      --sorted_reconstruction_filter[{counter,1,desired_indices:size(1)+1,{}}]:fill(1)
+      --sorted_reconstruction_filter[{counter,1,desired_indices:size(1)+2,{}}]:fill(1)
    end
-   save_filter(sorted_reconstruction_filter, 'sorted reconstruction dictionary columns', opt.log_directory, num_display_columns) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
+
+
+   -- the image must be bounded between 0 and 1 to be passed into image.savePNG()
+   local part_filters = sorted_reconstruction_filter:narrow(3,1,num_sorted_inputs):select(2,1) -- AFTER SELECTING, THE ORDER OF THE DIMENSIONS CHANGES!!!  SELECT FIRST!!!
+   print('max decoding is ' .. max_decoding .. ' but actual max and min are ' .. part_filters:max() .. ', ' .. part_filters:min())
+   part_filters:mul(-1)
+   part_filters:add(max_decoding):div(2*max_decoding)
+
+   -- white out the part filters above the final reconstruction and input display
+   local excess_part_filters = sorted_reconstruction_filter:narrow(3,num_sorted_inputs+1,2):select(2,1)
+   excess_part_filters:fill(1)
+   --sorted_reconstruction_filter[{counter,1,{num_sorted_inputs+1, num_sorted_inputs+2},{}}]:fill(1)
+
+   local accretion_filters = sorted_reconstruction_filter:select(2,2)
+   local accretion_min, accretion_max = accretion_filters:min(), accretion_filters:max()
+   accretion_filters:add(-1*accretion_min):div(accretion_max - accretion_min):mul(-1):add(1) -- map the dynamic range min,max -> 1,0 ; note that the dynamic range is reversed, scaled, and shifted
+
+   print('total min and max are ' .. sorted_reconstruction_filter:min() .. ', ' .. sorted_reconstruction_filter:max())
+   
+   -- construct the full image from the composite pieces
+   local filter_side_length = math.sqrt(decoding_filter:size(1))
+   --local current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length)
+   
+   local padding = 1
+   local extra_padding = 8
+   local total_extra_padding = (num_display_columns - num_sorted_inputs) * extra_padding
+   local xmaps = num_display_columns
+   local ymaps = num_display_rows_per_input * num_reconstructions_to_plot
+   local height = filter_side_length + padding
+   local width = filter_side_length + padding
+   local white_value = 1 --(args.symmetric and math.max(math.abs(args.input:min()),math.abs(args.input:max()))) or args.input:max()
+   local image_out = torch.Tensor(height*ymaps, width*xmaps + total_extra_padding):fill(white_value)
+   for y = 1,ymaps do
+      for x = 1,xmaps do
+	 local current_extra_padding = math.max(x - num_sorted_inputs, 0) * extra_padding
+	 local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length)
+	 selected_image_region:copy(sorted_reconstruction_filter[{math.ceil(y / num_display_rows_per_input), ((y-1) % num_display_rows_per_input) + 1, x, {}}]:unfold(1, filter_side_length, filter_side_length))
+      end
+   end
+   image.savePNG(paths.concat(opt.log_directory, 'sorted_reconstruction_dictionary_columns.png'), image_out)
+
+   --save_filter(sorted_reconstruction_filter, 'sorted reconstruction dictionary columns', opt.log_directory, num_display_columns) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
 end
 
 function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)

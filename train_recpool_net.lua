@@ -219,20 +219,25 @@ function RecPoolTrainer:make_feval()
 end
 
 
-function RecPoolTrainer:train(train_data, test_epoch) 
-   -- test_epoch is true if we're just testing the network on the validation data, in which case nothing should be altered (in particular, learning should not be performed
-   if not(test_epoch) then
+function RecPoolTrainer:train(train_data, epoch_type) 
+   -- epoch_type == 'validation' if we're just testing the network on the validation data, in which case nothing should be altered (in particular, learning should not be performed
+   -- epoch_type == 'display' if we're generating figures, in which case we want to keep the order consistent
+   if not(epoch_type == 'validation') then
       self.epoch = self.epoch + 1
    end
 
-   local this_epoch_batch_size = (test_epoch and self.opt.test_batch_size) or self.opt.batch_size
+   local this_epoch_batch_size = ((epoch_type == 'validation') and self.opt.test_batch_size) or self.opt.batch_size
    
    -- local vars
    local time = sys.clock()
    
    -- shuffle at each epoch
-   local shuffle = torch.randperm(train_data:nExample()) --was trsize
-   --local shuffle = torch.range(1,train_data:nExample())
+   local shuffle 
+   if epoch_type == 'display' then
+      shuffle = torch.range(1,train_data:nExample())
+   else
+      shuffle = torch.randperm(train_data:nExample()) --was trsize
+   end
 
    -- do one epoch
    print('==> doing epoch on training data:')
@@ -272,7 +277,7 @@ function RecPoolTrainer:train(train_data, test_epoch)
 
       
       -- optimize on current mini-batch
-      if test_epoch then
+      if epoch_type == 'validation' then
 	 self.feval(self.flattened_parameters) -- just run the network on the minibatch_inputs and minibatch_targets to generate the confusion matrix, without doing any training
       elseif self.opt.optimization == 'CG' then
          self.config = self.config or {maxIter = self.opt.max_iter}
@@ -308,7 +313,7 @@ function RecPoolTrainer:train(train_data, test_epoch)
       end
 
       -- repair the parameters one final time
-      if not(test_epoch) then self.model:repair() end -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
+      if not(epoch_type == 'validation') then self.model:repair() end -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
    end -- loop over the current epoch
    
    -- time taken for the current epoch (each call to train() only runs one epoch)

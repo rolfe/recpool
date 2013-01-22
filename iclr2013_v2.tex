@@ -1,0 +1,994 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{nips12submit_e,times}
+\usepackage{amsmath, amsthm, amssymb}
+\usepackage[mathcal]{eucal}
+\usepackage{graphicx}
+%\usepackage[text={7.5in,10in},centering]{geometry} %USE THIS ONE
+%\usepackage[text={7in,9.4in},centering]{geometry} 
+\usepackage{verbatim}
+%\usepackage{setspace}
+%\usepackage[numbers,sort]{natbib}
+\usepackage[sort]{natbib}
+\usepackage{booktabs}
+%\usepackage[bookmarks=true,pdfborder={0 0 0}]{hyperref}
+
+
+
+%\title{Tangent distance-based classification induced by discriminative training of a deep sparse coder}
+%\title{Template-based representations in a deep sparse coder}
+%\title{Automatically decomposing data into a template and tangent space by discriminatively training a deep sparse coder}
+%\title{Inducing tangent space representations by discriminatively training a deep sparse coder}
+%\title{Tangent space representations with \\ recurrent sparse autoencoders}
+%\title{Deep sparse autoencoders can induce explicit tangent~space representations}
+%\title{Classification with recurrent sparse autoencoders}
+%\title{Discriminative recurrent sparse auto-encoders}
+\title{Discriminative Recurrent Sparse Auto-Encoders}
+
+\author{
+Jason Tyler Rolfe \& Yann LeCun \\ %\thanks{further information} \\
+Courant Institute of Mathematical Sciences, New York University\\ 
+719 Broadway, 12th Floor \\
+New York, NY 10003\\
+\texttt{\{rolfe, yann\}@cs.nyu.edu} \\
+%\texttt{rolfe@cs.nyu.edu} \\
+%\And
+%Yann LeCun \\
+%Courant Institute of Mathematical Sciences \\
+%New York University \\
+%New York, NY 10003\\
+%\texttt{yann@cs.nyu.edu} \\
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+%\newcommand{\fix}{\marginpar{FIX}}
+%\newcommand{\new}{\marginpar{NEW}}
+
+\nipsfinalcopy % Uncomment for camera-ready version
+
+
+\newcommand{\bv}{\mathbf{b}}
+\newcommand{\p}{\mathbf{p}}
+\newcommand{\x}{\mathbf{x}}
+\newcommand{\y}{\mathbf{y}}
+\newcommand{\C}{\mathbf{C}}
+\newcommand{\D}{\mathbf{D}}
+\newcommand{\E}{\mathbf{E}}
+\newcommand{\I}{\mathbf{I}}
+\newcommand{\M}{\mathbf{M}}
+\newcommand{\Sm}{\mathbf{S}}
+\newcommand{\logistic}{\text{logistic}}
+
+
+\begin{document}
+
+
+% Compare template to average, to show that it is sharper?
+% How does the classification task affect the templates found?  For instance, what if the required classification is even versus odd digits?
+
+\maketitle
+
+
+
+\begin{comment} 
+%ABSTRACT VERSION 1
+Recurrent sparse networks have the potential to exhibit all the power of deep networks, while substantially reducing the number of parameters that must be trained.
+We present discriminative recurrent sparse autoencoders, which consist of a generatively pretrained and discriminatively fine-tuned recurrent network of rectified linear units.
+From an initially unstructured recurrent network, the hidden units of discriminative recurrent sparse autoencoders naturally organize into a hierarchy of features.  The most abstract units use a sophisticated form of pooling to gradually integrate %pool 
+over the lower-level units, and implement templates for each supervised class.  The lower-level units directly construct a sparse, part-based decomposition of the residual input after the template is subtracted, distinguishing between directions parallel and orthogonal to the data manifold.  %and thus measure a low-dimensional tangent distance around the template.  
+Even using a small number of hidden units per layer, discriminative recurrent sparse autoencoders can achieve near state-of-the-art performance on permutation-agnostic handwritten digit recognition.
+\end{comment}
+
+\begin{comment}
+%ABSTRACT VERSION 2 (YANN)
+We present the discriminative recurrent sparse auto-encoder model, which consist of an encoder whose hidden layer is recurrent, and two linear decoders, one to reconstruct the input, and one to predict the output. The hidden layer uses rectified linear units (ReLU) and is subject to a sparsity penalty. The network is first trained in unsupervised mode to reconstruct the input, and subsequently trained discriminatively to also produce the desired output. The recurrent network is time-unfolded with a given number of iterations, and trained using back-propagation through time. 
+
+In its time-unfolded form, the network can be seen as a very deep multi-layer network in which the weights are shared between the hidden layers. The depth allows the system to exhibit all the power of deep network while substantially reducing the number of trainable parameters. The particular architecture being proposed also reduces issues related to the vanishing gradient problem that has plagued deep nets and recurrent nets.  
+
+From an initially unstructured recurrent network, the hidden units of discriminative recurrent sparse auto-encoders naturally organize into a hierarchy of features. The systems spontaneously learns categorical units whose activity builds up over time through interactions with units that represent parts or deformations of templates.  
+
+Even using a small number of hidden units per layer, discriminative recurrent sparse autoencoders that are pixel permutation agnostic achieve excellent performance on MNIST.
+\end{comment}
+
+\begin{abstract}
+We present the discriminative recurrent sparse auto-encoder model, comprising a recurrent encoder of rectified linear units, unrolled %in time 
+for a fixed number of iterations, and connected to two linear decoders that reconstruct the input and predict its supervised classification. %The recurrent encoder is unrolled in time for a fixed number of iterations, and trained using backpropagation-through-time.  
+Training via backpropagation-through-time initially minimizes an unsupervised sparse reconstruction error; the loss function is then augmented with a discriminative term on the supervised classification.  
+%In its temporally-unrolled form, the network can be seen as a deep network, with parameters shared between the hidden layers. 
+The depth implicit in the temporally-unrolled form allows the system to exhibit all the power of deep networks, while substantially reducing the number of trainable parameters. %The proposed architecture also mitigates the vanishing gradient problem, which has plagued deep and recurrent networks.
+
+From an initially unstructured network the hidden units differentiate into categorical-units, each of which represents an input prototype with a well-defined class; and part-units representing deformations of these prototypes.  The learned organization of the recurrent encoder is hierarchical: part-units are driven directly by the input, whereas the activity of categorical-units builds up over time through interactions with the part-units.  Even using a small number of hidden units per layer, discriminative recurrent sparse auto-encoders achieve excellent performance on MNIST. % (that are pixel-permutation agnostic / without using prior information).
+\end{abstract}
+
+\section{Introduction}
+
+\begin{comment}
+INTRODUCTION VERSION 1
+It is widely believed that natural stimuli, such as images and sounds, fall near a low-dimensional manifold within a higher-dimensional space (the \emph{manifold hypothesis}) \citep{lee2003, olshausen2004, bengio2012}.  The manifold hypothesis is consistent with the observation that certain continuous deformations of a natural stimulus, such as shifts, rotations, and scalings of visual stimuli, yield other well-formed natural stimuli~\citep{simard1993}.  In contrast, the overwhelming majority of possible inputs, such as white noise constructed by choosing each visual pixel or instantaneous sound pressure level independently, are obviously not natural.  %Correspondingly, perturbations of natural stimuli in most directions move off of the manifold and yield stimuli that are perceived as noise.  
+
+The low-dimensional data manifold provides an intuitively compelling and empirically effective basis for classification \citep{simard1998, rifai2011b}.  The continuous deformations that define the data manifold usually preserve identity, whereas even relatively small invalid transformations may change the class of a stimulus.  For instance, the various handwritten renditions of the digit $3$ in figure~\ref{gradual_reconstruction_figure}(c) barely overlap, and so the Euclidean distance between them in pixel space is greater than that to the nearest $8$ formed by closing both loops.  Nevertheless, smooth deformations of one $3$ into another correspond to relatively short trajectories along the data manifold,\footnote{In particular, figure~\ref{gradual_reconstruction_figure}(c) shows how each input can be produced by identity-preserving deformations from a common template, using the tangent space decomposition produced by our network.} whereas the transformation of a $3$ into an $8$ requires a much longer path within the data manifold.  As a result, a nearest-neighbor-based classification algorithm can be much more accurate when the distance is taken to be the infimum over local transformations within the data manifold~\citep{simard1998}.  %Indeed, if the submanifolds of different classes are disjoint, the distance along the data manifold between elements of different classes is infinite, and nearest-neighbor classification is perfect when distance is measured along the data manifold.
+
+%The data manifold is often approximated by the vector spaces tangent to it at the data points, known as the tangent space.
+
+A prohibitive amount of data is required to fully characterize the data manifold \citep{narayanan2010}, so it is often approximated by the set of linear submanifolds tangent to the data manifold at the observed datapoints, known as the \emph{tangent spaces} \citep{simard1998, rifai2011b, ekanadham2011}.  Even using this approximation, evaluating the tangent distance\footnote{The tangent distance between two points is the infimum of the distance between the linear submanifolds tangent to the data manifold at the points.} between two points requires solving a system of $O(n)$ linear equations, where $n$ is the dimensionality of the data manifold.  For each test point, a nearest-neighbors algorithm must compute such a distance for each element of the training set, and is thus computationally inefficient. % and biologically implausible.  
+Surprisingly, we show here that recurrent sparse autoencoders can naturally and efficiently form an explicit tangent space representation, consisting of a template and a perturbation within the data manifold.  %in the associated tangent space.
+%While, contractive autoencoders \citep{rifai2011a} and other tangent propagation techniques \citep{simard1993} implicitly learn to only represent the tangent space, they ?!?
+
+Sparse coding, which underlies recurrent sparse autoencoders, implies a prior even stronger than the manifold hypothesis; % each hidden unit is associated with a vector from the origin, and 
+the data is modeled by the union of low-dimensional vector spaces,\footnote{That is, a linear manifold passing through the origin.} 
+the bases of which consist of small subsets drawn from a larger set of vectors \citep{olshausen1996, olshausen1997, tibshirani1996}.
+%for which a small subset of these vectors forms a basis \citep{olshausen1996}.  
+These basis vectors constitute simple ``parts'' into which the input is additively decomposed \citep{lee1999}.  Sparse coding can be performed via biologically plausible mechanisms \citep{rozell2008}, and conforms to the sparse neural activity observed in the cortex \citep{vinje2000, olshausen2004}, which has evolved to efficiently represent natural stimuli \citep{barlow1961}.
+Consistent with receptive fields observed in the brain, Gabors are the sparse components learned in the visual domain~\citep{saxe2011}, and gammatones are the sparse components of the auditory domain \citep{lewicki2002, smith2006}.  
+
+While sparse coding captures important structure of the natural world, it fails to represent the larger-scale organization of objects and scenes.  The low-dimensional manifold of natural stimuli bends, so the basis set of the tangent space changes throughout the data manifold.  For instance, the perturbation induced by a small visual shift, rotation, or scaling depends upon the current image; the additive transformation that shifts one image will move most other images off the manifold of natural stimuli~\citep{simard1993}.  In the context of sparse coding, this implies that not all collections of parts can be used together.  
+Moreover, although template points through which the low-dimensional manifold passes can in principle be represented by a very large set of additional basis vectors, the symmetry of traditional sparse coding algorithms fails to break the basis vectors into distinct template and perturbation sets, even when more structure is imposed on sparse coding models, as in group \citep{hyvarinen2000}, topographic \citep{hyvarinen2001}, tree-based \citep{jenatton2011}, or discriminatively trained sparse coding \citep{mairal2012}.
+
+
+In this paper, we show that discriminative fine-tuning of a recurrent sparse autoencoder %deep network, formed by unrolling an implicit sparse coder, 
+is sufficient to induce an explicit tangent space decomposition of the input.  Our discriminative fine-tuning procedure does not just discover ``parts'' that are more discriminative.  Rather, a hierarchical representation naturally emerges from a homogeneous pool of hidden units, with global template categorical-units slowly integrating %pooling 
+over local part-units. %and suppressed according to the tangent distance between the template and the input.  
+In contrast to traditional highly-overcomplete sparse coding but consistent with the globally nonlinear nature of the low-dimensional data manifold, the part-units of recurrent sparse autoencoders are only compatible with a subset of the categorical-units.
+Even recurrent sparse autoencoders with very few hidden units achieve impressive categorization performance when trained in this manner.
+\end{comment}
+
+
+\begin{comment}
+YANN'S SUGGESTED STRUCTURE
+1. the advantage of deep architecture is to enable complex decisions require several steps to compute a sensible answer. 
+2. This is because three things: 
+    a. the highly non-linear nature of the decision surfaces
+    b. the suitability of hierarchical representations
+    c. the complex interaction between multiple alternative interpretations
+3. traditionally, deep architectures have used different parameters for every layer, but why not share the parameters between successive layers. This will reduce the number of parameters and essentially allow the network to decide for itself how to organize the sequence of operations.  (The desire for control over organization itself isn't very persuasive, since with all-to-all interlayer connections, the only thing you could gain is control over the number of units per layer.  The real win must come from sharing connections between layers)
+4. this is equivalent to seeing the middle part of the system as a recurrent net.  
+5. now, if we use ReLU units, and add a sparsity penalty, the system looks very much like Gregor's LISTA with a positivity constraint, but with a discriminative term (and no decoupling between encoder and decoder).
+6. Spechmann et al. had the idea of using LISTA for classification, but with a very different method
+7. with the sparsity constraint, only a subset of hidden units is active at any one time. This allows the system to dynamically allocate which units will be active at which time step. This enables the network to organize itself into virtual "layers" dynamically in a data-dependent way
+8. surprise: the representation learned spontaneously by the network consists of a small number of categorical units (whose decoding basis looks like a fuzzy template for the category and encoding basis looks semi-random) and "modifier" units which reconstruct the input when used to modify the categorical unit.
+\end{comment}
+
+
+\begin{comment}
+INTRODUCTION VERSION 2
+Deep networks complement the hierarchical structure in natural data~\citep{bengio2009}.  %By breaking complex calculations into many steps, deep networks allow complex decision boundaries to be built up gradually, and facilitate the reuse of common substructure.  
+At each level of a hierarchy, deep networks can identify features on the basis of the conceptual parts from which they are composed, rather than via a more complicated mapping directly from the input representation~\citep{lee2008, zeiler2011}.  For instance, deep networks can recognize a convoluted contour from its constituent line segments, or pick out a face based upon the presence of eyes, a nose, and a mouth.
+By leveraging these strengths, deep networks have facilitated significant advances in solving sensory problems like visual classification and speech recognition~\citep{hinton2006, dahl2012}.  
+
+However, at any given level of a hierarchy, the features are often ambiguous when evaluated individually. Even tasks as basic as object segmentation and phoneme recognition are not well-posed when considered at the local level.  While this ambiguity could be resolved directly via reference to the global input, the task can be simplified by taking advantage of the hierarchical structure of natural stimuli.  The identity of each feature is strongly correlated with the identity of complementary features at the same level of the hierarchy.  Ambiguity can thus be resolved efficiently via a recursive procedure, in which the current estimate of each feature's identity is based upon the previous estimates of the correlated features, and information is allowed to gradually propagate laterally throughout the entire representation.
+
+Although deep networks have traditionally used independent parameters for each layer~\citep{hinton2006}, the recursive structure of lateral ambiguity resolution suggests that parameters can be shared between successive layers, reducing the number of trainable parameters and rendering a deep network equivalent to a recurrent network.  Ambiguity-resolving recurrent networks are already in wide use within the machine learning community in the form of sparse coding algorithms, which select the small subset of an overcomplete set of basis vectors that best ``explains away'' the input~\citep{olshausen1996, olshausen1997, daubechies2004}. %and in Markov-chain Monte-Carlo methods for graphical models.  
+Recurrence is also a defining feature of the cortex, the best pattern recognizer known to man~\citep{douglas1995, douglas2004}.
+
+It is not necessary to choose between hierarchical and recurrent network organization: a hierarchical computational structure can exist within a recurrent network.  Specifically, a recurrent network can dynamically select a small subset of active units at each time step, and thereby organize itself into virtual ``layers'' of coactive units in a data-dependent manner.  
+%This organization can be trained almost as efficiently as a natively hierarchical network, since inactive connections are ignored, and active connections can be trained independent of where they appear in the virtual hierarchy.  
+Such a virtual hierarchy seems to be employed in the primary visual cortex, where the complex cells appear to depend upon the simple cells, but both arise from a single monolithic recurrent network~\citep{hubel1962, martinez2003}.  Representations in which only a fraction of the units are permitted to be simultaneously active are called sparse, and can be computationally powerful~\citep{mairal2012}.  The sparsity constraint can be enforced via biologically plausible mechanisms \citep{rozell2008}, and is consistent with the neural activity observed in the cortex \citep{vinje2000, olshausen2004, lewicki2002, smith2006, saxe2011}.  
+
+In light of these considerations, we study discriminatively trained sparse recurrent networks of rectified linear units~\citep{salinas1996, glorot2011}.  The resulting \emph{discriminative recurrent sparse autoencoder} is similar to the Learned Iterative Shrinkage and Thresholding Algorithm (LISTA)~\citep{gregor2010}, but with a positivity constraint and a different loss function.  Discriminatively trained LISTA autoencoders have been investigated recently, but were trained using a separate encoder for each class, and did not capture the hierarchical structure of the data~\citep{sprechmann2012a, sprechmann2012b}.
+
+In this paper, we show that discriminative fine-tuning of a recurrent sparse autoencoder does not just discover ``parts'' that are more discriminative.  Rather, a hierarchical representation naturally emerges from a homogeneous pool of hidden units, with global template categorical-units slowly integrating %pooling 
+over local part-units. In contrast to traditional highly-overcomplete sparse coding but consistent with the globally nonlinear nature of the data manifold, the part-units of discriminative recurrent sparse autoencoders are only compatible with a subset of the categorical-units.  Even discriminative recurrent sparse autoencoders with very few hidden units achieve impressive categorization performance when trained in this manner.
+\end{comment}
+
+% VERSION 4, BASED ON YANN'S REWRITE
+Deep networks complement the hierarchical structure in natural data~\citep{bengio2009}.  
+By breaking complex calculations into many steps, deep networks can gradually build up complicated decision boundaries or input transformations, facilitate the reuse of common substructure, and explicitly compare alternative interpretations of ambiguous input~\citep{lee2008, zeiler2011}.  
+%At each level of a hierarchy, deep networks can identify features on the basis of the conceptual parts from which they are composed, rather than via a more complicated mapping directly from the input representation~\citep{lee2008, zeiler2011}.  %For instance, deep networks can recognize a convoluted contour from its constituent line segments, or pick out a face based upon the presence of eyes, a nose, and a mouth.
+%By taking advantage of this a priori hierarchical structure in natural data distributions, 
+Leveraging these strengths, deep networks have facilitated significant advances in solving sensory problems like visual classification and speech recognition~\citep{hinton2006, dahl2012, hinton2012}.  
+
+Although deep networks have traditionally used independent parameters for each layer, they are equivalent to recurrent networks in which a disjoint set of units is active on each time step.  
+The corresponding representations are sparse, and thus invite the incorporation of powerful techniques from sparse coding~\citep{olshausen1996, olshausen1997, ranzato2006, lee2008, glorot2011}.
+Recurrence opens the possibility of sharing parameters between successive layers of a deep network, potentially mitigating the vanishing gradient problem~\citep{bengio1994}.
+%Recurrence is also a defining feature of the cortex, the best pattern recognizer known to man~\citep{douglas1995, douglas2004}.
+
+This paper introduces the \emph{Discriminative Recurrent Sparse Auto-Encoder} model (DrSAE), comprising a recurrent encoder of rectified linear units~\citep[ReLU; ][]{salinas1996, jarrett2009, nair2010, glorot2011}, connected to two linear decoders that reconstruct the input and predict its supervised classification.  The recurrent encoder is unrolled in time for a fixed number of iterations, and trained using backpropagation-through-time~\citep{rumelhart1986}.  Training initially minimizes an unsupervised sparse reconstruction error; the loss function is then augmented with a discriminative term on the supervised classification.  
+In its temporally-unrolled form, the network can be seen as a deep network, with parameters shared between the hidden layers. The temporal depth allows the system to exhibit all the power of deep networks without substantially increasing the number of trainable parameters. 
+
+
+The encoder architecture of DrSAE is modeled after the Iterative Shrinkage and Threshold Algorithm (ISTA), a proximal method for sparse coding~\citep{daubechies2004} that progressively minimizes the sparse reconstruction loss 
+\begin{equation} \label{reconstruction-loss}
+L^U = \frac{1}{2} \cdot \left| \left| \y - \D \cdot \x^T \right| \right|_2^2 + \lambda \cdot \left|\left|\x^T \right|\right|_1
+\end{equation} 
+of input vector $\y$ by the hidden representation $\x^T = \x^{t \rightarrow \infty}$ and decoding matrix $\D$ via the iterative step 
+\begin{equation*}
+\x^{t+1} = h_{\alpha \cdot \lambda} \left(\alpha \cdot \D^{\top} \cdot \y + \left(\I - \alpha \cdot \D^{\top} \cdot \D\right) \cdot \x^t \right) \, ,
+\end{equation*}  
+where $\left[h_{\theta}(\mathbf{z}) \right]_i = \text{sign}\left(z_i \right) \cdot \max\left(\left|z_i \right| - \theta \right)$ and $\alpha$ is a small step-size parameter. %, and $t \rightarrow \infty$.
+\citet{gregor2010} showed that the sparse representations computed by ISTA can be efficiently approximated by a structurally similar encoder with a less restrictive, learned parameterization: 
+\begin{equation*} 
+\x^{t+1} = h_{\theta} \left( \E \cdot \y + \Sm \cdot \x^t \right) \, ,
+\end{equation*}
+where $1 \leq t \leq T$.
+The encoding matrix $\E$ projects the input $\y$ into the hidden representation space; the explaining-away matrix $\Sm$ induces mutual inhibition between the hidden units and creates competition between the columns of $\D$, which constitute an overcomplete basis for the input; and the shrink operator $h_{\theta}(\cdot)$ sparsifies the hidden representation.  Rather than learn to approximate a precomputed optimal sparse code, the LISTA autoencoders of \citet{sprechmann2012a, sprechmann2012b} are trained to directly minimize the sparse reconstruction loss function of equation~\ref{reconstruction-loss}.  DrSAE extends LISTA autoencoders with a non-negativity constraint, which converts the shrink into a rectified linear operator; and introduces a unified classification loss, as previously used in conjunction with traditional sparse coders~\citep{bradley2008, mairal2009, mairal2012} and other autoencoders~\citep{ranzato2008, boureau2010}.
+DrSAEs also resemble the structure of deep sparse rectifier neural networks \citep{glorot2011}, but differ in that the parameter matrices at each layer are tied, the input projects to all layers, and the outputs are normalized.  
+
+Interestingly, experiments show that DrSAE does not just discover more discriminative ``parts'' of the form conventionally produced by sparse coding. Rather, the hidden units spontaneously differentiate into two types: a small number of categorical-units and a larger number of part-units. The categorical-units have decoder bases that look like prototypes of the input classes. They are weakly influenced by the input and activate late in the dynamics as the result of interaction with the part-units. In contrast, the part-units are strongly influenced by the input, and encode small transformations through which the prototypes of categorical-units can be reshaped into the current input. 
+Categorical-units compete with each other through mutual inhibition and cooperate with relevant part-units. This can be interpreted as a representation of the data manifold in which the categorical-units are points on the manifold, and the part-units are akin to tangent vectors along the manifold.  
+
+\begin{comment} 
+The true nonlinear structure of the data manifold can trivially be taken into account if, rather than view the space of natural stimuli as characterized by a continuous low-dimensional manifold, we define it in terms of a set of representative points.  Such an exemplar-based approach underlies successful classification techniques such as K-nearest-neighbor and support vector machines \citep{bishop2006}, and appears to underlie the classifications produced by humans \citep{reisberg1997}.  %Similarly, cognitive psychology has long posited the existence of such exemplar-based representations in the brain \citep{reisberg1997}.  
+However, the standard implementations of these methods implicitly assume a position-independent distance metric, and is thus inefficient.  %uses high-dimensional subspaces surrounding prototypes, but low-dimensional subspaces are more effective.  
+
+Combining these two approaches, the low-dimensional data manifold can be effectively modeled by by a union of low-dimensional linear subspaces passing through each datapoint, called the tangent space \citep{simard1993, ekanadham2011, rifai2011b}.  
+%A linear approximation to the low-dimensional manifold around each exemplar is known as the tangent space, and the distance within the tangent space is called the tangent distance.  
+However, it has proven difficult to implement tangent space-based classification efficiently, especially when the set of allowed perturbations must be learned from the data.  In this paper, we demonstrate that discriminative training of a computationally efficient and biologically plausible sparse autoencoder can induce an effective tangent space-based representation.  
+%We find that interpretable mid-level and categorical features arise spontaneously with discriminative training in a deep (but thin) LISTA network.  
+Discriminative fine-tuning does not just discover ``parts'' that are more discriminative.  Rather, it constructs mid-level and categorical units, which have strong recurrent connections, encoders that are not aligned with their decoders, and prototype-like decoders.  In contrast to traditional highly-overcomplete sparse coding, the part-units of our networks are only compatible with a subset of the categorical-units, consistent with the globally nonlinear nature of the low-dimensional data manifold.  
+
+Unlike contractive autoencoders \citep{rifai2011a} or tangent propagation \citep{simard1993}, the selected prototype is represented explicitly, facilitating natural and accurate classification.  This is potentially useful, in datapoints belonging to different classes may be composed of a common set of parts.  Indeed, it is often the case that the manifolds corresponding to two different classes touch.  For instance, it is possible to continuously deform a 4 into a 9 while remaining on the data manifold.  The tangent distance provides a consistent and intuitive way to deal with ambiguous points near the intersection of two manifolds.  Tangent propagation alone provides no a priori information about how to deal with these points.  Just as contractive autoencoders extend tangent propagation by requiring that the input distribution be modeled while minimizing the volatility of the output in all directions (and thus certainly in directions of allowed deformations), our networks induce the usage of a particularly natural and informative hidden representation.  
+\end{comment}
+
+
+%There is no sharp boundary between part and categorical units.  
+
+\section{Network structure}
+
+\begin{figure}[tb]
+  \begin{center}
+    \includegraphics[width=5.5in, keepaspectratio=true]{architecture_figure_norm_cropped.pdf}
+  \end{center}
+  \caption{The discriminative recurrent sparse auto-encoder (DrSAE) architecture.  $\x^t$ is the hidden representation after iteration $t$ of $T$, and is initialized to $\x^0 = 0$; $\y$ is the input; and $\mathbf{z}$ is the supervised classification.  Overbars denote approximations produced by the network, rather than the true input.  $\E$, $\Sm$, $\D$, and $\bv$ are learned parameters.  \label{architecture_figure}} 
+\end{figure}
+
+
+In the following, we use lower-case bold letters to denote vectors, upper-case bold letters to denote matrices, superscripts to indicate iterative copies of a vector, and subscripts to index the columns (or rows, if explicitly specified by the context) of a matrix or (without boldface) the elements of a vector.
+We consider discriminative recurrent sparse auto-encoders (DrSAEs) of rectified linear units with the architecture shown in figure~\ref{architecture_figure}: % in which each hidden layer also receives a projection from the input:
+\begin{equation} \label{layer-dynamics}
+\x^{t+1} = \max\left(0, \E \cdot \y + \Sm \cdot \x^t - \bv \right)
+\end{equation}
+for $t = 1, \ldots, T$, where $n$-dimensional vector $\x^t$ is the activity of the hidden units at iteration $t$, %\footnote{The network can also be thought of as flat but recurrent, with $t$ specifying the time step.} $t$,
+$m$-dimensional vector $\y$ is the input, and $\x^{t=0} = 0$.  We call the $n \times m$ parameter matrix $\E$ the encoding matrix, and the $n \times n$ parameter matrix $\Sm$ the explaining-away matrix.\footnote{In the LISTA algorithm, $\Sm$ accounts for the part of the input $\y$ already explained by the hidden units $\x$ using mutual inhibition.}  The $n$-element parameter vector $\bv$ contains a bias term.  The parameters also include the $m \times n$ decoding matrix $\D$ and the $l \times n$ classification matrix $\C$.
+
+The dynamics of equation~\ref{layer-dynamics} are inspired by the Learned Iterative Shrinkage and Thresholding Algorithm (LISTA)~\citep{gregor2010}, an efficient approximation to the sparse coding Iterative Shrinkage and Threshold Algorithm (ISTA)~\citep{daubechies2004}.
+ISTA is an %proximal method 
+algorithm for minimizing the $\ell_1$-regularized reconstruction loss function of equation~\ref{reconstruction-loss} %at iteration $t=T$
+%\begin{equation} \label{reconstruction-loss}
+%L^U = \frac{1}{2} \cdot \left| \left| \y - \D \cdot \x^T \right| \right|_2^2 + \sum_i \beta_i \cdot \left| x_i^T \right| 
+%\end{equation}
+with respect to $\x^T$. %where $\boldsymbol\beta$  is a $n$-element sparsity scaling vector.  
+As the number of iterations $T \rightarrow \infty$, a DrSAE defined by equation~\ref{layer-dynamics} becomes a non-negative version of ISTA if it satisfies the restrictions:
+\begin{equation} \label{ISTA-restriction}
+\E = \alpha \cdot \D^{\top} , \hspace{1cm}
+\Sm = \I - \alpha \cdot \D^{\top} \cdot \D \, , \hspace{0.5cm}
+b_i= \alpha \cdot \lambda \, , \hspace{0.5cm} %\boldsymbol\beta \, , \hspace{0.5cm}
+\text{and} \hspace{0.5cm} x_i^t \geq 0 \, ,
+\end{equation}
+where the positive scale factor $\alpha$ is less than the maximal eigenvalue of $\D^{\top} \cdot \D$, and $\I$ is the $n \times n$ identity matrix.
+
+As in LISTA, but unlike ISTA, the encoding matrix $\E$ and explaining-away matrix $\Sm$ in a DrSAE are independent of the decoding matrix $\D$.
+Connections from the input to the hidden units, and recurrent connections between the hidden units, are all-to-all, so the network structure is agnostic to permutations of the input.    
+DrSAEs can also be understood as deep, feedforward networks with the parameter matrices tied between the layers.
+%For the sake of expositional simplicity, we present the network as a deep and feedforward, but the parameter matrices are tied between the layers.  As a result, equation~\ref{layer-dynamics} equivalently describes a recurrent network of rectified linear units, %in which the recurrent computation is performed a fixed number of times, 
+%where $t$ specifies the current time step.  
+
+
+We pretrain DrSAEs using stochastic gradient descent on the unsupervised loss function of equation~\ref{reconstruction-loss}, with the magnitude of the columns of $\D$ bounded by $1$,\footnote{This sets the scale of $\x$; otherwise, the magnitude of $\x$ will shrink to zero and the magnitude of the columns of $\D$ will explode.} and the magnitude of the rows of $\E$ bounded by $\frac{1.25}{T-1}$.\footnote{The size of each ISTA step must be sufficiently small to guarantee convergence.  As the step size grows large, the input will be over-explained by multiple aligned hidden units, leading to extreme oscillations.  This bound serves the same function as $\ell_2$ weight regularization \citep{hinton2010}.  The particular value of the bound is heuristic, and was determined by an informal search of parameter space.}  We then add in the supervised classification loss function
+\begin{equation} \label{discriminative-loss}
+L^S = \logistic_z \left( \C \cdot \frac{\x^T}{\left|\left| \x^T \right|\right|} \right) \, ,
+\end{equation}
+where the multinomial logistic loss function is defined by 
+\begin{equation*}
+  \logistic_z(\x) = x_z - \log\left( \sum_i e^{x_i} \right) \, ,
+\end{equation*}
+and $z$ is the index of the desired class.
+Starting with the parameters learned by the unsupervised pretraining, we perform discriminative fine-tune by stochastic gradient descent on $L^U + L^S$, with the magnitude of the rows of $\C$ bounded by $5$.\footnote{As in the case of the encoder, this serves the same function as $\ell_2$ weight regularization \citep{hinton2010}.  The particular value of the bound is heuristic, and was determined by an informal search of parameter space.}  The learning rate of each matrix is scaled down by the number of times it is repeated in the network.
+
+We train DrSAEs with $T=11$ recurrent iterations and $400$~hidden units on the MNIST dataset of $28 \times 28$ grayscale handwritten digits \citep{lecun1998}, with each input normalized to have $\ell_2$ magnitude equal to $1$.  We use a training set of 50,000 elements, and a validation set of 10,000 elements to perform early-stopping.
+Encoding, decoding, and classification matrices learned via this procedure are depicted in figure~\ref{dictionary_figure}.
+
+\begin{figure}[tbp]
+  \begin{center}
+    \begin{tabular}{p{0.10in}p{5.2in}}
+      \parbox[b]{0in}{(a) \\ Enc \vspace{0.2cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{selected_encoding_fe_dict.png} \\
+      \parbox[b]{0in}{(b) \\ Dec \vspace{0.2cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{selected_decoding_fe_dict.png} \\
+      \parbox[b]{0in}{(c) \\ Clas \vspace{0.2cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{classification_dictionary.png} \\
+    %  \begin{minipage}[b]{0.2cm} $a$ \vspace{0.8cm} \end{minipage} &
+    \end{tabular}
+  \end{center}
+  \caption{The hidden units differentiate into spatially localized part-units, which have well-aligned encoders and decoders; and global prototype categorical-units, which have poorly aligned encoders and decoders.  A subset of the rows of encoding matrix~$\E$~(a) and the columns of decoding matrix~$\D$~(b), and all rows of the classification matrix~$\C$~(c) after training. Gray pixels denote connections with weight~$0$; darker pixels indicate more positive connections.\label{dictionary_figure}} % The classification matrix is very sparse.
+\end{figure}
+
+
+%Gradients of the loss function with respect to the parameters are computed via backpropagation.
+%LISTA, $\ell_2$ normalization, classification dictionary, softmax, cross-entropy loss (logistic regression).  Encoder and classification dictionary rows are bounded; decoder columns are normalized.
+
+\begin{comment}
+DrSAEs are similar to LISTA~\citep{gregor2010}, although we use non-negative hidden units and train using a different loss function.  
+The unsupervised loss function of equation~\ref{reconstruction-loss} corresponds to that of Sprechmann and colleagues' LISTA auto-encoders~\citep{sprechmann2012a, sprechmann2012b}, but we use an explicit feedforward classifier, and discriminatively train a common set of parameters for all classes. 
+DrSAEs also resemble the structure of deep sparse rectifier neural networks \citep{glorot2011}, but differ in that the parameter matrices at each layer are tied, the input projects to all layers, and the outputs are normalized.  %It is also similar to reconstruction ICA, but is deep and utilizes a different discriminative training procedure. %Finally, it is similar to predictive sparse decomposition, but 
+In all three cases, these are critical properties necessary to induce a hierarchical representation, %an explicit tangent space representation, 
+and we achieve superior classification performance to these established methods.
+\end{comment}
+
+
+
+\section{Analysis of the hidden unit representation} % constructed by discriminative recurrent sparse autoencoders}
+
+Discriminative fine-tuning naturally induces the hidden units of a DrSAE to differentiate into a hierarchy-like continuum.  On one extreme are part-units, which perform an ISTA-like sparse coding computation; on the other are categorical-units, which use a sophisticated form of pooling to integrate %pool 
+over matching part-units, %are suppressed according to the $\ell_1$ distance orthogonal to the data manifold between their prototype and the input, 
+and implement winner-take-all dynamics amongst themselves.  Converging lines of evidence indicate that these two groups use distinct computational mechanisms and serve different representational roles.  
+
+In the ISTA algorithm, each row of the encoding matrix $\E_i$ (which we sometimes call the encoder of unit $i$) is proportional to the corresponding column of the decoding matrix $\D_i$ (which we call the decoder of unit $i$), and each row $\left( \Sm - \I \right)_i$ is proportional to $\left( \D_i \right)^\top \cdot \D$, as in equation~\ref{ISTA-restriction}.  As a result, the angle between $\E_i$ and $\D_i$, and the angle between the rows of $\Sm - \I$ and $\D^{\top} \cdot \D$, are both simple measures of the degree to which a unit's dynamics follow the ISTA algorithm.  These quantities are equal to $0$ in the case of perfect ISTA, and grow larger as the network diverges from ISTA.
+Of these two computations, the explaining-away matrix comparison is more difficult to interpret, since a distortion of any one unit's decoding column $\D_i$ will affect all rows of $\D^{\top} \cdot \D$, whereas the angle between the encoder row $\E_i$ and decoder column $\D_i$ only depends upon a single unit. For this reason, we use the angle between the encoder row and decoder column as a measure of the position of each unit on the part/categorical continuum.  %Nevertheless, the magnitude of the rows of $\Sm - \I$ should be a consistent multiple of the magnitude of the rows of $\D^{\top} \cdot \D$, and the ratio of these magnitudes is diagnostic of deviation from ISTA dynamics.
+%PLOT THE ANGLE BETWEEN $\Sm - \I$ and $\D^\top \cdot \D$!!!
+
+Figure~\ref{two_classes_figure} plots, for each unit $i$, the magnitude of row $\left( \Sm - \I \right)_i$ and column $\C_i$, versus the angle between row $\E_i$ and column $\D_i$.
+There is a dense cloud of points for which the angle between the encoder row and decoder column is very small, indicating that the two are well-aligned, and the incoming recurrent and outgoing classification connections are weak.  Abutting this is an extended tail of points that have a larger angle between the encoder row and decoder column, and stronger incoming recurrent and outgoing classification connections.  We call units composing the dense cloud \emph{part-units}, since they have ISTA-compatible connections, while we refer to those making up the extended tail as \emph{categorical-units}, since they have strong connections to the classification output.\footnote{For the purpose of constructing figures characterizing the difference between part-units and categorical-units, we consider units with encoder-decoder angle less than $0.5$ radians to be part-units, and units with encoder-decoder angle greater than $0.7$ radians to be categorical-units.  These thresholds are heuristic, and fail to reflect the continuum that exists between part- and categorical-units, but they facilitate analysis of the extremes.}  When trained on MNIST, part-units have localized, pen stroke-like decoders, as can be seen in the majority of the units in figure~\ref{dictionary_figure}(b) for which the encoder and decoder are well-aligned.  Categorical-units, in contrast, tend to have whole-digit prototype-like decoders, such as the third, eighth, and twelfth units on the top rows of figure~\ref{dictionary_figure}(a,b).
+
+
+%When trained on MNIST, part-units have localized, pen stroke-like decoders, weak outgoing classification connections, and incoming connections consistent with the ISTA algorithm.  Categorical-units, in contrast, have whole-digit prototype-like decoders, strong outgoing classification connections, poorly aligned encoders and decoders, and disproportionately strong incoming recurrent.  
+
+
+\subsection{Part-units}
+
+\begin{figure}[tb] %p
+  \begin{center}
+    \begin{tabular}{p{5.5in}}
+      \hspace{-0.1in} \begin{tabular}{p{0.175in}p{4in}} Dest & Source units \end{tabular} \\
+      \includegraphics[width=5.4in, keepaspectratio=true]{sorted_incoming_connections_from_any_to_part.png} 
+    \end{tabular}
+  \end{center}
+  \caption{Part-units receive ISTA-compatible connections and thus perform sparse coding on the residual input after the contribution of the categorical-units is subtracted out.  The decoders of the twenty units with the strongest explaining-away connections $\left|S_{i,j} - \delta_{i,j}\right|$ to three typical part-units, sorted by connection magnitude.  The left-most column depicts the decoder of the recipient part-unit.  The bars above the decoders in the remaining columns indicate the strength of the connections.  Black bars are used for positive connections, and white bars for negative connections.  \label{incoming_part_figure}}
+\end{figure}
+
+Examination of the relationship between the elements of $\Sm - \I$ and $\D^{\top} \cdot \D$ confirms that part-units with an encoder-decoder angle less than $0.5$ radians abide by ISTA, and so perform sparse coding on the residual input after the categorical-unit prototypes are subtracted out.  
+%In the ISTA algorithm, each row of the encoding matrix $\E$ is proportional to the corresponding column of the decoding matrix $\D$, and connection between a pair of hidden units through the explaining away matrix $\Sm - \I$ is proportional to the dot product of their decoder columns, as in equation~\ref{ISTA-restriction}.  Part units satisfy the first criterion by definition, since the angle between their encoder and decoder is small.  
+The prominent diagonals with matching slopes in figure~\ref{ista_ideal_connections_figure}(a,b), which plot the value of $S_{i,j} - \delta_{i,j}$ versus $\D_i \cdot \D_j$ for connections between part-units, and from categorical-units to part-units, respective, demonstrate that part-units receive ISTA-consistent connections from all units.  The fidelity of these connections to the ISTA ideal is not strongly dependent upon whether the afferent units are ISTA-compliant part-units, or ISTA-ignoring categorical-units.  As a result, the part-units treat the categorical-units as if they were also participating in the reconstruction of the input, and only attempt to reconstruct the residual input not explained by the categorical-unit prototypes.  
+
+As can be seen in figure~\ref{ista_ideal_connections_figure}(c), the degree to which the encoder conforms to the ISTA algorithm is strongly correlated with the degree to which the explaining-away matrix matches the ISTA algorithm.  Figure~\ref{incoming_part_figure} shows the decoders associated with the strongest recurrent connections to three representative part-units.  As expected, the decoders of these afferent units tend to be strongly aligned or anti-aligned with their target's decoder, and include both part-units and categorical-units.
+
+
+
+\begin{comment}
+\subsubsection{Priors on the encoder}
+
+Bounding the magnitude of the encoder rows is necessary for good performance.  %Probably forces the network to use recurrence to generate very large outputs that saturate the softmax (although remember that outputs are normalized before the softmax).  
+Given that some units are going to be very large and categorical, they might as well represent the prototype.  Bounding the $\ell_2$ norm of the weights is similar to standard $\ell_2$ regularization, and is mentioned in Hinton's A Practical Guide to Training Restricted Boltzmann Machines.  
+
+Restrictions on the encoder row magnitude may make sense even independent of discriminative fine-tuning.  ISTA depends upon a small step size.  As I've observed when I've tried to initialize the matrices based upon elements of the dataset, if the step size is large, it's easy to get oscillating dynamics, where the hidden units are over-activated by the encoding matrix, and then silence each other on the next iteration.  With hundreds of elements, it is likely that many units will be activated in response to each part of the input.  If the resulting total input explained is greater than the actual input, then all of these units will be inhibited on the next iteration.  As the number of units increases, it seems likely that the ISTA step size must decrease.  This might also hold for the classification matrix.
+\end{comment}
+
+\subsection{Categorical-units}
+
+\begin{figure}[tb] %p
+  \begin{center}
+    \begin{tabular}{p{0.02in}p{5.25in}}
+      & \hspace{-0.1in} \begin{tabular}{p{0.175in}p{4in}} Src & Destination units \end{tabular} \\
+      \parbox[b]{0in}{(a) \vspace{1.1cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{sorted_outgoing_connections_from_part_to_categorical.png} \\
+      \parbox[b]{0in}{(b) \vspace{1.1cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{sorted_outgoing_connections_from_categorical_to_categorical.png} \vspace{0.1in} \\
+      & \hspace{-0.1in} \begin{tabular}{p{0.175in}p{4in}} Dest & Source units \end{tabular} \\
+      \parbox[b]{0in}{(c) \vspace{1.1cm}} &  \includegraphics[width=5.2in, keepaspectratio=true]{sorted_incoming_connections_from_part_to_categorical.png} \\
+    %  \begin{minipage}[b]{0.2cm} $a$ \vspace{0.8cm} \end{minipage} &
+    \end{tabular}
+  \end{center}
+  \caption{Categorical-units execute a sophisticated form of pooling %integrate %pool 
+    over part-units, and have winner-take-all dynamics amongst themselves.  The decoders of the categorical-units receiving the twenty strongest connections from representative part-units (a) and categorical-units (b), and the decoders of the part-units sending the twenty strongest projections to representative categorical-units (c).  The connections are sorted first by the class of their destination, and then by the magnitude of the connection.  The left-most column depicts the decoder of the source (a,b) or destination (c) unit.  The bars above the decoders in the remaining columns indicate the strength of the connections.  Black bars are used for positive connections, and white bars for negative connections.  $\Sm - \I$ rather than $\Sm$ is used for the connection values so the self-connections do not dominate the figure. %since these connections do not conform to the ISTA ideal, and to emphasize the strength of the self-connections.  
+\label{categorical_connection_figure}}
+\end{figure}
+
+
+\begin{figure}[tb] %p
+  \begin{center}
+    \begin{tabular}{p{0.12in}p{0.35in}p{4.05in}p{1in}} & Enc & Optimal inferred decoders & Dec \end{tabular} \\
+    \begin{tabular}{p{0.03in}p{5.0in}}
+      \parbox[b]{0in}{(a) \vspace{2.1cm}} & \includegraphics[width=5.1in, keepaspectratio=true]{shrink_dictionary_part.png} \\
+      \parbox[b]{0in}{(b) \vspace{2.1cm}} & \includegraphics[width=5.1in, keepaspectratio=true]{shrink_dictionary_categorical.png} 
+    \end{tabular}
+  \end{center}
+  \caption{Part-units (a) respond to the input quickly, while the activity of categorical-units (b) refines slowly.  Columns of the optimal decoding matrices $\D^t$ minimizing the input reconstruction error $\left|\left| \y - \D^t \cdot \x^t \right|\right|_2^2$ from the hidden representation $\x^t$ for $t = 1, \ldots, T$.  The first and last columns show the corresponding encoder and decoder for the chosen representative units.  Intermediate columns represent successive iterations $t$.  \label{dictionary_evolution_figure}} %The same representative units are depicted as in previous figures. 
+\end{figure}
+
+In contrast, the recurrent connections to categorical-units with an encoder-decoder angle greater than $0.7$ radians are not strongly correlated with the values predicted by ISTA.  
+Rather than analyzing connections to the categorical-units only based upon their destination, it is more informative to consider them organized by their source.
+Part-units are compatible with categorical-units of certain classes,\footnote{Categorical-units have strong, sparse classification matrix projections, as shown in figures~\ref{two_classes_figure}(b) and~\ref{dictionary_figure}(c), and can be identified with the output class to which they have the strongest projection.} and not with others, as shown by figure~\ref{categorical_connection_figure}(a).  
+%The sign of the connection between a part-unit and a categorical-unit is determined by the class of the categorical-unit.  
+Part-units generally have positive connections to categorical-units with parallel prototypes, independent of offset, and negative connections to categorical-units with orthogonal prototypes, as shown in figure~\ref{categorical_connection_statistics_figure}(a).  This corresponds to a sophisticated form of pooling~\citep{jarrett2009},  with a single categorical-unit drawing excitation from a large collection of parallel but not necessarily perfectly aligned part-units, as in figure~\ref{categorical_connection_figure}(c).  It is also suggestive of the standard Hubel and Wiesel model of complex cells in primary visual cortex \citep{hubel1962}.  ISTA would instead predict a connection proportional to the inner product, which is zero for orthogonal prototypes and negative for prototypes offset by a phase of $\pi$ radians.  
+
+Part-units use sparse coding dynamics, and so are not disproportionately suppressed by categorical-units that represent any particular class.  However, each part-unit is itself compatible with (i.e., has positive connections to) categorical-units of only a subset of the classes.  As a result, the categorical-units and thus the class chosen are determined by the part-unit activations.  In particular, only a subset of the possible deformations implemented by part-unit decoders are freely available for each prototype, since part-units with a strong negative connection to a categorical-unit will tend to silence it, and so cannot be used to transform the prototype of that categorical-unit.
+
+Categorical-units implement winner-take-all-like dynamics amongst themselves, as shown in figure~\ref{categorical_connection_figure}(b), with negative connections to most other categorical-units.  Figure~\ref{categorical_connection_figure}(b) plots $\Sm - \I$, since otherwise the strong, positive self-connections of the categorical-units would dwarf all other connections.  These positive self-connections facilitate the integration of inputs %activity 
+over time.
+
+
+
+When activated, the categorical-units make a much larger contribution to the reconstruction than any single part-unit, as can be seen in figure~\ref{categorical_connection_statistics_figure}(b).  Since, the projections from categorical-units to part-units are consistent with ISTA, the magnitude of the categorical-unit contribution to the reconstruction need not be tightly regulated.  The part-units adjust accordingly to accommodate whatever residual is left by the categorical-units.
+
+The units form a rough hierarchy, with part-units on the bottom and categorical-units on the top.  
+Categorical-units receive strong recurrent connections, as shown in figure~\ref{two_classes_figure}(a) implying that their activity is more determined by other hidden units and less by the input (since the magnitude of the input connections is bounded), and thus they are higher in the hierarchy.  
+As shown in figure~\ref{categorical_connection_statistics_figure}(c), part-units receive most of their input from other part-units; categorical-units receive a larger fraction of their input from other categorical-units.  %Almost every part-unit projects to the most prototype-like categorical-units.  
+%Categorical-units have relatively uninformative encoders, as shown in figure~\ref{dictionary_figure}.  
+Whereas part-units have well-structured encoders and are generally activated directly by the input on the first iteration, categorical-units are more likely to first achieve a non-zero activation on the second iteration, as shown in figure~\ref{categorical_connection_statistics_figure}(d), suggesting that they require stimulation from part-units.  The immediate response of part-units in contrast to the gradual refinement of categorical-units is apparent in figure~\ref{dictionary_evolution_figure}, which shows the optimal decoding matrix for selected units, inferred from their observed activity at each iteration.  %The structure of the optimal part-unit decoder is immediately present, whereas categorical-units initially predict the input very poorly, and only slowly accumulate information.
+
+
+
+
+
+\section{Performance}
+
+\begin{table}[tb]%p
+  \begin{center}
+    \begin{tabular}{p{2.75in}p{0.25in}p{1.7in}} \toprule
+      LISTA auto-encoder, $10 \times \left( 289 \text{-} 100^5 \right)$ & $3.76$ & ($5.98$ with 289 hidden units) \\ 
+      \citep{sprechmann2012a} \\ \addlinespace[0.1cm] % (100 units) ; 5.98 with 289 units
+      Learned coordinate descent, $784 \text{-} 784^{50} \text{-} 10$ & $2.29$ \\ 
+      \citep{gregor2010} \\ \addlinespace[0.1cm] %  784 units
+      Differentiable sparse coding, $180 \text{-} 256^* \text{-} 10$ & $1.30$ \\ 
+      \citep{bradley2008} \\ \addlinespace[0.1cm] %
+      Deep sparse rectifier neural network &  $1.20$ &  ($1.16$ with tanh nonlinearity) \\ 
+      $784$-$1000$-$1000$-$1000$-$10$ \\ \citep{glorot2011} \\ \addlinespace[0.1cm] % 1000 units per layer
+      Deep belief network, $784 \text{-} 500 \text{-} 500 \text{-} 2000 \text{-} 10$ & $1.18$ & ($0.92$ with dropout) \\ 
+      \citep{hinton2012} \\ \addlinespace[0.1cm] %
+      Supervised dictionary learning, & $1.05$ & ($3.56$ without contrastive loss) \\ 
+      $45 \times \left(784 \text{-} 24^* \right)$ to $45 \times \left( 784 \text{-} 96^* \right)$ \\
+      \citep{mairal2009} \\ \addlinespace[0.1cm] %
+      {\bf Discriminative recurrent sparse auto-encoder} & $\mathbf{1.08}$ & ($1.21$ with 200 hidden units) \\ 
+      $\mathbf{784}$-$\mathbf{400^{11}}$-$\mathbf{10}$ \\  \bottomrule
+      %\parbox{3in}{Deep sparse rectifier (or tanh) neural network \citep{glorot2011} \\ $1000$~units per layer, $3$~independent layers}
+      % \parbox{3in}{Recurrent sparse autoencoder, $400$~hidden units \\ $1$~independent layer, $11$~recurrent iterations} & $\bf 1.08$  \\ \bottomrule
+    \end{tabular}
+    \caption{MNIST classification error rate (\%) for pixel-permutation-agnostic encoders. The first column indicates the size of each layer in the specified encoder, separated by hyphens.  Exponents specify the number of recurrent iterations; asterisks denote repetition to convergence. $10 \times \left(\cdots\right)$ indicates that a separate encoder is trained for each input class; $45 \times \left(\cdots\right)$ indicates that a separate encoder is trained for each pairwise binary classification problem.  \label{performance_table}} 
+  \end{center}
+\end{table}
+
+%Importance of discriminative training already demonstrated for implicit encoders, but mostly reflect improvement in features, rather than feature combination.  Show that performance is much worse if we just train a classifier on top of a fixed unsupervised-pretrained LISTA encoder; categorical-units are essential for good classification.  
+
+%Fewer units, fewer layers, only classifier trained discriminatively
+
+The comparison of MNIST classification performance in table~\ref{performance_table} demonstrates the power of the hierarchical %tangent space 
+representation learned by DrSAEs. % compared to related techniques.  %LISTA~\citep{gregor2010} trains an encoder similar to that used in discriminative recurrent sparse autoencoders 
+%In developing the LISTA encoder, 
+Rather than learn to minimize the sum of equations~\ref{reconstruction-loss} and~\ref{discriminative-loss}, \citet{gregor2010} train the LISTA encoder to approximate the code generated by a traditional sparse coder. %, following the predictive sparse decomposition paradigm \citep{jarrett2009, kavukcuoglu2009}.  
+While they do not report classification performance using LISTA, Gregor and LeCun do evaluate MNIST classification error using the related learned coordinate descent algorithm.
+\citet{sprechmann2012a, sprechmann2012b} extend this approach by training a LISTA auto-encoder to reconstruct the input directly, using loss functions similar to equation~\ref{reconstruction-loss}. 
+%rather than relying upon the intermediary of a traditional sparse code.  
+Although they identify the possibility of using regularization dependent upon supervised information, Sprechmann and colleagues do not consider a parameterized classifier operating on a common hidden representation. %, in conjunction with a conventional classification loss function such as cross-entropy or $\ell_2$.  
+Instead, they train a separate encoder for each class, and classify each input based upon the encoder with the lowest sparse coding error.  %Perhaps as a result, their networks do not produce a hierarchical representation. %tangent-space decomposition.  
+DrSAEs significantly outperform these other techniques based upon a LISTA encoder.
+
+DrSAEs also perform well compared to other techniques using encoders related to LISTA.  Deep sparse rectifier neural networks~\citep{glorot2011} combine discriminative training with an encoder similar to LISTA, but do not tie the parameters between the layers and only allow the input to project to the first layer.  %These network architectures do not induce an explicit tangent space code, since 
+Differentiable sparse coding~\citep{bradley2008} and supervised dictionary learning~\citep{mairal2009} also train discriminatively, but effectively use an infinite-depth ISTA-like encoder, and are thus much less computationally efficient than DrSAEs.  Supervised dictionary learning achieves performance statistically indistinguishable from DrSAEs using a contrastive loss function. %, which requires that the network be run once for every possible class, whereas discriminative recurrent sparse autoencoders need only be run once for each input.  
+A similar technique achieves MNIST classification error as low as $0.54\%$ when the dataset is augmented with shifted copies of the inputs~\citep{mairal2012}.
+Deep belief networks and deep Boltzmann machines fine-tuned with dropout are the current state-of-the-art for pixel-permutation-agnostic handwritten digit recognition~\citep{hinton2012}.  They can achieve MNIST classification error as low as $0.79\%$ with a carefully tuned network structure and multi-step training procedure.
+
+Recurrence is essential to the performance of DrSAEs.  If the number of recurrent iterations is decreased from eleven to two, MNIST classification error in a network with 200 hidden units increases from $1.21\%$ to $1.49\%$.
+
+%\section{Decoder decomposition into prototype and tangent-space}
+\section{Discussion}
+
+It is widely believed that natural stimuli, such as images and sounds, fall near a low-dimensional manifold within a higher-dimensional space (the \emph{manifold hypothesis}) \citep{lee2003, olshausen2004, bengio2012}.  %The manifold hypothesis is consistent with the observation that certain continuous deformations of a natural stimulus, such as shifts, rotations, and scalings of visual stimuli, yield other well-formed natural stimuli~\citep{simard1993}.  In contrast, the overwhelming majority of possible inputs, such as white noise constructed by choosing each visual pixel or instantaneous sound pressure level independently, are obviously not natural.  %Correspondingly, perturbations of natural stimuli in most directions move off of the manifold and yield stimuli that are perceived as noise.  
+The low-dimensional data manifold provides an intuitively compelling and empirically effective basis for classification \citep{simard1993, simard1998, rifai2011b}.  The continuous deformations that define the data manifold usually preserve identity, whereas even relatively small invalid transformations may change the class of a stimulus.  For instance, the various handwritten renditions of the digit $3$ in figure~\ref{gradual_reconstruction_figure}(c) barely overlap, and so the Euclidean distance between them in pixel space is greater than that to the nearest $8$ formed by closing both loops.  Nevertheless, smooth deformations of one $3$ into another correspond to relatively short trajectories along the data manifold,\footnote{In particular, figure~\ref{gradual_reconstruction_figure}(c) shows how each input can be produced by identity-preserving deformations from a common prototype, using the tangent space decomposition produced by our network.} whereas the transformation of a $3$ into an $8$ requires a much longer path within the data manifold.  
+A prohibitive amount of data is required to fully characterize the data manifold \citep{narayanan2010}, so it is often approximated by the set of linear submanifolds tangent to the data manifold at the observed datapoints, known as the \emph{tangent spaces} \citep{simard1998, rifai2011b, ekanadham2011}.  %Even using this approximation, evaluating the tangent distance\footnote{The tangent distance between two points is the infimum of the distance between the linear submanifolds tangent to the data manifold at the points.} between two points requires solving a system of $O(n)$ linear equations, where $n$ is the dimensionality of the data manifold.  For each test point, a nearest-neighbors algorithm must compute such a distance for each element of the training set, and is thus computationally inefficient. % and biologically implausible.  
+DrSAEs naturally and efficiently form a tangent space-like representation, consisting of a point on the data manifold indicated by the categorical-units, and a shift within the tangent space specified by the part-units.  %in the associated tangent space.
+%While, contractive autoencoders \citep{rifai2011a} and other tangent propagation techniques \citep{simard1993} implicitly learn to only represent the tangent space, they ?!?
+
+
+Before discriminative fine-tuning, DrSAEs perform a traditional part-based decomposition, familiar from sparse coding, as shown in figure~\ref{gradual_reconstruction_figure}(a).  The decoding matrix columns are class-independent, local pen strokes, and many units make a comparable, small contribution to the reconstruction.  After discriminative fine-tuning, the hidden units differentiate into sparse coding local part-units, and global prototype categorical-units that integrate %pool 
+over them.  As shown in figure~\ref{gradual_reconstruction_figure}(b,c), the input is decomposed into a prototype, corresponding to a point on the data manifold; and %the associated tangent-space perturbation, %
+a set of deformations from this prototype along the data manifold, corresponding to shifts within the tangent space.  The same prototype can be used for very different inputs, as demonstrated in figure~\ref{gradual_reconstruction_figure}(c), since the space of deformations is rich enough to encompass diverse transformations without moving off the data manifold.  Nevertheless, many categorical-units are available for each class, as shown in figure~\ref{categorical_connection_figure}, and not all categorical-units correspond to full prototypes.  Even when the prototype is very different from the input, all steps along the reconstruction trajectories in figure~\ref{gradual_reconstruction_figure}(b,c) are recognizable as members of the same class.
+
+
+\begin{figure}[tb]
+  \begin{center}
+    \begin{tabular}{p{0.02in}p{5.25in}}
+      &     \begin{tabular}{p{4.42in}p{0.15in}p{0.25in}} \hspace{-0.1in} Progressive reconstruction & Fin & Inp \end{tabular} \\
+      \parbox[b]{0in}{(a) \vspace{3.1cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{sorted_reconstruction_dictionary_columns_unsupervised.png} \\
+      \parbox[b]{0in}{(b) \vspace{3.1cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{sorted_reconstruction_dictionary_columns_supervised.png} \\
+      \parbox[b]{0in}{(c) \vspace{3.1cm}} & \includegraphics[width=5.2in, keepaspectratio=true]{sorted_reconstruction_dictionary_columns_threes.png} 
+      % \begin{minipage}[b]{0.2cm} $a$ \vspace{0.8cm} \end{minipage} &
+      % \begin{minipage}[b]{0.2cm} $b$ \vspace{-0.2cm} \end{minipage} &
+    \end{tabular}
+  \end{center}
+  \caption{Discriminative recurrent sparse auto-encoders decompose the input into a prototype and deformations along the data manifold. %tangent space.  
+The progressive reconstruction of selected inputs by the hidden representation before (a) or after (b,c) discriminative fine-tuning.  %The top two plots demonstrate the difference between part (a) and prototype (b) based reconstruction on a variety of different classes.  Plot (c) shows the reconstruction of three instances of the same class from a common prototype.  
+The columns from left to right depict either the components of the reconstruction (top row of each pair), or the partial reconstruction induced by the first $n$ parts (bottom row of each pair).  Parts are added to the reconstruction in order of decreasing contribution magnitude; smoother transformations are possible with an optimized sequence.  The last two columns show the final reconstruction with all parts (Fin), and the original input (Inp). Bars above the decoding matrix columns indicate the scale factor/hidden unit activity associated with the column. \label{gradual_reconstruction_figure}}
+\end{figure}
+
+
+%The categorical units are considerably more active than most part units, as shown in figure~\ref{categorical_connection_statistics_figure}(b), and therefore make a larger contribution to the reconstruction than the part-units.  ALREADY IN categorical-unit section.
+Consistent with prototypes for the non-negative MNIST inputs, the decoding matrix columns of the categorical-units are generally positive, as shown in figure~\ref{categorical_connection_statistics_figure}(e).  In contrast, the decoders of the part-units are approximately mean-zero and so cannot serve as prototypes themselves.  Rather, they shift and transform prototypes, moving activation from one region in the image to another, as demonstrated in figure~\ref{gradual_reconstruction_figure}(b,c).
+
+
+%When performing a tangent-space decomposition around a prototype, the part-units that connect to a categorical-unit should not primarily be part-units that align perfectly with the categorical-unit's prototype.  These part-units should only be weakly co-activated with the categorical unit, since the categorical unit itself can account for these components of the input.  Rather that part-units that connect most strongly to a categorical unit should be those that are slightly misaligned with the prototype, and so can deform the prototype in category-consistent ways.  This account is consistent with the mean-zero nature of the part-based decoders, versus the positive-mean categorical-unit decoders, as shown in figure~\ref{interpretation_statistics_figure}(b).  It is also consistent with the positive connections from anti-aligned part units, for which the dot product between part and categorical decoders is negative.  The encoder for a categorical-unit needs to be diffuse, since assuming it regulates the overall activity of the categorical-unit, it must respond to all manifestations of the category, rather than just the optimal one.  %HOWEVER, the most categorical-units seem to have extremely weak self-connections (aside from the implicit identity component of the explaining-away matrix); that is, they integrate the evidence they receive, rather than looking at the difference between their input and their prediction.
+
+Discrepancies between the prototype and the input due to transformations along the data manifold are explained by class-consistent part-units, and only serve to further activate the categorical-units of that class, as in figure~\ref{categorical_connection_figure}(a,c).
+Discrepancies between the prototype and the input due to deformations orthogonal to the data manifold are explained by class-incompatible part-units, and serve to suppress the categorical-units of that class, both directly and via activation of incompatible categorical-units.  %Given that a categorical unit is on, show that connections to it from the active part units are almost all positive.
+%The weighted sum of negative projections from the class-incompatible part-units to the selected categorical-units is an approximation of the $\ell_1$ tangent distance.
+%These dynamics are similar to a traditional tangent space nearest-neighbors algorithm, which considers the minimal distance between the tangent spaces around two inputs.  
+
+%Classification is primarily dependent upon the distance orthogonal to the tangent space; transformations within the tangent space do not alter the class.  The efficacy of tangent space nearest-neighbors algorithms depends upon the fact that, if two points are separated in directions orthogonal to the data manifold, the tangent space will have only small components in these directions, and a large distance must be traveled along the tangent space to traverse the orthogonal distance.  However, this can conflate legitimate large distances along the data manifold with the spurious large distances associated with orthogonal directions.  The decomposition induced by our networks explicitly distinguishes these two sorts of perturbations, and properly treats parallel projections as reinforcing, whereas orthogonal projections are suppressive.  
+
+
+\begin{comment}
+%It would make sense for the projection from part to categorical-units to be related to the degree to which the part is orthogonal to the local tangent space.  
+If only a single prototype is active (enforced by winner-take-all connections after convergence, as in figure~\ref{categorical_connection_figure}(b)), and all active part-units have orthogonal decoders that are either within or orthogonal to the tangent space (with equal negative connections from the orthogonal units), 
+%and the negative connections from the part-units to the categorical-units have weights proportional to the dot product between the decoder and the tangent space (FINISH!!!)
+then the weighted sum of negative projections from the part units to the selected categorical-unit is the $\ell_1$ tangent distance.  %hidden units that have decoder parts that are orthogonal to the tangent space of a prototype \emph{is} the tangent
+This is actually close to the current network (FINISH).
+\end{comment}
+
+If the wrong prototype is turned on, the residual input will generally contain substantial unexplained components.  Part-units obey ISTA-like dynamics and thus function as a sparse coder on the residual input, so part-units that match the unexplained components of the input will be activated.  These part-units will have positive connections to categorical-units with compatible prototypes, and so will tend to activate categorical-units associated with the true class (so long as the unexplained components of the input are diagnostic).  The spuriously activated categorical-unit will not be able to sustain its activity, since few compatible part-units will be required to capture the residual input.  
+
+
+The classification approach used by DrSAEs is different from one based upon a traditional sparse coding decomposition: it projects into the space of deviations from a prototype, which is not the same as the space of prototype-free parts, as is clear from figure~\ref{gradual_reconstruction_figure}(a,b).  For instance, a $5$ can easily be constructed using the parts of a $6$, making it difficult to distinguish the two.  Indeed, the first seven progressive reconstruction steps of the $6$ in figure~\ref{gradual_reconstruction_figure}(a) could just as easily be used to produce a $5$.  However, starting from a $6$ prototype, the parts required to break the bottom loop are outside the data manifold of the $6$ class, and so will tend to change the active prototype.  
+
+%DrSAE illustrates the equivalence between deep networks and sparse recurrent networks, and naturally learns a hierarchical representation within a recurrent network.
+%DrSAE takes advantage of the equivalence between a deep network and a sparse recurrent network in which a disjoint subset of the units are active on each iteration.  They demonstrate that recurrent networks can learn a hierarchical representation.
+
+
+%The architecture of DrSAEs mitigates the vanishing gradient problem, which has plagued deep and recurrent networks~\citep{bengio1994}.  Each layer receives input.  If parameters are initially small, the network effectively has only one hidden layer.  As this single layer is trained, the earlier layers will effectively become active, and will be trained in turn.
+
+%discriminative recurrent sparse autoencoders are related to but distinct from group sparsity \citep{hyvarinen2001, kavukcuoglu2009} and explicit tangent-space nearest-neighbors classification \citep{simard1993, rifai2011b} in that the encoder does not perform any explicit energy minimization, and the group structure is learned based upon the need to produce class-specific outputs for the classifier.  Just as the units differentiate into part- and categorical-units, the sparsification performed by the $\ell_1$ regularizer separates into the creation of a sparse set of classifiers, and then a separate sparse set of perturbations of the classifier prototypes.  %The categorical-units must be large to saturate the $\ell_2$ normalization and suppress the non-class-specific part units, and the network doesn't waste their ability to reconstruct the input.  However, the categorical unit activations must be calculated based upon the very categorical and part units that induce the final reconstruction and classification.
+
+\begin{comment}
+\subsection{Biological plausibility}
+Recurrence is one of the dominant structural features of the cortex \citep{douglas1995, douglas2004}.  In contrast, while the machine learning community has found that deep networks can be extremely powerful, it has not realized much benefit from recurrence for static classification problems \citep{bengio2009}.  This is perhaps surprising, since a recurrent network is equivalent to a deep network in which parameters are shared between layers.  
+
+Success in training deep networks often relies upon alternating feature extraction and pooling layers, with more abstract high-level features composed of lower-level features \citep{jarrett2009}.  It would seem as if this accretive process would require unshared weights for each layer, since higher-level composite features appear to be conceptually distinct from the lower-level features from which they are composed.  Even in computational neuroscience, this bias is evident in models of simple and complex cells of the primary visual cortex, whose receptive fields are traditionally conceived as forming via a strict hierarchy, although there is little evidence for such structure in the brain \citep{hubel1962}.  In this paper, we show that discriminative training of a recurrent network of biologically plausible rectified linear units \citep{douglas1995, glorot2011} can induce hierarchical structure within the network that is suggestive of simple and complex cells.  %Moreover, sharing weights is not very burdensome if they are subject to similar gradients (which is the case in a LISTA network if all layers are subject to the $\ell_1$ and $\ell_2$ losses (only exact if network hits a fixed point)).  
+
+%The emergence of hierarchy within a recurrent network is reminiscent of simple and complex cells in primary visual cortex.  
+%Functional connectivity between simple cells and complex cells in cat striate cortex - Jose-Manuel Alonso and Luis M. Martinez (1998)
+\end{comment}
+
+
+%\section{Conclusion}
+
+%discriminative recurrent sparse autoencoders learn to produce a decomposition of the input into a prototype and a set of perturbations.
+
+
+
+
+
+
+\begin{comment}
+\subsection{Efficient encoding and training}
+
+Our LISTA encoder can be understood as a learned approximation to a second-order minimization of the loss ($\ell_2$ reconstruction plus $\ell_1$ sparsifying).  The learned matrices are effectively the optimal matrices from ISTA multiplied by a (fixed) approximation to the inverse Hessian.  In general, encoders that are complementary to a given decoder can sensibly be of the form of (first- or second-order) gradient descent on the decoder's loss function. 
+
+Gradient magnitudes (presently approximated with backprop messages) seem to drop off by a factor of 20 between the last and first layer with 11 ista iterations in an untrained network.  This decay would obviously be eliminated if the reconstruction loss were applied to each layer, but that strategy is incommensurable with the concept of deep networks (although, similar to deep convex networks, each layer could be trained to classify through an independent logistic regressor).  Linked weights/recurrent dynamics allow the large gradients of the early layers to bootstrap the training of the early layers; if the weights are small, then hidden units activities and inputs are small even deep in the network, which renders the network similar to a shallow network.
+\end{comment}
+
+
+
+
+%QUESTIONABLE: The average final magnitude of categorical-units is strongly correlated with their recurrent connection magnitude when they turn on.  Does this indicate that it's a constant, independent of the input, once the categorical unit is selected?  Consider looking at the variance of unit activity, given that the unit is on.  
+
+
+%How does the classification output evolve over time?  Does the network ever change its mind?  The part-units seem to perform something close to ISTA, with the caveat that they only need explain the portion of the input not explained by the categorical-units.  As a result, part-units that are essential for explaining the full input may well turn off as the network evolves, and categorical-units come to explain much of the input.  In particular, part-units that initially activated the categorical-units may not remain on if they align well with the decoders of the categorical-units.  If a categorical unit is chosen poorly, its decoding column will not align with the input, and part-units will be activated to explain the negative image of the categorical-unit's prototype.  This might be an effective sign that a categorical-unit is poorly chosen.  
+
+
+
+
+
+
+
+
+
+%How do the categorical-units compute their activation?  The alignment between encoder and decoder, and the match between explaining-away weights and the dot product of the associated decoder columns, indicate that part units use ISTA even after discriminative training, and thus follow the gradient of the sum of the $\ell_2$ reconstruction loss and the $\ell_1$ sparsifying loss.  categorical-units, in contrast, do not have well-structured encoders, and have explaining-away connections that poorly match the dot product of the corresponding decoding columns, and so are probably not following the gradient of the $\ell_2$ reconstruction loss, even though they make a substantial contribution to the reconstruction.  Their strongest connections seem to be negative links to other categorical-units, which suggests they're implementing winner-take-all dynamics.  
+
+%Part-units don't seem to receive disproportionately strong connections from categorical units (which could be used to silence parts incompatible with the chosen prototype) (BUT keep in mind that categorical-units have higher activities, so part-units could be silenced even by connections from categorical-units that aren't substantially larger than those to other part-units), suggesting that the space of perturbations available from a prototype is not restricted by the choice of the prototype.  Rather, the each part unit is compatible with only a subset of the categorical-units, so the prototype chosen is determined by the part-unit activations.  
+%Based upon the observed connections to categorical-units, I would think that categorical-units are activated by a very unselective encoder, and then refined by excitation and inhibition from part-units.
+
+%The most categorical-units integrate their inputs over time, as is evidenced by their disproportionately large diagonal elements in the explaining-away matrix.
+
+
+\begin{comment}
+\section{Extra ideas}
+
+Inhibition between categorical-units is akin to explaining-away between part units; the fact that there is a classification needs to be explained, so the more the magnitude of the classification output is accounted for by one unit, the less needs to be explained by others.  The diagonal of the explaining away matrix for part units would probably go more negative if the optimal output were bounded (e.g. cross entropy loss with an optimal distribution other than 1,0,0,...)
+
+It's initially surprising that categorical-units have significant decoding column magnitude.  The decoding column magnitudes are only bounded above, so when discriminative training is applied, it would be possible for a subset of units to learn to produce the correct classification without affecting the reconstruction; the remaining plurality of part-units could then adjust to fully reconstruct the input.  The fact that categorical-units maintain large decoder columns despite the disproportionately large activations they achieve indicates that they are actually an important part of the reconstruction process.  Note that part-units adjust to the contribution of the decoder, since the categorical-part connections are ISTA-compatible, so the magnitude of the categorical-unit contribution to the reconstruction need not be tightly regulated.  The categorical-units need to be very active to satisfy the discriminative classification loss, and the network doesn't want to waste this potential contribution to the reconstruction, but they don't need to be precise.
+
+In the limit of long recurrent computations, LISTA networks can calculate the gradient using Hebbian learning on their final activity.
+$\ell_1$ regularization on a hierarchical network of rectified linear units is equivalent to $\sum_{ij} \frac{\partial h_i}{\partial x_j} \cdot x_j$ where $i$ runs over the hidden units and $j$ runs over the inputs.  
+\begin{align*}
+z_j &= \Theta\left(\sum_i W_{ji} \cdot y_i \right) \\
+\frac{d z_j}{d x_k} &= \left( \sum_i W_{ji} \cdot y_i > 0 \right) \cdot \sum_i W_{ji} \cdot \frac{d y_i}{d x_k} 
+\end{align*}
+This applies until the last layer, at which point $\frac{d x_i}{d x_k} = \delta_{ik}$.  Taking $L = \sum_k \frac{d z_j}{d x_k} \cdot x_k$ and pushing the sum over $k$ all the way back to the final $\delta$, we can then show that $L$ is identical to $z_j$.  THIS ONLY WORKS if we add $\ell_1$ regularizers into the loss function complementary to the biases of the encoder.  The real issue is that the gradient can be calculated for a loss function which includes information which is not present in the initial inputs.  We can do discriminative training with only local signals, by separating the backwards and forwards pass in time, so long as the backpropagating discriminative gradient does not change the set of active units.
+\end{comment}
+
+
+
+
+
+%\subsubsection*{Acknowledgments}
+%Use unnumbered third level headings for the acknowledgments. All acknowledgments go at the end of the paper. Do not include  acknowledgments in the anonymized submission, only in the final paper. 
+
+
+%\small
+
+\begin{thebibliography}{100}
+\providecommand{\natexlab}[1]{#1}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
+  \providecommand{\doi}{doi:\discretionary{}{}{}\begingroup
+  \urlstyle{rm}\Url}\fi
+
+\addcontentsline{toc}{chapter}{Bibliography}
+
+%\bibitem[{Barlow (1961)}]{barlow1961}
+%Barlow, H. B. (1961). 
+%\newblock Possible principles underlying the transformation of sensory messages. 
+%\newblock In \emph{Sensory communication}. Cambridge, MA: MIT Press.
+%(pp. 217--234)
+
+\bibitem[{Bengio(2009)}]{bengio2009}
+Bengio, Y. (2009). 
+\newblock Learning deep architectures for AI. 
+\newblock \emph{Foundations and Trends in Machine Learning}, \emph{2}(1), 1--127.
+
+\bibitem[{Bengio, Courville, \& Vincent(2012)}]{bengio2012}
+Bengio, Y., Courville, A., \& Vincent, P. (2012).
+\newblock Representation learning: A review and new perspectives
+\newblock arXiv:1206.5538 [cs.LG]
+
+\bibitem[{Bengio, Simard, \& Frasconi(1994)}]{bengio1994}
+Bengio, Y., Simard, P., \& Frasconi, P. (1994). 
+\newblock Learning long-term dependencies with gradient descent is difficult. 
+\newblock \emph{IEEE Transactions on Neural Networks}, \emph{5}(2), 157--166.
+
+%\bibitem[{Bishop(2006)}]{bishop2006}
+%Bishop, C. M. (2006).
+%\newblock \emph{Pattern recognition and machine learning.}
+%\newblock New York: Springer.
+
+\bibitem[{Bradley \& Bagnell(2008)}]{bradley2008}
+Bradley, D. M., \& Bagnell, J. A. (2008).
+\newblock Differentiable sparse coding.
+\newblock In D. Koller, D. Schuurmans, Y. Bengio, \& L. Bottou (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 21)} (pp. 113--120).
+
+\bibitem[{Boureau, et~al.(2010)Boureau, Bach, LeCun, \& Ponce}]{boureau2010}
+Boureau, Y., Bach, F., LeCun, L., \& Ponce, J. (2010).
+\newblock Learning mid-level features for recognition
+\newblock In \emph{Proceedings of the 23rd IEEE Conference on Computer Vision and Pattern Recognition (CVPR 2010)}.
+
+\bibitem[{Dahl, et~al.(2012)Dahl, Yu, Deng, \& Acero}]{dahl2012}
+Dahl, G. E., Yu, D., Deng, L., \& Acero, A. (2012). 
+\newblock Context-dependent pre-trained deep neural networks for large-vocabulary speech recognition. 
+\newblock \emph{IEEE Transactions on Audio, Speech, and Language Processing}, \emph{20}(1), 30--42.
+
+\bibitem[{Daubechies, Defrise, \& De Mol(2004)}]{daubechies2004}
+Daubechies, I., Defrise, M., \& De Mol, C. (2004). 
+\newblock An iterative thresholding algorithm for linear inverse problems with a sparsity constraint. 
+\newblock \emph{Communications on Pure and Applied Mathematics}, \emph{57}(11), 1413--1457.
+
+%\bibitem[{Douglas, et~al.(1995)Douglas, Koch, Mahowald, Martin, \& Suarez}]{douglas1995}
+%Douglas, R. J., Koch, C., Mahowald, M., Martin, K. A., \& Suarez, H. H. (1995). 
+%\newblock Recurrent excitation in neocortical circuits. 
+%\newblock \emph{Science}, \emph{269}(5226), 981--985.
+
+%\bibitem[{Douglas \& Martin(2004)}]{douglas2004}
+%Douglas, R. J., \& Martin, K. A. C. (2004).
+%\newblock Neuronal circuits of the neocortex.
+%\newblock \emph{Annual Review of Neuroscience}, \emph{27}, 419--451.
+
+\bibitem[{Ekanadham, Tranchina, \& Simoncelli(2011)}]{ekanadham2011}
+Ekanadham, C., Tranchina, D., \& Simoncelli, E. P. (2011). 
+\newblock Recovery of sparse translation-invariant signals with continuous basis pursuit.
+\newblock \emph{IEEE Transactions on Signal Processing}, \emph{59}(10), 4735--4744.
+
+%\bibitem[{Garrigues \& Olshausen (2010)
+%Garrigues, P., & Olshausen, B. (2010). Group sparse coding with a laplacian scale mixture prior. Advances in Neural Information Processing Systems, 24.
+
+\bibitem[{Glorot, Bordes, \& Bengio(2011)}]{glorot2011}
+Glorot, X., Bordes, A., \& Bengio, Y. (2011).
+\newblock Deep sparse rectifier neural networks. 
+%\newblock In G. Gordon, D. Dunson, \& M. Dudik (Eds.) \emph{AISTATS 2011} (pp. 315--323).
+\newblock In G. Gordon, D. Dunson, \& M. Dudik (Eds.) \emph{JMLR W\&CP: Proceedings of the Fourteenth International Conference on Artificial Intelligence and Statistics (AISTATS 2011)} (pp. 315--323).
+
+\bibitem[{Gregor \& LeCun(2010)}]{gregor2010}
+Gregor, K., \& LeCun, Y. (2010).
+\newblock Learning fast approximations of sparse coding.
+%\newblock In J. F{\"u}rnkranz \& T. Joachims (Eds.) \emph{ICML 2010} (pp. 399--406).
+\newblock In J. F{\"u}rnkranz \& T. Joachims (Eds.) \emph{Proceedings of the 27th International Conference on Machine Learning (ICML 2010)} (pp. 399--406).
+
+%\bibitem[{Gregor, Szlam, \& LeCun(2011)}]{gregor2011}
+%Gregor, K., Szlam, A., \& LeCun, Y. (2011).
+%\newblock Structured sparse coding via lateral inhibition. 
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{NIPS 24} (pp. 1116--1124). %Cambridge, MA: MIT Press.
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 1116--1124). %Cambridge, MA: MIT Press.
+
+\bibitem[{Hinton, Osindero, \& Teh(2006)}]{hinton2006}
+Hinton, G. E., Osindero, S., \& Teh, Y. W. (2006). 
+\newblock A fast learning algorithm for deep belief nets. 
+\newblock \emph{Neural Computation}, \emph{18}(7), 1527--1554.
+
+\bibitem[{Hinton(2010)}]{hinton2010}
+Hinton, G. (2010).
+\newblock A practical guide to training restricted Boltzmann machines (UTML TR 2010-003, version 1).
+\newblock Toronto, Canada: University of Toronto, Department of Computer Science.
+
+\bibitem[{Hinton, et~al.(2012)Hinton, Srivastava, Krizhevsky, Sutskever, \& Salakhutdinov}]{hinton2012}
+Hinton, G. E., Srivastava, N., Krizhevsky, A., Sutskever, I., \& Salakhutdinov, R. R. (2012). 
+\newblock Improving neural networks by preventing co-adaptation of feature detectors
+\newblock arXiv:1207.0580v1  [cs.NE]
+
+\bibitem[{Hubel \& Wiesel(1962)}]{hubel1962}
+Hubel, D. H., \& Wiesel, T. N. (1962). 
+\newblock Receptive fields, binocular interaction and functional architecture in the cat's visual cortex. 
+\newblock \emph{The Journal of Physiology}, \newblock{160}(1), 106--154.
+
+%\bibitem[{Hyv{\"a}rinen \& Hoyer(2000)}]{hyvarinen2000}
+%Hyv{\"a}rinen, A. \& Hoyer, P. O.  (2000).
+%\newblock Emergence of phase- and shift-invariant features by decomposition of natural images into independent feature subspaces. 
+%\newblock \emph{Neural Computation}, \emph{12}(7), 1705--1720.
+
+%\bibitem[{Hyv{\"a}rinen, Hoyer, \& Inki (2001)}]{hyvarinen2001}
+%Hyv{\"a}rinen, A. Hoyer, P. O., \& Inki, M.  (2001).
+%\newblock Topographic independent component analysis. 
+%\newblock \emph{Neural Computation}, \emph{13}(7), 1527--1558.
+
+\bibitem[{Jarrett, et~al.(2009)Jarrett, Kavukcuoglu, Ranzato, \& LeCun}]{jarrett2009}
+Jarrett, K., Kavukcuoglu, K., Ranzato, M. A., \& LeCun, Y. (2009). 
+\newblock \emph{What is the best multi-stage architecture for object recognition?} 
+%\newblock In \emph{ICCV 2009} (pp. 2146--2153). %IEEE.
+\newblock In \emph{Proceedings of the 12th International Conference on Computer Vision (ICCV 2009)} (pp. 2146--2153). %IEEE.
+
+%\bibitem[{Jenatton, et~al(2011)Jenatton, Mairal, Obozinski, \& Bach}]{jenatton2011}
+%Jenatton, R., Mairal, J., Obozinski, G., \& Bach, F. (2011). 
+%\newblock Proximal methods for hierarchical sparse coding. 
+%\newblock \emph{Journal of Machine Learning Research}, \emph{12}, 2297--2334.
+
+% CONSIDER REMOVING!
+%\bibitem[{Kavukcuoglu, et~al.(2009)Kavukcuoglu, Ranzato, Fergus, \& LeCun}]{kavukcuoglu2009}
+%Kavukcuoglu, K., Ranzato, M. A., Fergus, R., \& LeCun, Y. (2009). 
+%\newblock Learning invariant features through topographic filter maps. 
+%\newblock In \emph{CVPR 2009} (pp. 1605-1612).
+%\newblock In \emph{IEEE Conference on Computer Vision and Pattern Recognition (CVPR 2009)} (pp. 1605-1612).
+
+%\bibitem[{Le, et~al.(2011)Le, Karpenko, Ngiam, \& Ng}]{le2011}
+%Le, Q. V., Karpenko, A., Ngiam, J., \& Ng, A. Y. (2011). 
+%\newblock ICA with reconstruction cost for efficient overcomplete feature learning. 
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 1116--1124). %Cambridge, MA: MIT Press.
+
+\bibitem[{LeCun, et~al.(1998)LeCun, Bottou, Bengio, \& Haffner}]{lecun1998}
+LeCun, Y., Bottou, L., Bengio, Y., \& Haffner, P. (1998). 
+\newblock Gradient-based learning applied to document recognition. 
+\newblock \emph{Proceedings of the IEEE}, \emph{86}(11), 2278--2324.
+
+\bibitem[{Lee, Pedersen, \& Mumford(2003)}]{lee2003}
+Lee, A. B., Pedersen, K. S., \& Mumford, D. (2003). 
+\newblock The nonlinear statistics of high-contrast patches in natural images. 
+\newblock \emph{International Journal of Computer Vision}, \emph{54}(1), 83--103.
+
+%\bibitem[{Lee \& Seung(1999)}]{lee1999}
+%Lee, D. D., \& Seung, H. (1999). 
+%\newblock Learning the parts of objects by non-negative matrix factorization. 
+%\newblock \emph{Nature}, \emph{401}(6755), 788--791.
+
+\bibitem[{Lee, Ekanadham, \& Ng(2008)}]{lee2008}
+Lee, H., Ekanadham, C., \& Ng, A. (2008). 
+\newblock Sparse deep belief net model for visual area V2. 
+\newblock In J. C. Platt, D. Koller, Y. Singer \& S. Roweis (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 20)}, (pp. 873--880).
+
+%\bibitem[{Lewicki (2002)}]{lewicki2002}
+%Lewicki, M. S. (2002). 
+%\newblock Efficient coding of natural sounds. 
+%\newblock \emph{Nature Neuroscience}, \emph{5}(4), 356--363.
+
+\bibitem[{Mairal, et~al.(2009)Mairal, Bach, Ponce, Sapiro, \& Zisserman}]{mairal2009}
+Mairal, J., Bach, F., Ponce, J., Sapiro, G., \& Zisserman, A. (2009).
+\newblock Supervised dictionary learning.
+\newblock In D. Koller, D. Schuurmans, Y. Bengio, \& L. Bottou (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 21)} (pp. 1033--1040).
+
+\bibitem[{Mairal, Bach, \& Ponce(2012)}]{mairal2012}
+Mairal, J., Bach, F., \& Ponce, J. (2012). 
+\newblock Task-driven dictionary learning. 
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence}, \emph{34}(4), 791--804.
+
+%\bibitem[{Martinez \& Alonso(2003)}]{martinez2003}
+%Martinez, L. M., \& Alonso, J. M. (2003). 
+%\newblock Complex receptive fields in primary visual cortex. 
+%\newblock \emph{The Neuroscientist}, \emph{9}(5), 317--331.
+
+\bibitem[{Nair \& Hinton(2010)}]{nair2010}
+Nair, V., \& Hinton, G. E. (2010). 
+\newblock Rectified linear units improve restricted boltzmann machines. 
+\newblock In J. F{\"u}rnkranz \& T. Joachims (Eds.) \emph{Proceedings of the 27th International Conference on Machine Learning (ICML 2010)} (pp. 807-814). %Madison, WI: Omnipress.
+
+\bibitem[{Narayanan \& Mitter(2010)}]{narayanan2010}
+Narayanan, H. \& MItter, S. (2010).
+\newblock Sample complexity of testing the manifold hypothesis.
+%\newblock In J. Lafferty, C. K. I. Williams, J. Shawe-Taylor, R.S. Zemel, \& A. Culotta (Eds.) \emph{NIPS 23} (pp. 1786--1794).
+\newblock In J. Lafferty, C. K. I. Williams, J. Shawe-Taylor, R.S. Zemel, \& A. Culotta (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 23)} (pp. 1786--1794).
+
+\bibitem[{Olshausen \& Field(1996)}]{olshausen1996}
+Olshausen, B. A., \& Field, D. J. (1996). 
+\newblock Emergence of simple-cell receptive field properties by learning a sparse code for natural images. 
+\newblock \emph{Nature}, \emph{381}(6583), 607--609.
+
+\bibitem[{Olshausen \& Field(1997)}]{olshausen1997}
+Olshausen, B. A., \& Field, D. J. (1997). 
+\newblock Sparse coding with an overcomplete basis set: A strategy employed by VI?
+\newblock \emph{Vision Research}, \emph{37}(23), 3311--3326.
+
+\bibitem[{Olshausen \& Field(2004)}]{olshausen2004}
+Olshausen, B. A., \& Field, D. J. (2004). 
+\newblock Sparse coding of sensory inputs. 
+\newblock \emph{Current opinion in neurobiology}, \emph{14}(4), 481--487.
+
+\bibitem[{Ranzato, et~al.(2006)Ranzato, Poultney, Chopra, \& LeCun}]{ranzato2006}
+Ranzato M., Poultney, C., Chopra, S., \& LeCun, Y. (2006). 
+\newblock Efficient learning of sparse representations with an energy-based model.
+\newblock In B. Sch\"{o}lkopf, J. Platt, \& T. Hoffman (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 19)}, (pp. 1137--1144).
+
+\bibitem[{Ranzato \& Szummer(2008)}]{ranzato2008}
+Ranzato, M., \& Szummer, M. (2008). 
+\newblock Semi-supervised learning of compact document representations with deep networks
+\newblock In A. McCallum \& S. Roweis (Eds.), \emph{Proceedings of the 25th Annual International Conference on Machine Learning (ICML 2008)} (pp. 792--799).
+
+%\bibitem[{Reisberg (1997)}]{reisberg1997}
+%Reisberg, D. (1997). 
+%\newblock \emph{Cognition: Exploring the science of the mind.}
+%\newblock New York: WW Norton.
+
+%\bibitem[{Rifai, et~al.(2011)Rifai, Vincent, Muller, Glorot, \& Bengio}]{rifai2011a}
+%Rifai, S., Vincent, P., Muller, X., Glorot, X., \& Bengio, Y. (2011). 
+%\newblock Contractive auto-encoders: Explicit invariance during feature extraction. 
+%\newblock L. Getoor \& T. Scheffer (Eds.) \emph{Proceedings of the 28th International Conference on Machine Learning (ICML 2011)} (pp. 833--840).
+
+\bibitem[{Rifai, et~al.(2011)Rifai, Dauphin, Vincent, Bengio, \& Muller}]{rifai2011b}
+Rifai, S., Dauphin, Y., Vincent, P., Bengio, Y., \& Muller, X. (2011). 
+\newblock The manifold tangent classifier. 
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{NIPS 24} (pp. 2294--2302). %Cambridge, MA: MIT Press.
+\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 2294--2302). %Cambridge, MA: MIT Press.
+
+%\bibitem[{Rozell, et~al.(2008)Rozell, Johnson, Baraniuk, \& Olshausen}]{rozell2008}
+%Rozell, C. J., Johnson, D. H., Baraniuk, R. G., \& Olshausen, B. A. (2008). 
+%\newblock Sparse coding via thresholding and local competition in neural circuits. 
+%\newblock \emph{Neural computation}, \emph{20}(10), 2526--2563.
+
+\bibitem[{Rumelhart, et~al.(1986)Rumelhart, Hinton, \& Williams}]{rumelhart1986}
+Rumelhart, D. E., Hinton, G. E., \& Williams, R. J. (1986).
+\newblock Learning internal representations by error propagation.
+\newblock In D. E. Rumelhart, J. L. McClelland, and the PDP Research Group (Eds.), \emph{Parallel Distributed Processing: Explorations in the Microstructure of Cognition: Vol. 1. Foundations} (pp. 318--362).  Cambridge, MA: MIT Press.  
+
+\bibitem[{Salinas \& Abbott(1996)}]{salinas1996}
+Salinas, E., \& Abbott, L. F. (1996). 
+\newblock A model of multiplicative neural responses in parietal cortex. 
+\newblock \emph{Proceedings of the National Academy of Sciences of the United States of America}, \emph{93}(21), 11956--11961.
+
+%\bibitem[{Saxe, et~al.(2011)Saxe, Bhand, Mudur, Sures, \& Ng}]{saxe2011}
+%Saxe, A., Bhand, M., Murdur, R., Suresh, B., \& Ng, A. Y. (2011).
+%\newblock Unsupervised learning models of primary cortical receptive ﬁelds and receptive ﬁeld plasticity.
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{NIPS 24} (pp. 1971--1979). %Cambridge, MA: MIT Press.
+%\newblock In J. Shawe-Taylor, R. S. Zemel, P. Bartlett, F. C. N. Pereira, \& K. Q. Weinberger (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 24)} (pp. 1971--1979). %Cambridge, MA: MIT Press.
+
+\bibitem[{Simard, LeCun, \& Denker(1993)}]{simard1993}
+Simard, P., LeCun, Y., \& Denker, J. S. (1993). 
+\newblock Efficient pattern recognition using a new transformation distance. 
+%In S. J. Hanson, J. D. Cowan, \& C. L. Giles (Eds.) \emph{NIPS 5} (pp. 50--58). %Morgan Kaufmann Publishers Inc.
+In S. J. Hanson, J. D. Cowan, \& C. L. Giles (Eds.) \emph{Advances in Neural Information Processing Systems (NIPS 5)} (pp. 50--58). %Morgan Kaufmann Publishers Inc.
+
+\bibitem[{Simard, et~al.(1998)Simard, LeCun, Denker, \& Victorri}]{simard1998}
+Simard, P., LeCun, Y., Denker, J., \& Victorri, B. (1998). 
+\newblock Transformation invariance in pattern recognition: Tangent distance and tangent propagation. 
+\newblock In G. Orr,  \& K. Muller (Eds.), \emph{Neural networks: Tricks of the trade}. Berlin: Springer. 
+%\newblock \emph{Neural networks: Tricks of the trade}, 549--550.
+
+% CONSIDER REMOVING!!!
+%\bibitem[{Smith \& Lewicki(2006)}]{smith2006}
+%Smith, E. C., \& Lewicki, M. S. (2006). 
+%\newblock Efficient auditory coding. 
+%\newblock \emph{Nature}, \emph{439}(7079), 978--982.
+
+\bibitem[{Sprechmann, Bronstein, \& Sapiro(2012a)}]{sprechmann2012a}
+Sprechmann, P., Bronstein, A., \& Sapiro, G. (2012).
+\newblock Learning efficient structured sparse models.
+%\newblock In J. Langford \& J. Pineau (Eds.) \emph{ICML 12} (pp. 615--622).
+\newblock In J. Langford \& J. Pineau (Eds.) \emph{Proceedings of the 29th International Conference on Machine Learning (ICML 12)} (pp. 615--622).
+
+\bibitem[{Sprechmann, Bronstein, \& Sapiro(2012b)}]{sprechmann2012b}
+Sprechmann, P., Bronstein, A., \& Sapiro, G. (2012).
+\newblock Learning efficient sparse and low rank models.
+\newblock arXiv:1212.3631 [cs.LG]
+
+%\bibitem[{Tibshirani(1996)}]{tibshirani1996}
+%Tibshirani, R. (1996). 
+%\newblock Regression shrinkage and selection via the lasso. 
+%\newblock \emph{Journal of the Royal Statistical Society. Series B}, \emph{58}(1), 267--288.
+
+%\bibitem[{Vinje \& Gallant(2000)}]{vinje2000}
+%Vinje, W. E., \& Gallant, J. L. (2000). 
+%\newblock Sparse coding and decorrelation in primary visual cortex during natural vision. 
+%\newblock \emph{Science}, \emph{287}(5456), 1273--1276.
+
+%\bibitem[{Zeiler, et~al.(2010)}]{zeiler2010}
+%Zeiler, M. D., Krishnan, D., Taylor, G. W., \& Fergus, R. (2010).
+%\newblock Deconvolutional networks.
+%\newblock In \emph{Proceedings of the 2010 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR 2010)} (pp. 2528--2535). Los Alamitos, CA: IEEE Computer Society.
+
+\bibitem[{Zeiler, Taylor, \& Fergus(2011)}]{zeiler2011}
+Zeiler, M. D., Taylor, G. W., \& Fergus, R. (2011).
+\newblock Adaptive deconvolutional networks for mid and high level feature learning.
+\newblock In \emph{Proceedings of the 13th International Conference on Computer Vision (ICCV 2011)} (pp. 2018--2025).
+
+
+\end{thebibliography}
+
+
+\appendix
+%\section{Supplementary figures}
+
+\begin{figure}[p] %p
+  \begin{center}
+    \begin{tabular}{p{0.04in}p{2.4in}p{0.04in}p{2.4in}}
+      \parbox[b]{0in}{(a) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_recurrent_connection_magnitude.png} &
+      \parbox[b]{0in}{(b) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_classification_dictionary_connection_magnitude.png} 
+    \end{tabular}
+  \end{center}
+  \caption{The hidden units differentiate into two populations.  The magnitude of row $\left( \Sm - \I \right)_i$~(a) and $\C_i$~(b), versus the angle between encoder row and decoder column, for each unit.  We call the dense cloud in the bottom-left part-units, and the tail extending to the top-right categorical-units. \label{two_classes_figure}}
+\end{figure}
+
+
+\begin{figure}[p] %p
+  \begin{center}
+    \begin{tabular}{p{0.04in}p{2.4in}p{0.04in}p{2.4in}}
+      \parbox[b]{0in}{(a) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_ista_weights_part_to_part.png} &
+      \parbox[b]{0in}{(b) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_ista_weights_categorical_to_part.png}  \\
+      \parbox[b]{0in}{(c) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_recurrent_weight_match_to_ista_ideal.png}
+    \end{tabular}
+  \end{center}
+  \caption{Part-units have connections consistent with ISTA.  The actual connection weights $\Sm - \I$ versus the ISTA-predicted weights $\D^{\top} \cdot \D$, for connections from part-units to part-units~(a) and categorical-units to part-units~(b); and the angle between the rows of $\Sm - \I$ and the ISTA-ideal $\D^{\top} \cdot \D$ versus the angle between the encoder rows and decoder columns~(c).  Units are considered part-units if the angle between their encoder and decoder is less than $0.5$ radians, and categorical-units if the angle between their encoder and decoder is greater than $0.7$ radians. \label{ista_ideal_connections_figure}}
+\end{figure}
+
+
+\begin{figure}[ptb] %p
+  \begin{center}
+    \begin{tabular}{p{0.04in}p{2.4in}p{0.04in}p{2.4in}}
+      \parbox[b]{0in}{(a) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_v_diagram.png} &
+      \parbox[b]{0in}{(b) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_average_final_value_when_activation.png} \\
+      \parbox[b]{0in}{(c) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_weighted_average_categoricalness.png} &
+      \parbox[b]{0in}{(d) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_prob_of_second_iter_activation.png} \\
+      \parbox[b]{0in}{(e) \vspace{3.8cm}} & \includegraphics[width=2.5in, keepaspectratio=true]{scat_decoder_mean.png}
+    \end{tabular}
+  \end{center}
+  \caption{Statistics of connections indicate the presence of a rough hierarchy, with categorical-units on the top integrating %pooling 
+    over part-units on the bottom. Average explaining-away connection weight $S_{ij}$, binned by alignment between decoders, for connections from part-units to categorical-units~(a).  If no units fall in a given bin, the average is set to zero. Average final value of a unit $x_i^{t = T}$, given that $x_i^{t=T} > 0$, versus the angle between the encoder row $E_i$ and decoder column $D_i$~(b).  Average angle between encoder row $E_j$ and decoder column $D_j$ of afferents to unit $i$, weighted by the strength of the connection to unit $i$, versus the angle between encoder row $E_i$ and decoder column $D_i$~(c). Probability that $x_i^1 = 0$ and $x_i^2 > 0$, versus the angle between the encoder row $E_i$ and decoder column $D_i$~(d).  Average value of the decoder column $\overline{D_i}$ versus the angle between the encoder row $E_i$ and the decoder column $D_i$~(e). \label{categorical_connection_statistics_figure}}  
+\end{figure}
+
+\begin{comment}
+\begin{figure}[ptb] %p
+  \begin{center}
+    \begin{tabular}{cc}
+      \includegraphics[width=2.625in, keepaspectratio=true]{scat_decoder_mean.png} &
+      \includegraphics[width=2.625in, keepaspectratio=true]{scat_class_dict_mag_versus_final_activation.png}
+    \end{tabular}
+  \end{center}
+  \caption{Statistics for interpretation. \label{interpretation_statistics_figure}}
+\end{figure}
+\end{comment}
+
+
+\begin{comment}
+\section{Extended discussion}
+
+Recurrent sparse autoencoders are related to but distinct from group sparsity \citep{hyvarinen2001, kavukcuoglu2009} and explicit tangent-space nearest-neighbors classification \citep{simard1993, rifai2011b} in that the encoder does not perform any explicit energy minimization, and the group structure is learned based upon the need to produce class-specific outputs for the classifier.  Just as the units differentiate into part- and categorical-units, the sparsification performed by the $\ell_1$ regularizer separates into the creation of a sparse set of classifiers, and then a separate sparse set of perturbations of the classifier prototypes.  %The categorical-units must be large to saturate the $\ell_2$ normalization and suppress the non-class-specific part units, and the network doesn't waste their ability to reconstruct the input.  However, the categorical unit activations must be calculated based upon the very categorical and part units that induce the final reconstruction and classification.
+\end{comment}
+
+
+\begin{comment}
+\section{Interpretation}
+
+%The network does not develop a purely feedforward (hierarchical) architecture.  The fact that encoder inputs to categorical-units don't disappear even given strong $\ell_1$ weight regularization suggests that the direct input to these units remains important, even if it isn't a prototype and is difficult to interpret.  Strong recurrent connections imply that the unit is effectively deeper in the hierarchy, since the activity is more determined by other hidden units and less by the input (since the magnitude of the input connections is bounded and thereby fixed).
+
+
+
+The small set of categorical-units is not directly induced by the need to produce large outputs to satisfy the cross-entropy loss, in conjunction with the $\ell_1$ regularization of the hidden units.  Since the sparse code is subject to $\ell_2$ normalization before passing through the logistic classifier, scaling up the maximum unit is equivalent to scaling down the other units.  The rows of the classification matrix are $\ell_2$ normalized, so the maximum input to the softmax occurs when a group of units have equal activation, and all other units are zero: $\sum_i \frac{1}{\sqrt{n}} \cdot \frac{c}{\sqrt{n}} = c$, independent of the size $n$ of the group.  
+The direct $\ell_1$ norm on the sparse coding units then probably induces the sparse code to be as sparse as possible; this is not achieved by a disproportionately large categorical-unit, which obviously hurts the unnormalized $\ell_1$ loss.  However, part units are naturally used for multiple input classes, and the scale of their activity is set by the normalized decoding matrix.  The network aligns the normalized representation with the classification matrix row while simultaneously allowing accurate reconstruction by making the categorical-units very large.  This interpretation is supported by figure~\ref{interpretation_statistics_figure}(b), which shows that the average activity of a unit when activated is extremely well correlated with the magnitude of its classification matrix column.  Group sparsity alone is not sufficient to induce categorical-units because it does not force the representation of the different categories to be disjoint.  The classification-matrix connection is directly related to the amount of categorical information carried by a unit.  Note that the output of the categorical-units does not by any means grow without bound.  Rather, it seems to consistently be less than 0.5.  Correspondingly, the decoding matrix column norms remain at or near 1.
+
+% Statistics for interpretation figure
+
+An ISTA-like algorithm, where activity of the parts effectively decreases the input (e.g. via the categorical-units) converges so long as the change in the input is small enough and the prototypes contribution induced by a part is weak.  Effectively, the categorical-unit's prototype output is added to the part-unit's output (although it is delayed by an iteration; the steady state is identical), but the encoder input to the part-unit remains unchanged, so it minimizes the reconstruction error of the residual including the categorical-units, assuming that it will not make a contribution based upon the categorical-unit/prototype.  If the contribution of the categorical-unit induced by the part-unit is smaller than the part contribution, the loss should still go down.  In order for the loss to be a Lyapunov function, we only need that the step in activation-space have a positive dot-product with the gradient; it doesn't need to follow the gradient exactly.
+
+The part-unit's ISTA-like dynamics operate slowly, so there is little reason to expect that the activation of the categorical-units' prototypes will suppress the part-units; the part-units will just plateau earlier than they would in the absence of the prototype.  
+\end{comment}
+
+\end{document} 
