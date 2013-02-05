@@ -222,7 +222,7 @@ end
 function RecPoolTrainer:train(train_data, epoch_type) 
    -- epoch_type == 'validation' if we're just testing the network on the validation data, in which case nothing should be altered (in particular, learning should not be performed
    -- epoch_type == 'display' if we're generating figures, in which case we want to keep the order consistent
-   if not(epoch_type == 'validation') then
+   if not(epoch_type) then
       self.epoch = self.epoch + 1
    end
 
@@ -277,7 +277,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
 
       
       -- optimize on current mini-batch
-      if epoch_type == 'validation' then
+      if ((epoch_type == 'validation') or (epoch_type == 'display')) then
 	 self.feval(self.flattened_parameters) -- just run the network on the minibatch_inputs and minibatch_targets to generate the confusion matrix, without doing any training
       elseif self.opt.optimization == 'CG' then
          self.config = self.config or {maxIter = self.opt.max_iter}
@@ -313,7 +313,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
       end
 
       -- repair the parameters one final time
-      if not(epoch_type == 'validation') then self.model:repair() end -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
+      if not((epoch_type == 'validation') or (epoch_type == 'display')) then self.model:repair() end -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
    end -- loop over the current epoch
    
    -- time taken for the current epoch (each call to train() only runs one epoch)

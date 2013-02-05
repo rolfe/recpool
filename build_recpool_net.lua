@@ -3,6 +3,7 @@ require 'nn'
 require 'kex'
 
 IGNORE_CLASSIFICATION = false
+UNSUPERVISED_CLASSIFICATION = false -- rather than using KL(p:q), where p is the observed distribution (one 1 and the rest 0's), use KL(q:q), which is equivalent to the negative entropy 
 DEBUG_shrink = false -- don't require that the shrink value be non-negative, to facilitate the comparison of backpropagated gradients to forward-propagated parameter perturbations
 DEBUG_L2 = false
 DEBUG_L1 = false
@@ -10,9 +11,9 @@ DEBUG_OUTPUT = false
 DEBUG_RF_TRAINING_SCALE = nil
 DEBUG_FORCE_SAFE_POWER = false
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
-USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false
-FULLY_NORMALIZE_ENC_FE_DICT = false
-FULLY_NORMALIZE_DEC_FE_DICT = false -- has generally been true
+USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false -- if false, scale down the learning rate for the ISTA modules in proportion to the number of repeats
+FULLY_NORMALIZE_ENC_FE_DICT = false -- if true, force the L2 norm of each row to be constant, rather than merely bounded the L2 norm above
+FULLY_NORMALIZE_DEC_FE_DICT = false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
 NORMALIZE_ROWS_OF_CLASS_DICT = true
@@ -20,6 +21,8 @@ BOUND_ROWS_OF_CLASS_DICT = false
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NORMALIZE_ROWS_OF_EXPLAINING_AWAY = false
+BOUND_ELEMENTS_OF_EXPLAINING_AWAY = false -- EXPERIMENTAL CODE for use with UNSUPERVISED_CLASSIFICATION - keeps the diagonal elements of the explaining_away matrix from growing very large and alone inducing large activations for the categorical-units
+EXPLAINING_AWAY_BOUND = 0.075
 EXPLAINING_AWAY_BOUND_SCALE_FACTOR = 3 -- keep in mind that the expected row magnitude of the explaining away matrix increases linearly with the number of hidden units, and thus will tend to be larger than the rows of the encoding_feature_extraction_dictionary
 ENC_CUMULATIVE_STEP_SIZE_INIT = 1.25 -- USE 0.2 FOR STRONG TEMPLATE PRIMING
 ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
@@ -27,10 +30,26 @@ NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
 CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
+USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
+USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
+USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
    CLASS_DICT_GRAD_SCALING = 0
+end
+
+if UNSUPERVISED_CLASSIFICATION then -- use an entropy-like regularizer, although it is applied in place of the usual logistic loss in an awkward manner
+   --BOUND_ELEMENTS_OF_EXPLAINING_AWAY = true --otherwise, the diagonals of the categorical units grow very large, whereas the other recurrent inputs to the categorical units remain relatively small
+   FULLY_NORMALIZE_DEC_FE_DICT = true -- otherwise, a single unit can always become very active to reduce the entropy of the hidden representation, and just represent the average input 
+end
+
+if USE_L1_OVER_L2_NORM or USE_PROB_WEIGHTED_L1 then -- these regularizers favor a single large value
+   FULLY_NORMALIZE_DEC_FE_DICT = true -- otherwise, a single unit can always become very active to reduce the entropy of the hidden representation, and just represent the average input 
+end
+
+if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and BOUND_ELEMENTS_OF_EXPLAINING_AWAY then
+   error('cannot both normalize and bound explaining away')
 end
 
 
@@ -72,7 +91,7 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
    if use_base_explaining_away then
       explaining_away = base_explaining_away
    else
-      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
+      explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY, bounded_elements = BOUND_ELEMENTS_OF_EXPLAINING_AWAY}, 
 					     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 					     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/num_ista_iterations)
       explaining_away:share(base_explaining_away, 'weight', 'bias', 'gradWeight', 'gradBias')
@@ -205,6 +224,108 @@ local function build_L2_reconstruction_loss(L2_lambda, criteria_list)
    -- rather than using nn.Ignore on the output of the criterion, we could use a SelectTable{1} without a ParallelDistributingTable, which would output a tensor in the forward direction, and send a nil as gradOutput to the criterion in the backwards direction
 
    return combined_loss
+end
+
+
+-- the input is a tensor (*not* a table) consisting of the hidden state z
+-- the output is a scalar consisting of the loss
+local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
+   local crit = nn.Sequential()
+   -- wrap the input tensor into a table z [1]
+   crit:add(nn.IdentityTable()) -- wrap the input tensor in a table z [1]
+
+   -- separate into two streams: L2 normalized input [1], and original input z [2]
+   local normalize_input_parallel = nn.ParallelDistributingTable()
+   local normalize_input_seq = nn.Sequential()
+   normalize_input_seq:add(nn.SelectTable{1})
+   normalize_input_seq:add(nn.Abs())
+   normalize_input_seq:add(nn.NormalizeTensor())
+   normalize_input_parallel:add(normalize_input_seq)
+   normalize_input_parallel:add(nn.SelectTable{1})
+   crit:add(normalize_input_parallel)
+
+   -- separate into three streams: softmax of scaled L2 normalized input [1], L2 normalized input [2], original input [3]
+   local softmax_parallel = nn.ParallelDistributingTable()
+   local softmax_seq = nn.Sequential()
+   softmax_seq:add(nn.SelectTable{1})
+   softmax_seq:add(nn.MulConstant(nil, 0.75*CLASS_DICT_BOUND)) -- this should probably be an input parameter
+   softmax_seq:add(nn.LogSoftMax())
+   softmax_seq:add(nn.Exp())
+   softmax_parallel:add(softmax_seq)
+   softmax_parallel:add(nn.SelectTable{1})
+   softmax_parallel:add(nn.SelectTable{2})
+   crit:add(softmax_parallel)
+
+   -- multiply softmax with L2 normalized input to yield: scaled weighted L2 normalized input [1], scaled abs(original input) [2]
+   local weight_normed_input_parallel = nn.ParallelDistributingTable()
+   local weight_normed_input_seq = nn.Sequential()
+   weight_normed_input_seq:add(nn.SelectTable{1,2})
+   weight_normed_input_seq:add(nn.SafeCMulTable())
+   weight_normed_input_seq:add(nn.MulConstant(nil, weighted_L1_lambda))
+   local abs_and_scale_seq = nn.Sequential()
+   abs_and_scale_seq:add(nn.SelectTable{3})
+   abs_and_scale_seq:add(nn.Abs())
+   abs_and_scale_seq:add(nn.MulConstant(nil, pure_L1_lambda))
+   weight_normed_input_parallel:add(weight_normed_input_seq)
+   weight_normed_input_parallel:add(abs_and_scale_seq)
+   crit:add(weight_normed_input_parallel)
+
+   -- add streams together to get a single tensor [1]
+   crit:add(nn.CAddTable())
+
+   -- add the elements of the tensor to get the criterion output
+   crit:add(nn.SumCriterionModule())
+   --crit:add(nn.L1CriterionModule(nn.L1Cost()))
+
+   return crit
+end
+
+
+-- Use two different values for L1 on disjoint subsets of the hidden units
+-- the input is a tensor (*not* a table) consisting of the hidden state z
+-- the output is a scalar consisting of the loss
+function build_heterogeneous_L1_criterion(layer_size, first_L1_lambda, second_L1_lambda)
+   local crit = nn.Sequential()
+   local split_sparsifying_concat = nn.Concat(1) 
+   local first_split = nn.Sequential()
+   local num_putative_categorical_units = math.ceil(0.2 * layer_size[2])
+   first_split:add(nn.Narrow(1,1,num_putative_categorical_units))
+   first_split:add(nn.L1CriterionModule(nn.L1Cost(), first_L1_lambda))
+   first_split:add(nn.IdentityTensor()) -- nn.Concat only combines tensors, whereas the criterion return scalars, so wrap them up, so we can then add them for unit testing
+   local second_split = nn.Sequential()
+   second_split:add(nn.Narrow(1,1 + num_putative_categorical_units,layer_size[2] - num_putative_categorical_units)) 
+   second_split:add(nn.L1CriterionModule(nn.L1Cost(), second_L1_lambda))
+   second_split:add(nn.IdentityTensor()) -- nn.Concat only combines tensors, whereas the criterion return scalars, so wrap them up, so we can then add them for unit testing
+   split_sparsifying_concat:add(first_split)
+   split_sparsifying_concat:add(second_split)
+   
+   crit:add(nn.Transpose()) -- ensures that the first dimension should be split, even if the network is processing a batch, for which the input iterations are usually along the first dimension
+   crit:add(split_sparsifying_concat)
+   crit:add(nn.Sum(1)) -- add up the losses from the two splits; returns a scalar, since its summing up a one-dimensional tensor
+   crit:add(nn.SafeIdentity()) -- make sure that the nn.Sum() receives a tensor as a gradOutput, rather than a nil, even though its gradInput will be ignored by the L1CriterionModules
+   return crit
+end
+
+
+-- Use (\sum_i |z_i|) / (\sum_i z_i^2)^(1/2) as the regularizer (L1 / L2) in addition to the normal L1 regularizer
+-- the input is a tensor (*not* a table) consisting of the hidden state z
+-- the output is a scalar consisting of the loss
+function build_L1_over_L2_criterion(pure_L1_lambda, L1_over_L2_lambda)
+   crit = nn.Sequential()
+   local combined_sparsifying_concat = nn.Concat(1) 
+   local pure_L1_crit = nn.Sequential()
+   pure_L1_crit:add(nn.L1CriterionModule(nn.L1Cost(), pure_L1_lambda))
+   pure_L1_crit:add(nn.IdentityTensor()) -- nn.Concat only combines tensors, whereas the criterion return scalars, so wrap them up, so we can then add them for unit testing
+   local L1_over_L2_crit = nn.Sequential()
+   L1_over_L2_crit:add(nn.L1CriterionModule(nn.L1OverL2Cost(), L1_over_L2_lambda)) -- 0.3
+   L1_over_L2_crit:add(nn.IdentityTensor()) -- nn.Concat only combines tensors, whereas the criterion return scalars, so wrap them up, so we can then add them for unit testing
+   combined_sparsifying_concat:add(pure_L1_crit)
+   combined_sparsifying_concat:add(L1_over_L2_crit)
+   
+   crit:add(combined_sparsifying_concat)
+   crit:add(nn.Sum(1)) -- add up the losses from the two splits; returns a scalar, since its summing up a one-dimensional tensor
+   crit:add(nn.SafeIdentity()) -- make sure that the nn.Sum() receives a tensor as a gradOutput, rather than a nil, even though its gradInput will be ignored by the L1CriterionModules
+   return crit
 end
 
 
@@ -581,13 +702,13 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    if NORMALIZE_ROWS_OF_CLASS_DICT or BOUND_ROWS_OF_CLASS_DICT then
       classification_dictionary = nn.ConstrainedLinear(num_rows_class_dict, layer_size[#layer_size], 
 						       {normalized_rows = NORMALIZE_ROWS_OF_CLASS_DICT, bounded_elements = BOUND_ROWS_OF_CLASS_DICT},
-						       RUN_JACOBIAN_TEST, CLASS_DICT_GRAD_SCALING)
+						       RUN_JACOBIAN_TEST, ((RUN_JACOBIAN_TEST and 1) or CLASS_DICT_GRAD_SCALING))
    else
       classification_dictionary = nn.Linear(num_rows_class_dict, layer_size[#layer_size])
    end
 
    local this_class_nll_criterion
-   if GROUP_SPARISTY_TEN_FIXED_GROUPS then
+   if UNSUPERVISED_CLASSIFICATION or GROUP_SPARISTY_TEN_FIXED_GROUPS then
       this_class_nll_criterion = nn.L1Cost()
    elseif CLASS_NLL_CRITERION_TYPE == 'soft' then
       this_class_nll_criterion = nn.SoftClassNLLCriterion()
@@ -661,7 +782,26 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
    if GROUP_SPARISTY_TEN_FIXED_GROUPS then
       model:add(nn.Square())
    end
-   model:add(classification_dictionary)
+   
+   -- pass the input through the classification_dictionary, so the set of parameters automatically extracted from the network match those wihtout UNSUPERVISED_CLASSIFICATION, but throw away the output of the classification_dictionary; instead, pass on the input scaled by 0.5*CLASS_DICT_BOUND
+   if UNSUPERVISED_CLASSIFICATION then 
+      model:add(nn.IdentityTable()) -- wrap the tensor in a table
+      local throw_away_class_dict_parallel = nn.ParallelDistributingTable() 
+      local class_dict_seq = nn.Sequential()
+      class_dict_seq:add(nn.SelectTable{1})
+      class_dict_seq:add(classification_dictionary)
+      --class_dict_seq:add(logsoftmax_module) -- EXPERIMENTAL CODE!!!
+      class_dict_seq:add(nn.ZeroModule())
+      class_dict_seq:add(nn.Ignore())
+      throw_away_class_dict_parallel:add(class_dict_seq)
+      throw_away_class_dict_parallel:add(nn.SelectTable{1})
+      model:add(throw_away_class_dict_parallel)
+      model:add(nn.SelectTable{2})
+      -- compensate for the fact that the rows of the classification_dictionary have L2 norm greater than one, and that softmax is operating over so many more units, all of which are non-negative
+      model:add(nn.MulConstant(nil, 0.5*CLASS_DICT_BOUND)) -- with scaling of 1, 0.75 seemed to be a good value; 0.5 is a little too small (categorical units are weak, some part units barely train)
+   else
+      model:add(classification_dictionary)
+   end
    if NORMALIZE_CLASS_DICT_OUTPUT then
       local normalize_classification_dictionary_output = nn.NormalizeTensor()
       model:add(normalize_classification_dictionary_output) 
@@ -672,11 +812,12 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       model:add(nn.AddConstant(classification_dictionary.weight:size(1), safe_sqrt_const)) -- ensures that we never compute the gradient of sqrt(0), so long as encoding_pooling_dictionary is non-negative with no bias.  Keep in mind that we take the square root of this quantity, so even a seemingly small number like 1e-5 becomes a relatively large constant of 0.00316.  At the same time, the gradient of the square root divides by the square root, and so becomes huge as the argument of the square root approaches zero
       model:add(nn.Sqrt())
       model:add(nn.AddConstant(classification_dictionary.weight:size(1), -math.sqrt(safe_sqrt_const))) -- we add 1e-4 before the square root and subtract (1e-4)^1/2 after the square root, so zero is still mapped to zero, but the gradient contribution is bounded above by 100
-   else
+   else --if not(UNSUPERVISED_CLASSIFICATION) then -- EXPERIMENTAL CODE!!!
       model:add(logsoftmax_module)
       --model:add(nn.SoftMax()) -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
    end
-   
+
+
    model.module_list = {classification_dictionary = classification_dictionary, 
 			logsoftmax = logsoftmax_module}
 
@@ -688,8 +829,26 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 model:add(nn.ZeroModule()) -- use if we want to remove the classification criterion for debugging purposes
 	 model:add(nn.Ignore())
       else
+	 -- make the loss -p*log(p), where p is the softmax of the L2-normalized hidden unit activation; wrap in table, split into self and exponentiated copy, multiply copies 
+	 if UNSUPERVISED_CLASSIFICATION then 
+	    print('Using UNSUPERVISED CLASSIFICATION!')
+	    model:add(nn.IdentityTable()) -- wrap the tensor in a table
+	    local entropy_calc_parallel = nn.ParallelDistributingTable() 
+	    local recover_prob_seq = nn.Sequential() -- compute prob from the log(prob) returned by the softmax
+	    recover_prob_seq:add(nn.SelectTable{1})
+	    recover_prob_seq:add(nn.Exp())
+	    --recover_prob_seq:add(nn.PrintModule())
+	    entropy_calc_parallel:add(recover_prob_seq)
+	    entropy_calc_parallel:add(nn.SelectTable{1})
+	    model:add(entropy_calc_parallel)
+	    model:add(nn.SafeCMulTable()) -- multiply probl and log(prob); returns a Tensor, rather than a table
+	    --model:add(nn.PrintModule())
+	    --model:add(nn.MulConstant(nil, 20))
+	    -- classification_criterion should be an L1_cost, rather than a ClassNLLCriterion
+	 end
+	 
 	 model:add(classification_criterion) 
-
+	 
 	 table.insert(criteria_list.criteria, classification_criterion)
 	 table.insert(criteria_list.names, 'classification criterion')
 	 print('inserting classification negative log likelihood loss into criteria list, resulting in ' .. #(criteria_list.criteria) .. ' entries')
@@ -804,7 +963,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 								       RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 								       ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
-   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = true, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY}, 
+   local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], 
+						     {no_bias = true, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY, bounded_elements = BOUND_ELEMENTS_OF_EXPLAINING_AWAY}, 
 						     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 						     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/recpool_config_prefs.num_ista_iterations) 
    local base_shrink 
@@ -846,6 +1006,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- there's really no reason to define these here rather than where they're used
    local use_lagrange_multiplier_for_L1_regularizer = false
+
+   -- the entirety of feature_extraction_sparsifying_module is used as the criterion, so it's safe to modify it using standard nn modules without disrupting learning or unit testing, so long as it properly returns a scalar.  The input is a tensor, rather than a table
    local feature_extraction_sparsifying_module, pooling_sparsifying_module, mask_sparsifying_module
    if use_lagrange_multiplier_for_L1_regularizer then
       --feature_extraction_sparsifying_module = nn.ParameterizedL1Cost(layer_size[2], lambdas.ista_L1_lambda, lagrange_multiplier_targets.feature_extraction_target, lagrange_multiplier_learning_rate_scaling_factors.feature_extraction_scaling_factor, RUN_JACOBIAN_TEST)
@@ -858,7 +1020,19 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       --mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
    else
       -- the L1CriterionModule, rather than the wrapped criterion, produces the correct scaled error
-      feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) 
+      if USE_HETEROGENEOUS_L1_SCALING_FACTOR then -- Use two different values for L1 on disjoint subsets of the hidden units
+	 feature_extraction_sparsifying_module = build_heterogeneous_L1_criterion(layer_size, 0.5*lambdas.ista_L1_lambda, lambdas.ista_L1_lambda)
+      elseif USE_L1_OVER_L2_NORM then 
+	 feature_extraction_sparsifying_module = build_L1_over_L2_criterion(0.75*lambdas.ista_L1_lambda, 0.25*lambdas.ista_L1_lambda) -- first is pure L1, second is L1 over L2
+      elseif USE_PROB_WEIGHTED_L1 then 
+	 feature_extraction_sparsifying_module = build_weighted_L1_criterion(-1, 1*lambdas.ista_L1_lambda) -- -2 seems to be too strong; -1 may be about right
+      else
+	 feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) -- NORMAL VERSION
+
+	 -- EXPERIMENTAL VERSION - use either \sum_i (1 - |z_i| / (\sum_j |z_j|)) * |z_i| if the last argument < 1; or \sum_i (1 - a*|z_i|/(\sum_j |z_j|))^n * |z_i|, where a is the last argument, if the last argument is >= 1
+	 --feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda, nil, nil, 1) -- EXPERIMENTAL VERSION 
+      end
+      
       pooling_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_output_cauchy_lambda) 
       --local pooling_sparsifying_loss_function = nn.L1Cost() --nn.CauchyCost(lambdas.pooling_output_cauchy_lambda) -- remove lambda from build function if we ever switch back to a cauchy cost!
       mask_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.pooling_mask_cauchy_lambda) 
@@ -920,7 +1094,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 base_explaining_away.weight[{i,i}] = base_explaining_away.weight[{i,i}] + 1
       end
    end
-   base_explaining_away:repair(false, math.max(0.1, EXPLAINING_AWAY_BOUND_SCALE_FACTOR * ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
+   base_explaining_away:repair(false, ((BOUND_ELEMENTS_OF_EXPLAINING_AWAY and EXPLAINING_AWAY_BOUND) or 
+				       math.max(0.1, EXPLAINING_AWAY_BOUND_SCALE_FACTOR * ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1))))
    
    if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
       base_shrink.shrink_val:fill(1e-5) --1e-4) --1e-5 -- this should probably be very small, and learn to be the appropriate size!!!
@@ -1113,7 +1288,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       end
       repair_counter = (repair_counter + 1) % recpool_config_prefs.repair_interval
       
-      base_explaining_away:repair(false, math.max(0.1, EXPLAINING_AWAY_BOUND_SCALE_FACTOR * ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1)))
+      base_explaining_away:repair(false, ((BOUND_ELEMENTS_OF_EXPLAINING_AWAY and EXPLAINING_AWAY_BOUND) or 
+					  math.max(0.1, EXPLAINING_AWAY_BOUND_SCALE_FACTOR * ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1))))
       if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
 	 base_shrink:repair() -- repairing the base_shrink doesn't help if the parameters aren't linked!!!
       end

@@ -532,6 +532,63 @@ function rec_pool_test.L2Cost()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' (1 input) - i/o backward err ')
 end
 
+function rec_pool_test.L1OverL2Cost()
+   print(' testing L1OverL2Cost!!!')
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local ink = math.random(10,20)
+   local input = torch.Tensor(ini, inj):zero()
+   local module = nn.L1OverL2Cost()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (2d input) ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (2d input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (2d input) - i/o backward err ')
+
+   input = torch.Tensor(ini):zero()
+   module = nn.L1OverL2Cost()
+
+   err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (1d input) ')
+
+   ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (1d input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (1d input) - i/o backward err ')
+end
+
+
+function rec_pool_test.SumCriterionModule()
+   print(' testing SumCriterionModule!!!')
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local ink = math.random(10,20)
+   local input = torch.Tensor(ini, inj):zero()
+   local module = nn.SumCriterionModule()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (2d input) ')
+
+   local ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (2d input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (2d input) - i/o backward err ')
+
+   input = torch.Tensor(ini):zero()
+   module = nn.SumCriterionModule()
+
+   err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (1d input) ')
+
+   ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (1d input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (1d input) - i/o backward err ')
+end
+
+
+
+
+
 function rec_pool_test.SoftClassNLLCriterion()
    local ini = math.random(10,20)
    local inj = math.random(10,20)

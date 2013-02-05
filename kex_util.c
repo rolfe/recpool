@@ -70,6 +70,65 @@ static int kex_(minN)(lua_State *L)
   return 1;
 }
 
+static int kex_(maxN)(lua_State *L)
+{
+  real thresh = luaL_checknumber(L,2);
+  THTensor *tensor = luaT_checkudata(L,1, torch_Tensor);
+  //luaL_argcheck(L, lambda >=0, 2, "Lambda should be non-negative");
+
+  TH_TENSOR_APPLY(real, tensor,
+		  if (*tensor_data < thresh) {
+		    *tensor_data = thresh;
+		  });
+  return 1;
+}
+
+
+static int kex_(zeroGtN)(lua_State *L)
+{
+  real thresh = luaL_checknumber(L,2);
+  THTensor *tensor = luaT_checkudata(L,1, torch_Tensor);
+  //luaL_argcheck(L, lambda >=0, 2, "Lambda should be non-negative");
+
+  TH_TENSOR_APPLY(real, tensor,
+		  if (*tensor_data >= thresh) {
+		    *tensor_data = 0;
+		  });
+  return 1;
+}
+
+static int kex_(zeroLtN)(lua_State *L)
+{
+  real thresh = luaL_checknumber(L,2);
+  THTensor *tensor = luaT_checkudata(L,1, torch_Tensor);
+  //luaL_argcheck(L, lambda >=0, 2, "Lambda should be non-negative");
+
+  TH_TENSOR_APPLY(real, tensor,
+		  if (*tensor_data <= thresh) {
+		    *tensor_data = 0;
+		  });
+  return 1;
+}
+
+
+static int kex_(zeroLtN2)(lua_State *L)
+{
+  //real lambda = luaL_checknumber(L,2);
+  THTensor *tensor = luaT_checkudata(L,1, torch_Tensor);
+  THTensor *comparison_tensor = luaT_checkudata(L,2, torch_Tensor);
+  real thresh = luaL_checknumber(L,3);
+  //luaL_argcheck(L, lambda >=0, 2, "Lambda should be non-negative");
+
+  //if (lambda == 0) return 1;
+
+  TH_TENSOR_APPLY2(real, tensor, real, comparison_tensor,
+		  if (*comparison_tensor_data <= thresh) {
+		    *tensor_data = 0;
+		  });
+  return 1;
+}
+
+
 
 static int kex_(sign)(lua_State *L)
 {
@@ -103,6 +162,10 @@ static const struct luaL_Reg kex_(util__) [] = {
   {"maxZero", kex_(maxZero)},
   {"maxZero2", kex_(maxZero2)},
   {"minN", kex_(minN)},
+  {"maxN", kex_(maxN)},
+  {"zeroGtN", kex_(zeroGtN)},
+  {"zeroLtN", kex_(zeroLtN)},
+  {"zeroLtN2", kex_(zeroLtN2)},
   {"sign", kex_(sign)},
   {NULL, NULL}
 };

@@ -13,6 +13,10 @@ cmd:text('Options')
 cmd:option('-log_directory', 'recpool_results', 'directory in which to save experiments')
 cmd:option('-load_file','', 'file from which to load experiments')
 cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the network')
+-- connection_diagram generates figures showing the decoders of the units with the strongest explaining-away connections to and from selected units, a random selection of encoders and decoders, and the most categorical units of each class compared to the average of the input data
+-- receptive_fields generates figures showing the 'spike-triggered average' receptive fields and the optimal decoding dictionary (shrink_dictionary) for each unit
+-- reconstruction_connections generates figures showing the progressive reconstruction of a few digits 
+-- full_diagnostic generates the scatterplots
 cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic), connection_diagram, receptive_fields, reconstruction_connections; full_diagnostic generates other figures; increase epoch size to generate final figures!!!
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
@@ -26,12 +30,12 @@ local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does mat
 local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 50000
-local full_diagnostic_epoch_size = 1000 --10000
+local quick_train_epoch_size = 10000
+local full_diagnostic_epoch_size = 10000
 local plot_receptive_fields_epoch_size = 10000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50
-local classification_scale_factor = 1
+local classification_scale_factor = 1 --0.2 --200 --0.025 -- 200
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
@@ -39,7 +43,9 @@ if optimization_algorithm == 'ASGD' then
    desired_learning_rate_decay = 20e-7 --10e-7 --5e-7
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
-local num_epochs_no_classification = 100 --200 --501 --201
+local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
+local num_epochs_no_classification = 300 --200 --501 --201
+local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
@@ -134,7 +140,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
    optimization = optimization_algorithm, -- optimization method: SGD | ASGD | CG | LBFGS
-   init_eval_counter = ((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 0, 
+   init_eval_counter = (((num_epochs_no_classification <= 0) or force_initial_learning_rate_decay) and default_pretraining_minibatches) or 0, 
    learning_rate = ((params.run_type == 'full_train') and full_train_learning_rate) or 
       ((params.run_type == 'quick_train') and quick_train_learning_rate) or 
       (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram')) and 0) or 0, --1e-3, -- learning rate at t=0
@@ -153,7 +159,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
 print('Using opt.learning_rate = ' .. opt.learning_rate)
 
 
-local track_criteria_outputs = not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
+local track_criteria_outputs = always_track_criteria_outputs or not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
 local receptive_field_builder = nil
 if (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'reconstruction_connections') then
    receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
@@ -205,6 +211,11 @@ if params.run_type == 'connection_diagram' then
    save_filter(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:t():narrow(2,90,40), 'selected_encoding_fe_dict', opt.log_directory, 20)
    save_filter(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:narrow(2,90,40), 'selected_decoding_fe_dict', opt.log_directory, 20)
 
+   plot_most_categorical_filters(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
+				 model.layers[1].module_list.decoding_feature_extraction_dictionary.weight,
+				 model.module_list.classification_dictionary.weight,
+				 data, opt)
+
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt)
@@ -216,29 +227,23 @@ if params.run_type == 'connection_diagram' then
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'any', 'part'},
-				    model.module_list.classification_dictionary.weight, 6, 3)
+				    model.module_list.classification_dictionary.weight, 1, 20) --6, 3 for ICLR paper
 
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'part', 'categorical'},
-				    model.module_list.classification_dictionary.weight, 16, 3)
+				    model.module_list.classification_dictionary.weight, 1, 20) --16, 3 for ICLR paper
 
 
+   local sort_by_class = nil -- normally true
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'part', 'categorical', true},
-				    model.module_list.classification_dictionary.weight, 6, 3)
+				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'part', 'categorical', sort_by_class},
+				    model.module_list.classification_dictionary.weight, 1, 20) --16, 3 for ICLR paper
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'categorical', 'categorical', true},
-				    model.module_list.classification_dictionary.weight, 16, 3)
-   --[[
-   plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
-				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
-				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'categorical', 'categorical', true},
-				    model.module_list.classification_dictionary.weight)
-   --]]
-
+				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'categorical', 'categorical', sort_by_class},
+				    model.module_list.classification_dictionary.weight, 1, 10) --16, 3 for ICLR paper
    return
 end
 

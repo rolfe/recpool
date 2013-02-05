@@ -1,5 +1,9 @@
 require 'image'
 
+--local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
+local part_thresh, cat_thresh = 0.45, 0.45 -- ENTROPY EXPERIMENTS
+
+
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
    gnuplot.plot(avTrainingError:narrow(1,1,math.max(t/params.textstatinterval,2)))
@@ -163,8 +167,8 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	 local enc = encoding_filter:select(1,i)
 	 local dec = decoding_filter:select(2,i)
 	 local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
-	 if angle > 0.7 then return 'categorical' 
-	 elseif angle < 0.5 then return 'part' 
+	 if angle > cat_thresh then return 'categorical' 
+	 elseif angle < part_thresh then return 'part' 
 	 else return 'intermediate' end 
       end
 
@@ -183,7 +187,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	       if first_categorical > 1 then first_categorical = first_categorical - 1
 	       elseif #categorical_indices < 3 then categorical_indices[#categorical_indices + 1] = current_index end
 	    end
-	    if (#part_indices >= 3) and (#categorical_indices >= 3) then 
+	    if (#part_indices >= 20) and (#categorical_indices >= 20) then 
 	       break 
 	    end
 	 end
@@ -322,37 +326,38 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 
 	    local exp_away_linearized_index = j + (i-1)*model.layers[1].module_list.explaining_away.weight:size(2)
 	    --deviation_of_recurrent_weight_from_ISTA[exp_away_linearized_index] = math.max(-3, math.min(3, -1 * model.layers[1].module_list.explaining_away.weight[{i,j}] + (1.25/11)*dot_product_between_decoders)) -- - (((i == j) and 1) or 0)))
+	    -- plot the ratio between the actual weight and the ISTA-ideal weight, but only for the weights larger than the median, since the ratio is unstable for small weights.  Bound the ratio between -0.5 and 2, so outliers don't disrupt the scale of the plot.  Multiply by -1 since the ista ideal is -1 * dot_preocut_between_decoders
 	    deviation_of_recurrent_weight_from_ISTA[exp_away_linearized_index] = math.max(-0.5, math.min(2, -1 * (((math.abs(model.layers[1].module_list.explaining_away.weight[{i,j}]) > median_abs_weight) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}] / dot_product_between_decoders))
 	    deviation_of_recurrent_weight_from_ISTA_just_parts_inputs[exp_away_linearized_index] = math.max(-0.5, math.min(2, -1 * (((math.abs(model.layers[1].module_list.explaining_away.weight[{i,j}]) > median_abs_weight) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < 0.55) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}] / dot_product_between_decoders))
 	    categoricalness_of_recurrent_weight_recipient[exp_away_linearized_index] = angle_between_encoder_and_decoder[i]
 
 	    local cwm_bin = math.floor(cwm_pc_num_bins * (dot_product_between_decoders + 1) / 2)
-	    if (angle_between_encoder_and_decoder[i] > 0.7) and (angle_between_encoder_and_decoder[j] < 0.5) then
+	    if (angle_between_encoder_and_decoder[i] > cat_thresh) and (angle_between_encoder_and_decoder[j] < part_thresh) then
 	       connection_weight_means_part_to_categorical[cwm_bin] = connection_weight_means_part_to_categorical[cwm_bin] + model.layers[1].module_list.explaining_away.weight[{i,j}]
 	       connection_weight_counts_part_to_categorical[cwm_bin] = connection_weight_counts_part_to_categorical[cwm_bin] + 1
 	    end
 
 	    dot_product_between_decoders_per_connection_from_part_to_part[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] < 0.5) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < 0.5) and 1) or 0) * dot_product_between_decoders
+	       (((angle_between_encoder_and_decoder[i] < part_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < part_thresh) and 1) or 0) * dot_product_between_decoders
 	    weight_of_connections_from_part_to_part[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] < 0.5) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < 0.5) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
+	       (((angle_between_encoder_and_decoder[i] < part_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < part_thresh) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
 
 	    dot_product_between_decoders_per_connection_from_categorical_to_part[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] < 0.5) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > 0.7) and 1) or 0) * dot_product_between_decoders
+	       (((angle_between_encoder_and_decoder[i] < part_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > cat_thresh) and 1) or 0) * dot_product_between_decoders
 	    weight_of_connections_from_categorical_to_part[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] < 0.5) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > 0.7) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
+	       (((angle_between_encoder_and_decoder[i] < part_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > cat_thresh) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
 
 	    dot_product_between_decoders_per_connection_from_part_to_categorical[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] > 0.7) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < 0.5) and 1) or 0) * dot_product_between_decoders
+	       (((angle_between_encoder_and_decoder[i] > cat_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < part_thresh) and 1) or 0) * dot_product_between_decoders
 	    weight_of_connections_from_part_to_categorical[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] > 0.7) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < 0.5) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
+	       (((angle_between_encoder_and_decoder[i] > cat_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < part_thresh) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
 
 	    dot_product_between_decoders_per_connection_from_categorical_to_categorical[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] > 0.7) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > 0.7) and 1) or 0) * dot_product_between_decoders
+	       (((angle_between_encoder_and_decoder[i] > cat_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > cat_thresh) and 1) or 0) * dot_product_between_decoders
 	    weight_of_connections_from_categorical_to_categorical[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] > 0.7) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > 0.7) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
+	       (((angle_between_encoder_and_decoder[i] > cat_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > cat_thresh) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}]
 	    angle_between_classifiers_per_connection_from_categorical_to_categorical[exp_away_linearized_index] = 
-	       (((angle_between_encoder_and_decoder[i] > 0.7) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > 0.7) and 1) or 0) * angle_between_classifiers
+	       (((angle_between_encoder_and_decoder[i] > cat_thresh) and 1) or 0) * (((angle_between_encoder_and_decoder[j] > cat_thresh) and 1) or 0) * angle_between_classifiers
 
 	    if i ~= j then -- ignore the diagonal
 	       local val_angle = math.abs(model.layers[1].module_list.explaining_away.weight[{i,j}]) *
@@ -369,11 +374,11 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 		  neg_norm = neg_norm + math.abs(model.layers[1].module_list.explaining_away.weight[{i,j}])
 	       end
 
-	       if angle_between_encoder_and_decoder[j] < 0.5 then
+	       if angle_between_encoder_and_decoder[j] < part_thresh then
 		  part_weighted_sum_angle = part_weighted_sum_angle + 
 		     model.layers[1].module_list.explaining_away.weight[{i,j}] * (math.pi/2 - math.acos(dot_product_between_decoders / (dec_norm_vec[i] * dec_norm_vec[j])))
 		  part_norm = part_norm + math.abs(model.layers[1].module_list.explaining_away.weight[{i,j}])
-	       elseif angle_between_encoder_and_decoder[j] > 0.7 then
+	       elseif angle_between_encoder_and_decoder[j] > cat_thresh then
 		  categorical_weighted_sum_angle = categorical_weighted_sum_angle + 
 		     model.layers[1].module_list.explaining_away.weight[{i,j}] * (math.pi/4 - math.acos(dot_product_between_decoders / (dec_norm_vec[i] * dec_norm_vec[j])))
 		  categorical_weighted_sum_angle_mod = categorical_weighted_sum_angle_mod + 
@@ -633,10 +638,21 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    return receptive_field_builder
 end
 
--- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units.  If restrictions is a table, it is organized like {(rows of fig contain connections from common: source, destination), (restrict source to: any, part, categorical), (restrict dest to: any, part, categorical)}
+
+
+local function plot_bar(args) -- {bar_length, max_bar_length, image_edge_length, max_decoding, current_column}
+   local bar_sign = args.bar_length/math.abs(args.bar_length)
+   if args.bar_length > args.max_bar_length then error('bar length > max bar length') end
+   for i=1,math.ceil((args.image_edge_length - 2) * math.abs(args.bar_length)/args.max_bar_length) do
+      args.current_column[args.image_edge_length + 1 + i] = args.max_decoding * bar_sign
+   end
+end
+
+
+-- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units.  If restrictions is a table, it is organized like {(rows of fig contain connections from common: source, destination), (restrict source to: any, part, categorical), (restrict dest to: any, part, categorical) (separate by class)}
 function plot_explaining_away_connections(encoding_filter, decoding_filter, explaining_away_filter_orig, opt, restrictions, classification_filter, start_display_row, num_display_rows)
    local num_sorted_connections = 20 -- number of connections to show for each unit
-   local explaining_away_mag_filter = explaining_away_filter_orig:clone() --:add(torch.diag(torch.ones(explaining_away_filter:size(2)))) -- correct for the fact that the identity matrix needs to be added in manually
+   local explaining_away_mag_filter = explaining_away_filter_orig:clone() -- this is used to select which connections to display, and is altered below depending upon the type of connections desired
    local explaining_away_filter = explaining_away_filter_orig:clone() -- make a copy so as to avoid corrupting the original filter
    local file_name, col_type, row_type
    local separate_by_class = false -- reorder each row of the display so that connections of a given class are grouped together.  This makes it apparent if they tend to have the same sign
@@ -670,6 +686,8 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
 	 col_type = restrictions[2] 
 	 row_type = restrictions[3] 
 	 dont_restrict_max_on_col = true -- normalize magnitude bars based upon all incoming connections; i.e., only restrict based on rows
+      else 
+	 error('cannot sort connections by ' .. restrictions[1] '; choose source or destination')
       end
       explaining_away_mag_filter = explaining_away_mag_filter:abs()
       restrict_source_and_dest = true
@@ -692,8 +710,8 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
       local enc = encoding_filter:select(1,i)
       local dec = decoding_filter:select(2,i)
       local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
-      if angle > 0.7 then return 'categorical' 
-      elseif angle < 0.5 then return 'part' 
+      if angle > cat_thresh then return 'categorical'  -- cat_thresh and part_thres are defined at the top of display_recpool_net.lua
+      elseif angle < part_thresh then return 'part' 
       else return 'intermediate' end 
    end
 
@@ -712,7 +730,6 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
 
    -- sort each row (i.e., along the columns) of the explaining_away_mag_filter, and extract the permutation induced
    local explaining_away_mag_filter_sorted, desired_indices = explaining_away_mag_filter:sort(2, true) 
-   --local desired_indices = explaining_away_mag_filter_sort_indices:narrow(2,1,num_sorted_connections)  -- THIS IS THE PROBLEM
    
    -- if the considered connections are restricted, set max_exp_away to the maximum amongst connections from part/cat/all to part/cat/all units
    if restrict_source_and_dest then 
@@ -733,7 +750,7 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
    -- to sort the connections first based on digit ID and then based on connection strength, create an array for each digit ID and use this intermediate storage to organize the data for the figure
 
    -- determine which rows fit our criterion, so we don't consider irrelevant ones
-   -- it is necessary to do this first, since we may or may not specify a subset of these rows that we want.  If we don't specify the desired subset, we need to determine the number of rows to allocate the appropriate amoutn of memory for sorted_recurrent_connection_filter
+   -- it is necessary to do this first, since we may or may not specify a subset of these rows that we want.  If we don't specify the desired subset, we need to determine the number of rows to allocate the appropriate amount of memory for sorted_recurrent_connection_filter
    local desired_display_rows = torch.Tensor(explaining_away_filter:size(1)):zero()
    local current_test_row = 0
    for i = 1,explaining_away_filter:size(1) do
@@ -745,15 +762,24 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
    desired_display_rows = desired_display_rows:narrow(1,1,current_test_row)
    -- restrict attention to only the desired subset of acceptable rows
    if start_display_row then
-      print('going from ', desired_display_rows:narrow(1,1,20))
-      desired_display_rows = desired_display_rows:narrow(1,start_display_row, num_display_rows)
+      print('desired display rows restricted from ', desired_display_rows:narrow(1,1,math.min(20, desired_display_rows:size(1))))
+      if start_display_row > desired_display_rows:size(1) then
+	 print('start_display_row = ' .. start_display_row .. ' < desired_display_rows:size(1) = ' .. desired_display_rows:size(1) .. ' ; resetting to 1')
+	 start_display_row = 1
+      end
+      local available_display_rows = desired_display_rows:size(1) - start_display_row + 1
+      desired_display_rows = desired_display_rows:narrow(1,start_display_row, math.min(num_display_rows, available_display_rows))
+      if num_display_rows > available_display_rows then
+	 print('Only have ' .. available_display_rows .. ' available display rows, rather than the desired ' .. num_display_rows .. ' ; resetting')
+	 num_display_rows = available_display_rows
+      end
       print('to ', desired_display_rows)
    else
       num_display_rows = current_test_row
    end
 
    -- this tensor holds the data for the output image.  The final image is made by unfolding this tensor.  The data for each mini-image is located in a single column.
-   local sorted_recurrent_connection_filter = torch.Tensor(num_display_rows, num_sorted_connections + 1, decoding_filter:size(1)) 
+   local sorted_recurrent_connection_filter = torch.Tensor(num_display_rows, num_sorted_connections + 1, decoding_filter:size(1)):zero() 
    --local output_filter_index = 1 -- position in the tensor that will be used to generate the output image
    local i = nil -- make sure we don't use this
    for out_row_index = 1,num_display_rows do
@@ -795,8 +821,13 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
 	       desired_indices[{in_row_index,col_index}] = indices_by_class[j][k]
 	    end
 	 end
-	 if col_index ~= num_sorted_connections then
-	    error('col_index did not match num_sorted_connections')
+	 if col_index < num_sorted_connections then
+	    print('WARNING: col_index was less than num_sorted_connections')
+	    --for k = col_index+1,num_sorted_connections do
+	    --   desired_indices[{in_row_index,k}] = 1
+	    --end
+	 elseif col_index > num_sorted_connections then
+	    error('col_index was greater than num_sorted_connections')
 	 end
       end
       
@@ -805,24 +836,31 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
       for j = 1,num_sorted_connections do
 	 if restrict_source_and_dest then -- if we're plotting connections from part units to categorical units, skip all connections to part units
 	    col_index = col_index + 1
+	    if col_index > desired_indices:size(2) then break end
 	    while not(test_cat_restriction(col_type, desired_indices[{in_row_index,col_index}])) do 
 	       col_index = col_index + 1 
+	       if col_index > desired_indices:size(2) then break end
 	    end 
-	    if col_index > desired_indices:size(2) then break end
 	 else col_index = j end
 	 
 	 if separate_by_class and col_index > num_sorted_connections then error('requested unprepared index') end -- only num_sorted_connections columns were properly filled above
 	 
 	 current_column = sorted_recurrent_connection_filter[{out_row_index, j+1, {}}] --:select(2,output_filter_index)
-	 current_column:copy(decoding_filter:select(2,desired_indices[{in_row_index,col_index}]))
-	 --current_column:mul(explaining_away_filter[{i,desired_indices[{i,col_index}]}]) -- + (((i == desired_indices[{i,j}]) and 1) or 0))
+	 if col_index <= desired_indices:size(2) then -- don't copy anything if we're run out acceptable units
+	    current_column:copy(decoding_filter:select(2,desired_indices[{in_row_index,col_index}]))
+	    --current_column:mul(explaining_away_filter[{i,desired_indices[{i,col_index}]}]) -- + (((i == desired_indices[{i,j}]) and 1) or 0))
 	 
-	 -- draw a bar indicating the size (even if negative) of the recurrent connection; the step size is the sign of the connection
+	    -- draw a bar indicating the size (even if negative) of the recurrent connection; the step size is the sign of the connection
+	    plot_bar{bar_length = explaining_away_filter[{in_row_index,desired_indices[{in_row_index,col_index}]}],
+		     max_bar_length = max_exp_away, image_edge_length = image_edge_length, max_decoding = max_decoding, current_column = current_column}
+	 end
+	 --[[
 	 local rec_connection_size = explaining_away_filter[{in_row_index,desired_indices[{in_row_index,col_index}]}]
 	 local rec_connection_sign = rec_connection_size/math.abs(rec_connection_size)
 	 for i=1,math.ceil((image_edge_length - 2) * math.abs(rec_connection_size)/max_exp_away) do
 	    current_column[image_edge_length + 1 + i] = max_decoding * rec_connection_sign
 	 end
+	 --]]
 	 --output_filter_index = output_filter_index + 1
       end
    end -- for all units
@@ -867,13 +905,116 @@ function plot_explaining_away_connections(encoding_filter, decoding_filter, expl
    image.savePNG(paths.concat(opt.log_directory, file_name .. '.png'), image_out)
 end
 
-local function plot_bar(args) -- {bar_length, max_bar_length, image_edge_length, max_decoding, current_column}
-   local bar_sign = args.bar_length/math.abs(args.bar_length)
-   if args.bar_length > args.max_bar_length then error('bar length > max bar length') end
-   for i=1,math.ceil((args.image_edge_length - 2) * math.abs(args.bar_length)/args.max_bar_length) do
-      args.current_column[args.image_edge_length + 1 + i] = args.max_decoding * bar_sign
+
+
+-- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units.  If restrictions is a table, it is organized like {(rows of fig contain connections from common: source, destination), (restrict source to: any, part, categorical), (restrict dest to: any, part, categorical)}
+function plot_most_categorical_filters(encoding_filter, decoding_filter, classification_filter, data, opt)
+   local average_digits = torch.Tensor(data:nClass(), data:dataSize()):zero()
+   local num_examples_per_class = torch.Tensor(data:nClass()):zero()
+
+   for i = 1,data:nExample() do
+      local current_class = data.labels[i]
+      num_examples_per_class:narrow(1,current_class,1):add(1)
+      average_digits:select(1,current_class):add(data.data[i]:double())
    end
+   
+   for i = 1,data:nClass() do
+      average_digits:select(1,i):div(num_examples_per_class[i])
+   end
+
+   local num_sorted_connections = 4 -- number of connections to show for each class label
+   local file_name, col_type, row_type
+      
+
+   -- two options for defining categoricalness
+   local function categoricalness_classification_filter(i)
+      return classification_filter:select(2,i):norm()
+   end
+   
+   local function categoricalness_enc_dec_alignment(i)
+      local enc = encoding_filter:select(1,i)
+      local dec = decoding_filter:select(2,i)
+      local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
+      return angle
+   end
+
+   -- choose between different definitions of categoricalness
+   local categoricalness = categoricalness_classification_filter 
+   --local categoricalness = categoricalness_enc_dec_alignment
+
+
+   local max_decoding = math.max(math.abs(decoding_filter:max()), math.abs(decoding_filter:min()))
+   local max_average_digits = math.max(math.abs(average_digits:max()), math.abs(average_digits:min()))
+   local total_max_output = math.max(max_decoding, max_average_digits)
+
+   local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)
+
+   -- sort each row (i.e., along the columns) of the explaining_away_mag_filter, and extract the permutation induced
+   local categoricalness_of_all_units = torch.Tensor(decoding_filter:size(2))
+   local most_categorical_filters = torch.Tensor(data:nClass(), num_sorted_connections, decoding_filter:size(1))
+   local max_enc_dec_alignment = math.abs(categoricalness_enc_dec_alignment(1))
+   for i = 1,decoding_filter:size(2) do
+      categoricalness_of_all_units[i] = categoricalness(i)
+      max_enc_dec_alignment = math.max(max_enc_dec_alignment, math.abs(categoricalness_enc_dec_alignment(i)))
+   end
+   local categoricalness_sorted, sorted_indices = categoricalness_of_all_units:sort(true)
+   for i = 1,data:nClass() do
+      current_index = 1
+      for j = 1,num_sorted_connections do
+	 local _,max_index = torch.max(classification_filter:select(2,sorted_indices[current_index]), 1)
+	 max_index = max_index[1]
+	 while (max_index ~= i) and (current_index < classification_filter:size(2)) do 
+	    current_index = current_index + 1
+	    --print(classification_filter:select(2,sorted_indices[current_index]))
+	    _,max_index = torch.max(classification_filter:select(2,sorted_indices[current_index]), 1)
+	    max_index = max_index[1]
+	 end
+	 --print('for class ' .. i  .. ' selecting sorted digit ' .. current_index .. ' with categoricalness ' .. categoricalness_sorted[current_index] .. ' / ' .. categoricalness_enc_dec_alignment(sorted_indices[current_index]))
+	 local current_column = most_categorical_filters[{i, j, {}}]
+	 current_column:copy(decoding_filter:select(2,sorted_indices[current_index]))
+	 plot_bar{bar_length = categoricalness_enc_dec_alignment(sorted_indices[current_index]), max_bar_length = max_enc_dec_alignment, image_edge_length = image_edge_length,
+		  max_decoding = total_max_output, current_column = current_column}
+	 current_index = current_index + 1
+      end
+   end
+	 
+   -- the image must be bounded between 0 and 1 to be passed into image.savePNG()
+   average_digits:mul(-1)
+   average_digits:add(total_max_output):div(2*total_max_output)
+
+   most_categorical_filters:mul(-1)
+   most_categorical_filters:add(total_max_output):div(2*total_max_output)
+   
+   
+   -- construct the full image from the composite pieces
+   local filter_side_length = math.sqrt(decoding_filter:size(1))
+   local classes_per_row = 5 --2
+   
+   local padding = 1
+   local extra_padding_class = 5 --filter_side_length --5 -- padding between different digit classes
+   local extra_padding_avg = 2 --4 -- 2 -- padding after the average filter, which appears before the most categorical decoders of each digit class
+   local total_extra_padding = extra_padding_class * (classes_per_row - 1) + extra_padding_avg * classes_per_row
+   local xmaps = (num_sorted_connections + 1) * classes_per_row
+   local ymaps = math.ceil(data:nClass() / classes_per_row)
+   local height = filter_side_length + padding
+   local width = filter_side_length + padding
+   local white_value = 1 --(args.symmetric and math.max(math.abs(args.input:min()),math.abs(args.input:max()))) or args.input:max()
+   local image_out = torch.Tensor(height*ymaps, width*xmaps + total_extra_padding):fill(white_value)
+   for y = 1,ymaps do
+      for x = 1,xmaps do
+	 local current_extra_padding = math.floor((x-1) / (num_sorted_connections + 1)) * extra_padding_class + 
+	    math.floor((x + num_sorted_connections - 1) / (num_sorted_connections + 1)) * extra_padding_avg
+	 local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length)
+	 if x % (num_sorted_connections + 1) == 1 then
+	    selected_image_region:copy(average_digits[{(y-1)*classes_per_row + math.ceil(x/(num_sorted_connections + 1)), {}}]:unfold(1, filter_side_length, filter_side_length))
+	 else
+	    selected_image_region:copy(most_categorical_filters[{(y-1)*classes_per_row + math.ceil(x/(num_sorted_connections + 1)), (x-1) % (num_sorted_connections + 1), {}}]:unfold(1, filter_side_length, filter_side_length))
+	 end
+      end
+   end
+   image.savePNG(paths.concat(opt.log_directory, 'most_categorical_filters.png'), image_out)
 end
+
 
 function plot_hidden_unit_trajectories(activation_tensor, opt, num_trajectories, only_plot_parts, encoding_filter, decoding_filter)
    -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size)
@@ -882,8 +1023,8 @@ function plot_hidden_unit_trajectories(activation_tensor, opt, num_trajectories,
       local enc = encoding_filter:select(1,i)
       local dec = decoding_filter:select(2,i)
       local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
-      if angle > 0.7 then return 1
-      elseif angle < 0.5 then return -1
+      if angle > cat_thresh then return 1
+      elseif angle < part_thresh then return -1
       else return 0 end
    end
 
@@ -908,7 +1049,7 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    -- different hidden units go along the second dimension of activation_tensor
    local SHOW_PROGRESSIVE_SUBTRACTION = false
    num_display_columns = num_display_columns or 10
-   local num_reconstructions_to_plot = 3 --500 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
+   local num_reconstructions_to_plot = 500 --3 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
    local num_sorted_inputs = num_display_columns - 2 -- the first two columns are the original input and the final reconstruction
    local num_display_rows_per_input = ((SHOW_PROGRESSIVE_SUBTRACTION and 3) or 2)
    local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)

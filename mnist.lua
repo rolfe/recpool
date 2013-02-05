@@ -117,6 +117,10 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
       return 1
    end
 
+   function dataset:nClass()
+      return 10
+   end
+
    if alternative_access_method == 'recpool_net' then
       dataset.data = {}
       dataset.labels = {}
