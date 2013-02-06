@@ -33,8 +33,8 @@ CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.875 --1 --0.875 --0.75
-WEIGHTED_L1_PURE_L1_SCALING = 2 --1 --1.5 --1.2
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --1 --0.875 --0.75
+WEIGHTED_L1_PURE_L1_SCALING = 1 --1.5 --1.2
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
