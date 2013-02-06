@@ -279,6 +279,13 @@ function RecPoolTrainer:train(train_data, epoch_type)
       -- optimize on current mini-batch
       if ((epoch_type == 'validation') or (epoch_type == 'display')) then
 	 self.feval(self.flattened_parameters) -- just run the network on the minibatch_inputs and minibatch_targets to generate the confusion matrix, without doing any training
+	 -- this is necessary since some of these value are accessed by run_recpool_net.  Ideally, we should eliminate this break in the abstraction barrier
+	 self.config = self.config or {evalCounter = self.opt.init_eval_counter or 0, 
+				       learningRate = self.opt.learning_rate,
+				       weightDecay = self.opt.weight_decay,
+				       L1weightDecay = self.opt.L1_weight_decay,
+				       momentum = self.opt.momentum,
+				       learningRateDecay = self.opt.learning_rate_decay}
       elseif self.opt.optimization == 'CG' then
          self.config = self.config or {maxIter = self.opt.max_iter}
          optim.cg(self.feval, self.flattened_parameters, self.config)

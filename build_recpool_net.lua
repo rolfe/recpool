@@ -33,6 +33,8 @@ CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
 USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --1 --0.875 --0.75
+WEIGHTED_L1_PURE_L1_SCALING = 1 --1.5 --1.2
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
@@ -248,7 +250,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local softmax_parallel = nn.ParallelDistributingTable()
    local softmax_seq = nn.Sequential()
    softmax_seq:add(nn.SelectTable{1})
-   softmax_seq:add(nn.MulConstant(nil, 0.75*CLASS_DICT_BOUND)) -- this should probably be an input parameter
+   softmax_seq:add(nn.MulConstant(nil, WEIGHTED_L1_SOFTMAX_SCALING * CLASS_DICT_BOUND)) -- this should probably be an input parameter
    softmax_seq:add(nn.LogSoftMax())
    softmax_seq:add(nn.Exp())
    softmax_parallel:add(softmax_seq)
@@ -261,7 +263,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local weight_normed_input_seq = nn.Sequential()
    weight_normed_input_seq:add(nn.SelectTable{1,2})
    weight_normed_input_seq:add(nn.SafeCMulTable())
-   weight_normed_input_seq:add(nn.MulConstant(nil, weighted_L1_lambda))
+   weight_normed_input_seq:add(nn.MulConstant(nil, weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
    local abs_and_scale_seq = nn.Sequential()
    abs_and_scale_seq:add(nn.SelectTable{3})
    abs_and_scale_seq:add(nn.Abs())
@@ -1025,7 +1027,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       elseif USE_L1_OVER_L2_NORM then 
 	 feature_extraction_sparsifying_module = build_L1_over_L2_criterion(0.75*lambdas.ista_L1_lambda, 0.25*lambdas.ista_L1_lambda) -- first is pure L1, second is L1 over L2
       elseif USE_PROB_WEIGHTED_L1 then 
-	 feature_extraction_sparsifying_module = build_weighted_L1_criterion(-1, 1*lambdas.ista_L1_lambda) -- -2 seems to be too strong; -1 may be about right
+	 feature_extraction_sparsifying_module = build_weighted_L1_criterion(-1, WEIGHTED_L1_PURE_L1_SCALING * lambdas.ista_L1_lambda) -- -2 seems to be too strong; -1 may be about right
       else
 	 feature_extraction_sparsifying_module = nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda) -- NORMAL VERSION
 

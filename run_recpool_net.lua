@@ -44,13 +44,13 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 300 --200 --501 --201
+local num_epochs_no_classification = 1000 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 1000
+local num_epochs = 0 --1000
 
 
 local params = cmd:parse(arg)
@@ -149,7 +149,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, -- weight decay (SGD only)
    L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
-   momentum = 0, -- momentum (SGD only)
+   momentum = 0.5, -- momentum (SGD only) --WAS 0!!!
    t0 = (((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
       num_classification_epochs_before_averaging_SGD * (data:nExample() / math.max(1, desired_minibatch_size)), -- start averaging at t0 (ASGD only), measured in ASGD calls

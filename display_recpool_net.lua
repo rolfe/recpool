@@ -1,7 +1,7 @@
 require 'image'
 
---local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
-local part_thresh, cat_thresh = 0.45, 0.45 -- ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
+--local part_thresh, cat_thresh = 0.45, 0.45 -- ENTROPY EXPERIMENTS
 
 
 local function plot_training_error(t)
