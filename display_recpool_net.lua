@@ -1204,9 +1204,16 @@ function plot_reconstructions(opt, input, output)
    local image_list = {input, output}
    local current_image
 
+   --print('sizes are ', image_list[1]:size(), image_list[2]:size())
+   --io.read()
+
    for i = 1,#image_list do
-      local current_image_side_length = math.sqrt(image_list[i]:size(1))
-      current_image = image_list[i]:unfold(1,current_image_side_length, current_image_side_length)
+      current_image = image_list[i]
+      if current_image:dim() == 2 then -- if we're using minibatches, select the first element of the minibatch
+	 current_image = current_image:select(1,1)
+      end
+      local current_image_side_length = math.sqrt(current_image:size(1))
+      current_image = current_image:unfold(1,current_image_side_length, current_image_side_length)
       gnuplot.figure(i)
       gnuplot.imagesc(current_image)
    end

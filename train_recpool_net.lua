@@ -557,12 +557,12 @@ function RecPoolTrainer:train(train_data, epoch_type)
       local plot_recs = false
       if plot_recs then
 	 if i == 1 then
-	    plot_reconstructions(self.opt, train_data.data[shuffle[train_data:nExample()]]:double(), self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+	    plot_reconstructions(self.opt, self.minibatch_inputs, self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
 	 else
-	    plot_reconstructions(self.opt, self.model.layers[i-1].debug_module_list.pooling_seq.output[1], self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
+	    plot_reconstructions(self.opt, self.model.layers[i-1].debug_module_list.normalize_output.output[1], self.model.layers[i].module_list.decoding_feature_extraction_dictionary.output)
 	 end
       end
-   end
+   end -- loop over layers
 
    local m = self.model.module_list.classification_dictionary.weight
    local norms = torch.Tensor(m:size(1))

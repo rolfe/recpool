@@ -23,8 +23,8 @@ cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
 
 -- set parameters, both from the command line and with fixed values
-local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
-local RESTRICT_TO_WINDOW = false
+local L1_scaling = 1.5 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
+local RESTRICT_TO_WINDOW = {28, 28}
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
@@ -107,6 +107,8 @@ if params.data_set == 'train' then
       -- also load the validation set for inline testing
       data_inline_test = this_data_set.loadDataSet({train_or_test = 'train', maxLoad = this_data_set:validation_set_size(), alternative_access_method = 'recpool_net', 
 						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW})
+      --data_inline_test:normalizeByColor()
+      data_inline_test:useGrayscale()
       data_inline_test:normalizeL2()
    end
 elseif params.data_set == 'test' then
@@ -123,6 +125,8 @@ data = this_data_set.loadDataSet(data_set_options)
 
 
 --Indexing labels returns an index, rather than a tensor
+--data:normalizeByColor()
+data:useGrayscale()
 data:normalizeL2() -- normalize each example to have L2 norm equal to 1
 
 

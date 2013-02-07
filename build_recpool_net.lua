@@ -1076,16 +1076,15 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local init_dictionary_min_scaling = 0.01 -- USE 0 FOR STRONG TEMPLATE PRIMING
    local init_dictionary_max_scaling = 1
 
-   base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice
+   base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice; this depends upon the fact that encoding_feature_extraction_dictionary was just set to be the transpose of base_decoding_feature_extraction_dictionary
    if recpool_config_prefs.shrink_style == 'SoftPlus' then
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(recpool_config_prefs.num_ista_iterations + 1)))
    else
-      -- WAS 1.25 rather than 2
       encoding_feature_extraction_dictionary.weight:mul(math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) -- the first ista iteration doesn't count towards num_ista_iterations
    end
    encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1))))
 
-   base_explaining_away.weight:mul(-math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) -- WAS 1.25 rather than 2
+   base_explaining_away.weight:mul(-math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) 
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)
@@ -1213,7 +1212,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_module, criteria_list, CREATE_BUFFER_ON_L1_LOSS)
    this_layer:add(ista_sparsifying_loss_seq)
 
-   -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved input z [2], and the original input x[3]
+   -- pool the input z [1] to obtain the pooled code s = sqrt(Q*z^2) [1], the preserved sparse code z [2], and the original input x[3]
    local pooling_seq = build_pooling(encoding_pooling_dictionary)
    if not(recpool_config_prefs.disable_pooling) then
       this_layer:add(pooling_seq)
