@@ -1,7 +1,7 @@
 require 'image'
 
 local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
---local part_thresh, cat_thresh = 0.45, 0.45 -- ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
 
 
 local function plot_training_error(t)
@@ -331,7 +331,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	    deviation_of_recurrent_weight_from_ISTA_just_parts_inputs[exp_away_linearized_index] = math.max(-0.5, math.min(2, -1 * (((math.abs(model.layers[1].module_list.explaining_away.weight[{i,j}]) > median_abs_weight) and 1) or 0) * (((angle_between_encoder_and_decoder[j] < 0.55) and 1) or 0) * model.layers[1].module_list.explaining_away.weight[{i,j}] / dot_product_between_decoders))
 	    categoricalness_of_recurrent_weight_recipient[exp_away_linearized_index] = angle_between_encoder_and_decoder[i]
 
-	    local cwm_bin = math.floor(cwm_pc_num_bins * (dot_product_between_decoders + 1) / 2)
+	    local cwm_bin = math.max(1, math.floor(cwm_pc_num_bins * (dot_product_between_decoders + 1) / 2))
 	    if (angle_between_encoder_and_decoder[i] > cat_thresh) and (angle_between_encoder_and_decoder[j] < part_thresh) then
 	       connection_weight_means_part_to_categorical[cwm_bin] = connection_weight_means_part_to_categorical[cwm_bin] + model.layers[1].module_list.explaining_away.weight[{i,j}]
 	       connection_weight_counts_part_to_categorical[cwm_bin] = connection_weight_counts_part_to_categorical[cwm_bin] + 1
