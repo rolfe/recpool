@@ -41,7 +41,7 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 -- for MNIST
 --WEIGHTED_L1_SOFTMAX_SCALING = 1 --0.875 -- for CIFAR
 WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
-WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- MNIST with 15 LISTA iterations and 5 regularization iterations
+WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- MNIST with 15 LISTA iterations and 5 regularization iterations
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
