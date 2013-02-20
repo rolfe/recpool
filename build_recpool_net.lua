@@ -39,7 +39,7 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 -- for MNIST
 --WEIGHTED_L1_SOFTMAX_SCALING = 1 --0.875 -- for CIFAR
-WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2
+WEIGHTED_L1_PURE_L1_SCALING = 1 --1.5 --1 --1.5 --1.2
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
 WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- MNIST with 15 LISTA iterations and 5 regularization iterations
 
