@@ -30,7 +30,13 @@ function RecPoolTrainer:__init(model, new_opt, layered_lambdas, track_criteria_o
    self:reset_options(new_opt)
    
    -- allowed output classes
-   self.classes = {'1','2','3','4','5','6','7','8','9','0'}
+   if new_opt.num_classification_categories == 10 then
+      self.classes = {'1','2','3','4','5','6','7','8','9','0'}
+   elseif new_opt.num_classification_categories == 2 then
+      self.classes = {'right', 'left'}
+   else
+      error('unexpected number of classification categories: ' .. new_opt.num_classification_categories '; expected 10 or 2')
+   end
    
    -- This matrix records the current confusion across classes
    self.confusion = optim.ConfusionMatrix(self.classes)
@@ -181,7 +187,8 @@ function RecPoolTrainer:make_feval()
       --end
 
       if self.receptive_field_builder then
-	 self.receptive_field_builder:accumulate_shrink_weighted_inputs(self.minibatch_inputs, self.model.layers[1].module_list.shrink, self.model.layers[1].module_list.shrink_copies)
+	 self.receptive_field_builder:accumulate_shrink_weighted_inputs(self.minibatch_inputs, self.model.layers[1].module_list.shrink, self.model.layers[1].module_list.shrink_copies, 
+									self.minibatch_targets)
       end
 
       -- normalize gradients and f(X)
@@ -356,12 +363,12 @@ function RecPoolTrainer:train(train_data, epoch_type)
 	 --print('dividing ', torch.mul(self.model.layers[1].module_list.shrink_copies[#self.model.layers[i].module_list.shrink_copies].output, alpha):unfold(1,10,10))
 	 --print('by ', torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha):unfold(1,10,10))
 	 local careful_reconstruction_loss = math.pow(torch.norm(torch.add(shrink_output, -1,
-								    torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)), 
-									       torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
-
+									   torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)), 
+										      torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
+	 
 	 local theoretical_shrink_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(shrink_output, self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
 										 torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
-
+	 
 	 local combined_loss_careful = self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda * theoretical_shrink_reconstruction_loss + 
 	    self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * theoretical_shrink_position_loss
 	 
@@ -373,6 +380,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
 	 local better_combined_loss = self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda * 
 	    torch.sum(torch.cdiv(torch.pow(shrink_output, 2), 
 				 torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))
+	    -- THIS IS NO LONGER CORRECT, SINCE L1 SPARSITY AND L2 RECONSTRUCTION CRITERIA ARE REPEATED IN LISTA STACK
 	 local exact_combined_loss = self.model.criteria_list.criteria[4].output + self.model.criteria_list.criteria[6].output -- this already includes the lambdas
 	 print('*combined ratio is ' .. combined_loss / exact_combined_loss .. ' better: ' .. better_combined_loss / exact_combined_loss .. ' careful: ' .. combined_loss_careful / exact_combined_loss)
 	    
@@ -402,23 +410,25 @@ function RecPoolTrainer:train(train_data, epoch_type)
 
 	 
 
-      end	 
-      --io.read()
-   end
+      end  -- pooling is enabled
+   end	-- loop over all criteria 
 
-   local alpha = (self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda + self.layered_lambdas[1].pooling_L2_orig_position_unit_lambda) /
-      (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda + self.layered_lambdas[1].pooling_L2_orig_reconstruction_lambda)
-   
-   local theoretical_orig_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(self.model.layers[1].module_list.decoding_feature_extraction_dictionary_transpose.output,
-										    self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
-									 torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
-   --local theoretical_orig_reconstruction_loss = math.pow(torch.norm(torch.add(INPUT, -1,
-   --									      torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)), 
-   --											 torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
-   
+   if not(self.model.disable_pooling) then
+      local alpha = (self.layered_lambdas[1].pooling_L2_shrink_position_unit_lambda + self.layered_lambdas[1].pooling_L2_orig_position_unit_lambda) /
+	 (self.layered_lambdas[1].pooling_L2_shrink_reconstruction_lambda + self.layered_lambdas[1].pooling_L2_orig_reconstruction_lambda)
+      
+      local theoretical_orig_position_loss = math.pow(torch.norm(torch.cdiv(torch.cmul(self.model.layers[1].module_list.decoding_feature_extraction_dictionary_transpose.output,
+										       self.model.layers[1].module_list.decoding_pooling_dictionary.output), 
+									    torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha))), 2)
+      --[[
+      local theoretical_orig_reconstruction_loss = math.pow(torch.norm(torch.add(INPUT, -1,
+										 torch.cdiv(torch.cmul(shrink_output, torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2)),
+											    torch.add(torch.pow(self.model.layers[1].module_list.decoding_pooling_dictionary.output, 2), alpha)))), 2)
+      --]]
 
-   print('orig position ratio is ' .. (self.layered_lambdas[1].pooling_L2_orig_position_unit_lambda * theoretical_orig_position_loss) / self.model.criteria_list.criteria[7].output)
-   --print('orig reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_orig_reconstruction_lambda * theoretical_orig_reconstruction_loss) / self.model.criteria_list.criteria[5].output)
+      print('orig position ratio is ' .. (self.layered_lambdas[1].pooling_L2_orig_position_unit_lambda * theoretical_orig_position_loss) / self.model.criteria_list.criteria[7].output)
+      --print('orig reconstruction ratio is ' .. (self.layered_lambdas[1].pooling_L2_orig_reconstruction_lambda * theoretical_orig_reconstruction_loss) / self.model.criteria_list.criteria[5].output)
+   end 
       
    print('Explaining away diag is', torch.diag(self.model.layers[1].module_list.explaining_away.weight):unfold(1,10,10))
    
@@ -471,7 +481,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
       end
       --print('normalized output', self.model.layers[i].debug_module_list.normalize_output.output[1]:unfold(1,10,10))
 
-      ---[[
+      --[[
       local m = self.model.layers[i].module_list.decoding_feature_extraction_dictionary.weight
       --local m = self.model.layers[i].module_list.decoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(2))
@@ -479,7 +489,13 @@ function RecPoolTrainer:train(train_data, epoch_type)
 	 norms[j] = m:select(2,j):norm()
       end
       print('FE dec col norms are ', norms:unfold(1,10,10))
+
+      print('FE dec matrix is ', m)
       --]]
+
+      --print('dec matrix is', self.model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)
+      --print('enc matrix is', self.model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:t())
+      --print('enc bias is', self.model.layers[1].module_list.encoding_feature_extraction_dictionary.bias:unfold(1,10,10))
 
       local m = self.model.layers[i].module_list.encoding_feature_extraction_dictionary.weight
       --local m = self.model.layers[i].module_list.encoding_pooling_dictionary.weight
@@ -566,25 +582,27 @@ function RecPoolTrainer:train(train_data, epoch_type)
 
    local m = self.model.module_list.classification_dictionary.weight
    local norms = torch.Tensor(m:size(1))
+   local c_size = m:size(1)
    for j = 1,m:size(1) do
       norms[j] = m:select(1,j):norm()
    end
-   print('C row norms are ', norms:unfold(1,10,10))
+   print('C row norms are ', norms:unfold(1,c_size,c_size)) -- unfold so the tensor is presented horizontally rather than vertically
    
    if self.model.module_list.logsoftmax.output:nElement() > 0 then -- make sure the logsoftmax is used before trying to display its output
       if this_epoch_batch_size == 0 then
-	 print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,10,10))
+	 print('logsoftmax output is ', self.model.module_list.logsoftmax.output:unfold(1,c_size,c_size))
 	 print('target is ' .. self.model.current_target)
       else
-	 print('logsoftmax output is ', self.model.module_list.logsoftmax.output:select(1,1):unfold(1,10,10))
+	 print('logsoftmax output is ', self.model.module_list.logsoftmax.output:select(1,1):unfold(1,c_size,c_size))
 	 print('target is ', self.model.current_target[1])
       end
    end
-   print('classification bias is ', self.model.module_list.classification_dictionary.bias:unfold(1,10,10))
+   print('classification bias is ', self.model.module_list.classification_dictionary.bias:unfold(1,c_size,c_size))
 
    output_gradient_magnitudes(self)
 
-   local index_list = {11, 12, 13, 14, 15, 16, 4, 7, 8, 10, 42, 52, 63, 64, 67, 78}
+   local index_list = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+   --local index_list = {11, 12, 13, 14, 15, 16, 4, 7, 8, 10, 42, 52, 63, 64, 67, 78}
    --local index_list = {1, 2, 3, 11, 12, 13, 4, 9, 21, 32, 72, 83, 88}
    --local index_list = {32, 34, 41, 58, 69, 70, 91, 103, 114, 121, 123, 138, 171, 201, 203, 213, 217, 238, 244, 290, 304, 327, 1, 2, 3, 4, 5, 6, 7, 8} -- for 11/30 400 units
    --local index_list = {30, 47, 53, 55, 77, 119, 172, 192, 196, 199, 206, 209, 232, 241, 255, 269, 290, 302, 303, 305, 311, 313, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10} -- for 12/12 400 units manual
@@ -639,11 +657,13 @@ function output_gradient_magnitudes(self)
 	       'decoding FE dict', self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:norm(agg_norm) / 
 		  self.model.layers[i].module_list.decoding_feature_extraction_dictionary.gradWeight:nElement(),
 	       'explaining away', self.model.layers[i].module_list.explaining_away.gradWeight:norm(agg_norm) / 
-		  self.model.layers[i].module_list.explaining_away.gradWeight:nElement(),
-	       'encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(agg_norm) / 
+		  self.model.layers[i].module_list.explaining_away.gradWeight:nElement())
+	 if not(self.model.disable_pooling) then
+	    print('encoding P dict', self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:norm(agg_norm) / 
 		  self.model.layers[i].module_list.encoding_pooling_dictionary.gradWeight:nElement(), 
-	       'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm(agg_norm) / 
-		  self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:nElement())
+		  'decoding P dict', self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:norm(agg_norm) / 
+		     self.model.layers[i].module_list.decoding_pooling_dictionary.gradWeight:nElement())
+	 end
       end
    end
    print('classification layer', 'class dict', self.model.module_list.classification_dictionary.gradWeight:norm())

@@ -1,6 +1,7 @@
 function set_recpool_net_structural_params(recpool_config_prefs, data, command_line_params, sparsity_scaling)
    sparsity_scaling = sparsity_scaling or 1
 
+   local L1_scaling = nil
    local sl_mag = nil -- L1 loss on the sparse coding / feature extraction units
    local rec_mag = nil -- L2 reconstruction loss between the inputs and the sparse coding / feature extraction units
    local pooling_rec_mag = nil -- L2 reconstruction loss between the sparse coding / feature extraction units and the pooling units
@@ -98,11 +99,25 @@ function set_recpool_net_structural_params(recpool_config_prefs, data, command_l
    --]]
 
    -- Correct classification of the last few examples are is learned very slowly when we turn up the regularizers, since as the classification improves, the regularization error becomes as large as the classification error, so corrections to the classification trade off against the sparsity and reconstruction quality.  
-   local lambdas = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = pooling_sl_mag, pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
+   local lambdas = {ista_L2_reconstruction_lambda = rec_mag, 
+		    ista_L1_lambda = sl_mag, 
+		    pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, 
+		    pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, 
+		    pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, 
+		    pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, 
+		    pooling_output_cauchy_lambda = pooling_sl_mag, 
+		    pooling_mask_cauchy_lambda = mask_mag} -- classification implicitly has a scaling constant of 1
    
    -- FOR THE LOVE OF GOD!!!  DEBUG ONLY!!!  L1_scaling should also scale sl_mag, but this has been removed to reconstruct the good run on 10/11
    --local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
-   local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, ista_L1_lambda = L1_scaling * sl_mag, pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
+   local lambdas_1 = {ista_L2_reconstruction_lambda = rec_mag, 
+		      ista_L1_lambda = L1_scaling * sl_mag, 
+		      pooling_L2_shrink_reconstruction_lambda = pooling_rec_mag, 
+		      pooling_L2_orig_reconstruction_lambda = pooling_orig_rec_mag, 
+		      pooling_L2_shrink_position_unit_lambda = pooling_shrink_position_L2_mag, 
+		      pooling_L2_orig_position_unit_lambda = pooling_orig_position_L2_mag, 
+		      pooling_output_cauchy_lambda = L1_scaling * pooling_sl_mag, 
+		      pooling_mask_cauchy_lambda = L1_scaling * mask_mag} -- classification implicitly has a scaling constant of 1
    
    
    -- NOTE THAT POOLING_MASK_CAUCHY_LAMBDA IS MUCH LARGER
@@ -125,7 +140,7 @@ function set_recpool_net_structural_params(recpool_config_prefs, data, command_l
    local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors
    if false and (command_line_params.num_layers == 1) then
       print(lambdas)
-      layer_size = {data:dataSize(), 200, 50, 10}
+      layer_size = {data:dataSize(), 200, 50, data:nClass()}
       layered_lambdas = {lambdas}
       local this_layer_lagrange_multiplier_targets = {}
       this_layer_lagrange_multiplier_targets.feature_extraction_target = lagrange_multiplier_targets_1.feature_extraction_target * layer_size[2]
@@ -165,7 +180,7 @@ function set_recpool_net_structural_params(recpool_config_prefs, data, command_l
 	 table.insert(layered_lagrange_multiplier_targets, this_layer_lagrange_multiplier_targets)
 	 
       end
-      table.insert(layer_size, 10) -- insert the classification output last
+      table.insert(layer_size, data:nClass()) -- insert the classification output last
    end
    
    return layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors

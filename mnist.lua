@@ -73,9 +73,9 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
       local std = std_ or torch.std(data, 1, true)
       local mean = mean_ or torch.mean(data, 1)
       for i=1,dim-1 do
-         tensor:select(2, i):add(-mean[1][i])
+         data:select(2, i):add(-mean[1][i])
          if std[1][i] > 0 then
-            tensor:select(2, i):mul(1/std[1][i])
+            data:select(2, i):mul(1/std[1][i])
          end
       end
       return mean, std

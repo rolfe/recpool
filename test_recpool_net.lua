@@ -3,6 +3,8 @@ require 'nn'
 dofile('init.lua')
 dofile('build_recpool_net.lua')
 
+PARAMETER_UPDATE_METHOD = 'optim' -- 'module' -- when updating using the optim package, each set of shared parameters is updated only once and gradients must be shared; when updating using the module methods of the nn package, every instance of a set of shared parameters is updated individually, and gradients should not be shared.  Make sure this matches the setting in build_recpool_net.lua
+
 local mytester = torch.Tester()
 local jac
 
@@ -530,6 +532,17 @@ function rec_pool_test.L2Cost()
    ferr,berr = jac.testIOTable(module,input)
    mytester:asserteq(ferr, 0, torch.typename(module) .. ' (1 input) - i/o forward err ')
    mytester:asserteq(berr, 0, torch.typename(module) .. ' (1 input) - i/o backward err ')
+
+
+   input = torch.Tensor(ini):zero()
+   module = nn.L2Cost(math.random(), 1, true) -- test true L2 cost, the sqrt-of-sum-of-squares, rather than just the sum-of-squares
+
+   err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (1 input, sqrt-of-sum-of-squares) ')
+
+   ferr,berr = jac.testIOTable(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' (1 input) - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' (1 input) - i/o backward err ')
 end
 
 function rec_pool_test.L1OverL2Cost()
@@ -808,7 +821,8 @@ function rec_pool_test.L1CriterionModule()
 end
 
 
-local function test_module(name, module, param, grad_param, parameter_list, model, input, jac, precision, min_param, max_param)
+-- dparam must be a table off all gradients that correspond to shared copies of the param being tested
+local function test_module(name, module, module_copies, param, grad_param, parameter_list, model, input, jac, precision, min_param, max_param)
    local function copy_table(t)
       local t2 = {}
       for k,v in pairs(t) do
@@ -819,7 +833,13 @@ local function test_module(name, module, param, grad_param, parameter_list, mode
    local unused_params
 
    print(name .. ' ' .. param)
-   local err = jac.testJacobianParameters(model, input, module[param], module[grad_param], min_param, max_param)
+   local grads = {module[grad_param]}
+   if module_copies then
+      for i,v in ipairs(module_copies) do
+	 table.insert(grads, v[grad_param])
+      end
+   end
+   local err = jac.testJacobianParameters(model, input, module[param], grads, min_param, max_param)
    mytester:assertlt(err,precision, 'error on ' .. name .. ' ' .. param)
    unused_params = copy_table(parameter_list)
    for k,v in pairs(parameter_list) do
@@ -839,7 +859,8 @@ function rec_pool_test.full_network_test()
 
    -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
    local recpool_config_prefs = {}
-   recpool_config_prefs.num_ista_iterations = 5
+   recpool_config_prefs.num_ista_iterations = 10
+   recpool_config_prefs.num_loss_function_ista_iterations = 5
    --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
    recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --recpool_config_prefs.shrink_style = 'SoftPlus'
@@ -949,43 +970,64 @@ function rec_pool_test.full_network_test()
    mytester:assertlt(err,precision, 'error on processing chain state ')
 
    for i = 1,#model.layers do
-      test_module('decoding dictionary weight', model.layers[i].module_list.decoding_feature_extraction_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
-      test_module('decoding dictionary bias', model.layers[i].module_list.decoding_feature_extraction_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      local dec_fe_dict_duplicates
+      if PARAMETER_UPDATE_METHOD == 'module' then
+	 dec_fe_dict_duplicates = {model.layers[i].module_list.copied_decoding_feature_extraction_dictionary, 
+				   model.layers[i].module_list.decoding_feature_extraction_dictionary_transpose_straightened_copy}
+      end
+      test_module('decoding dictionary weight', model.layers[i].module_list.decoding_feature_extraction_dictionary, dec_fe_dict_duplicates, 'weight', 'gradWeight', 
+		  parameter_list, model, input, jac, precision)
+      -- the failure of the test on the bias is OK, since the bias is normally set equal to zero.  In fact, the gradient on the bias isn't really defined, since the transposed copy has a different dimensionality than the other instances of decoding_feature_extraction_dictionary
+      test_module('decoding dictionary bias', model.layers[i].module_list.decoding_feature_extraction_dictionary, dec_fe_dict_duplicates, 'bias', 'gradBias', 
+		  parameter_list, model, input, jac, precision)
 
       -- problem here!!!
-      test_module('encoding dictionary weight', model.layers[i].module_list.encoding_feature_extraction_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
-      test_module('encoding dictionary bias', model.layers[i].module_list.encoding_feature_extraction_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+      test_module('encoding dictionary weight', model.layers[i].module_list.encoding_feature_extraction_dictionary, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+      test_module('encoding dictionary bias', model.layers[i].module_list.encoding_feature_extraction_dictionary, {}, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
 
+      local exp_away_duplicates = {} -- the first element of explaining_away_copies is identical to the base explaining_away; explaining_away_copies includes *all* copies
+      if PARAMETER_UPDATE_METHOD == 'module' then
+	 for j = 2,#(model.layers[i].module_list.explaining_away_copies) do
+	    table.insert(exp_away_duplicates, model.layers[i].module_list.explaining_away_copies[j])
+	 end
+      end
       -- don't allow large weights, or the messages exhibit exponential growth
-      test_module('explaining away weight', model.layers[i].module_list.explaining_away, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, -0.6, 0.6)
-      test_module('explaining away bias', model.layers[i].module_list.explaining_away, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
-      if shrink_style == 'ParameterizedShrink' then
-	 test_module('shrink shrink_val', model.layers[i].module_list.shrink, 'shrink_val', 'grad_shrink_val', parameter_list, model, input, jac, precision)
+      test_module('explaining away weight', model.layers[i].module_list.explaining_away, exp_away_duplicates, 'weight', 'gradWeight', 
+		  parameter_list, model, input, jac, precision, -0.6, 0.6)
+      test_module('explaining away bias', model.layers[i].module_list.explaining_away, exp_away_duplicates, 'bias', 'gradBias', 
+		  parameter_list, model, input, jac, precision)
+      if recpool_config_prefs.shrink_style == 'ParameterizedShrink' then
+	 local shrink_duplicates
+	 if PARAMETER_UPDATE_METHOD == 'module' then
+	    shrink_duplicates = model.layers[i].module_list.shrink_copies
+	 end
+	 test_module('shrink shrink_val', model.layers[i].module_list.shrink, shrink_duplicates, 'shrink_val', 'grad_shrink_val', 
+		     parameter_list, model, input, jac, precision, 2e-4, 0.01) -- it doesn't make sense for the shrink parameter to be negative
       end
       -- element 8 of the parameter_list is negative_shrink_val
 
       if not(disable_pooling) then
-	 test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
-	 test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
+	 test_module('decoding pooling dictionary weight', model.layers[i].module_list.decoding_pooling_dictionary, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
+	 test_module('decoding pooling dictionary bias', model.layers[i].module_list.decoding_pooling_dictionary, {}, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
 	 
 	 -- make sure that the random weights assigned to the encoding pooling dictionary for Jacobian testing are non-negative!
-	 test_module('encoding pooling dictionary weight', model.layers[i].module_list.encoding_pooling_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
-	 test_module('encoding pooling dictionary bias', model.layers[i].module_list.encoding_pooling_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
+	 test_module('encoding pooling dictionary weight', model.layers[i].module_list.encoding_pooling_dictionary, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision, 0, 2)
+	 test_module('encoding pooling dictionary bias', model.layers[i].module_list.encoding_pooling_dictionary, {}, 'bias', 'gradBias', parameter_list, model, input, jac, precision, 0, 2)
       end      
 
       if model.layers[i].module_list.feature_extraction_sparsifying_module.weight then
-	 test_module('feature extraction sparsifying module', model.layers[i].module_list.feature_extraction_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+	 test_module('feature extraction sparsifying module', model.layers[i].module_list.feature_extraction_sparsifying_module, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
       end
       if model.layers[i].module_list.pooling_sparsifying_module.weight then
-	 test_module('pooling sparsifying module', model.layers[i].module_list.pooling_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+	 test_module('pooling sparsifying module', model.layers[i].module_list.pooling_sparsifying_module, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
       end
       if model.layers[i].module_list.mask_sparsifying_module.weight then
-	 test_module('mask sparsifying module', model.layers[i].module_list.mask_sparsifying_module, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+	 test_module('mask sparsifying module', model.layers[i].module_list.mask_sparsifying_module, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
       end
    end
    
-   test_module('classification dictionary weight', model.module_list.classification_dictionary, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
-   test_module('classification dictionary bias', model.module_list.classification_dictionary, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
+   test_module('classification dictionary weight', model.module_list.classification_dictionary, {}, 'weight', 'gradWeight', parameter_list, model, input, jac, precision)
+   test_module('classification dictionary bias', model.module_list.classification_dictionary, {}, 'bias', 'gradBias', parameter_list, model, input, jac, precision)
 
 
 end
@@ -996,6 +1038,7 @@ function rec_pool_test.ISTA_reconstruction()
    -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
    local recpool_config_prefs = {}
    recpool_config_prefs.num_ista_iterations = 50
+   recpool_config_prefs.num_loss_function_ista_iterations = 10
    --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
    recpool_config_prefs.shrink_style = 'FixedShrink' --'ParameterizedShrink'
    --recpool_config_prefs.shrink_style = 'SoftPlus'

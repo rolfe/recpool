@@ -1,4 +1,5 @@
 require 'image'
+require 'gnuplot'
 
 local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
 --local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
@@ -94,6 +95,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    local receptive_field_builder = {}
    local shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size) -- output of the shrink nonlinearities for each element of the dataset
    local data_set_tensor = torch.Tensor(nExamples, input_size) -- accumulate the entire dataset used in the diagnostic run; this way, the analysis is correct even if we only present part of the dataset to the model
+   local class_tensor = torch.Tensor(nExamples) -- the class should always be a positive integer
    local first_activation, num_activations = torch.Tensor(hidden_layer_size), torch.Tensor(hidden_layer_size)
    local data_set_index = 1 -- present position in the dataset
 
@@ -115,13 +117,14 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    end
    
    -- this is the interface to the outside world
-   function receptive_field_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies)
+   function receptive_field_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies, new_target)
       local batch_size = new_input:size(1)
       if data_set_index >= nExamples then
 	 error('accumulated ' .. data_set_index .. ' elements in the receptive field builder, but only expected ' .. nExamples)
       end
 
       data_set_tensor:narrow(1,data_set_index,batch_size):copy(new_input) -- copy the input values from the dataset
+      class_tensor:narrow(1,data_set_index,batch_size):copy(new_target)
 
       self:accumulate_weighted_inputs(new_input, base_shrink.output, 1) -- accumulate the linear receptive fields
       shrink_val_tensor:select(1,1):narrow(1,data_set_index,batch_size):copy(base_shrink.output) -- copy the hidden unit values
@@ -234,10 +237,27 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    end
 
    function receptive_field_builder:plot_reconstruction_connections(opt)
-      plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 20)
+      local input_dim = model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(1)
+      if (input_dim == 2) or (input_dim == 3)  then -- plot reconstructions only as 2d points
+	 plot_reconstruction_connections_2d(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+					    ((opt.plot_temporal_reconstructions and shrink_val_tensor) or shrink_val_tensor:select(1,shrink_val_tensor:size(1))), 
+					    data_set_tensor, class_tensor, opt, 20)
+      else -- plot filters, as well as reconstructions, as square bitmaps
+	 plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 20)
+      end
+   end
+
+   function receptive_field_builder:plot_part_unit_sharing(opt)
+      plot_part_sharing_histogram(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+				  model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				  shrink_val_tensor:select(1,shrink_val_tensor:size(1)), class_tensor, opt)
    end
 
    function receptive_field_builder:plot_other_figures(opt)
+      plot_part_sharing_histogram(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+				  model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
+				  shrink_val_tensor:select(1,shrink_val_tensor:size(1)), class_tensor, opt)
+      
       local activated_at_zero = torch.gt(shrink_val_tensor:select(1,1), 0):double():sum(1):select(1,1)
       local activated_at_one = torch.add(torch.gt(shrink_val_tensor:select(1,2), 0):double(), -1, torch.gt(shrink_val_tensor:select(1,1), 0):double()):maxZero():sum(1):select(1,1)
       local activated_at_end = torch.gt(shrink_val_tensor:select(1,shrink_val_tensor:size(1)), 0):double():sum(1):select(1,1)
@@ -255,7 +275,6 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       local percentage_activated_at_end = torch.div(activated_at_end, shrink_val_tensor:size(2))
       --print('percentage late activation', percentage_late_activation:unfold(1,10,10))
 
-      require 'gnuplot'
       local norm_vec = torch.Tensor(model.layers[1].module_list.explaining_away.weight:size(1))
       local enc_norm_vec = torch.Tensor(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:size(1))
       local dec_norm_vec = torch.Tensor(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(2))
@@ -1135,7 +1154,9 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    print('total min and max are ' .. sorted_reconstruction_filter:min() .. ', ' .. sorted_reconstruction_filter:max())
    
    -- construct the full image from the composite pieces
-   local filter_side_length = math.sqrt(decoding_filter:size(1))
+   local image_size = decoding_filter:size(1)
+   local filter_side_length_y = math.ceil(math.sqrt(image_size))
+   local filter_side_length_x = image_size / filter_side_length_y
    --local current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length)
    
    local padding = 1
@@ -1143,15 +1164,15 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    local total_extra_padding = (num_display_columns - num_sorted_inputs) * extra_padding
    local xmaps = num_display_columns
    local ymaps = num_display_rows_per_input * num_reconstructions_to_plot
-   local height = filter_side_length + padding
-   local width = filter_side_length + padding
+   local height = filter_side_length_y + padding
+   local width = filter_side_length_x + padding
    local white_value = 1 --(args.symmetric and math.max(math.abs(args.input:min()),math.abs(args.input:max()))) or args.input:max()
    local image_out = torch.Tensor(height*ymaps, width*xmaps + total_extra_padding):fill(white_value)
    for y = 1,ymaps do
       for x = 1,xmaps do
 	 local current_extra_padding = math.max(x - num_sorted_inputs, 0) * extra_padding
-	 local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length)
-	 selected_image_region:copy(sorted_reconstruction_filter[{math.ceil(y / num_display_rows_per_input), ((y-1) % num_display_rows_per_input) + 1, x, {}}]:unfold(1, filter_side_length, filter_side_length))
+	 local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length_y):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length_x)
+	 selected_image_region:copy(sorted_reconstruction_filter[{math.ceil(y / num_display_rows_per_input), ((y-1) % num_display_rows_per_input) + 1, x, {}}]:unfold(1, filter_side_length_x, filter_side_length_x))
       end
    end
    image.savePNG(paths.concat(opt.log_directory, 'sorted_reconstruction_dictionary_columns.png'), image_out)
@@ -1159,45 +1180,283 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    --save_filter(sorted_reconstruction_filter, 'sorted reconstruction dictionary columns', opt.log_directory, num_display_columns) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
 end
 
-function plot_filters(opt, time_index, filter_list, filter_enc_dec_list, filter_name_list)
-   for i = 1,#filter_list do
-      local current_filter
-      if filter_enc_dec_list[i] == 'encoder' then
-	 current_filter = filter_list[i]:transpose(1,2)
-	 --print('processing ' .. filter_name_list[i] .. ' as a encoder', current_filter:size())
-	 if filter_name_list[i] == 'encoding pooling dictionary_1' then
-	    --print('combining ' .. filter_name_list[i-2] .. ' with ' .. filter_name_list[i])
-	    --print(filter_list[i-2]:size(), filter_list[i]:transpose(1,2):size())
-	    save_filter(torch.mm(filter_list[i-2], filter_list[i]:transpose(1,2)), 'encoder reconstruction', opt.log_directory)
-	 elseif filter_name_list[i] == 'explaining away_1' then
-	    save_filter(torch.mm(filter_list[i-2]:transpose(1,2), filter_list[i]:transpose(1,2)), 'explaining away reconstruction', opt.log_directory)
-	    --save_filter(torch.mm(filter_list[i-2]:transpose(1,2), torch.add(filter_list[i]:transpose(1,2), torch.diag(torch.ones(filter_list[i]:size(1))))), 'explaining away reconstruction', opt.log_directory)
-	    save_filter(torch.mm(filter_list[i-1], filter_list[i]:transpose(1,2)), 'explaining away dec reconstruction', opt.log_directory)
-	    --save_filter(torch.mm(filter_list[i-1], torch.add(filter_list[i]:transpose(1,2), torch.diag(torch.ones(filter_list[i]:size(1))))), 'explaining away dec reconstruction', opt.log_directory)
-	    --save_filter(torch.mm(filter_list[i-1], torch.add(filter_list[i]:transpose(1,2), -1, torch.diag(torch.diag(filter_list[i]:transpose(1,2))))), 'explaining away dec reconstruction', opt.log_directory)
-	 end
-      elseif filter_enc_dec_list[i] == 'decoder' then
-	 current_filter = filter_list[i]
-	 --print('processing ' .. filter_name_list[i] .. ' as a decoder', current_filter:size())
-	 if filter_name_list[i] == 'decoding pooling dictionary_1' then
-	    print('combining ' .. filter_name_list[i-3] .. ' with ' .. filter_name_list[i])
-	    --print(filter_list[i-2]:size(), filter_list[i]:transpose(1,2):size())
-	    save_filter(torch.mm(filter_list[i-3], filter_list[i]), 'decoder reconstruction', opt.log_directory)
-	 end
-      else
-	 error('filter_enc_dec_list[' .. i .. '] was incorrectly set to ' .. filter_enc_dec_list[i])
-      end
-      save_filter(current_filter, filter_name_list[i], opt.log_directory)
 
-      --gnuplot.figure(i)
-      --gnuplot.imagesc(current_image)
-      --gnuplot.title(filter_name_list[i])
-      
-      if time_index % 1 == 0 then
-	 --image.savePNG(paths.concat(opt.log_directory, filter_name_list[i] .. '_' .. time_index .. '.png'), current_image)
+
+function plot_part_sharing_histogram(encoding_filter, decoding_filter, activation_tensor, class_tensor, opt)
+   -- dimensions of activation_tensor are: nExamples, hidden_layer_size
+   -- class_tensor is a 1d tensor of class values
+   -- go through all units.  check if the unit is a part-unit based upon the angle between the encoding and decoding filter.  If it is a part-unit, add the number of times it is non-zero for inputs of each class (this can be done slowly, since this is just diagnostic code).  Output these counts as a 2d image.
+   
+   local function categoricalness_enc_dec_alignment(i)
+      local enc = encoding_filter:select(1,i)
+      local dec = decoding_filter:select(2,i)
+      local angle = math.acos(torch.dot(enc, dec)/(enc:norm() * dec:norm()))
+      if angle > cat_thresh then return 'categorical' 
+      elseif angle < part_thresh then return 'part' 
+      else return 'intermediate' end 
+   end
+
+
+   local num_units = decoding_filter:size(2)
+   local num_examples = class_tensor:size(1)
+   local num_classes = class_tensor:max()
+   local part_sharing_histogram = torch.Tensor(num_units, num_classes):zero()
+   local part_unit_counter = 0
+
+   for unit_counter = 1,num_units do
+      -- check if unit is part_unit
+      if(categoricalness_enc_dec_alignment(unit_counter) == 'part') then
+	 part_unit_counter = part_unit_counter + 1
+	 for example_counter = 1,num_examples do
+	    if activation_tensor[{example_counter, unit_counter}] > 0 then
+	       part_sharing_histogram[{part_unit_counter, class_tensor[example_counter]}] = part_sharing_histogram[{part_unit_counter, class_tensor[example_counter]}] + 1
+	    end
+	 end
       end
    end
-   --gnuplot.plotflush()
+
+   part_sharing_histogram = part_sharing_histogram:narrow(1,1,part_unit_counter)
+
+   local _,preferred_class_by_unit = torch.max(part_sharing_histogram,2)
+   preferred_class_by_unit = preferred_class_by_unit:select(2,1) -- strip out vestigial dimension
+   local _,sort_order = torch.sort(preferred_class_by_unit)
+
+   local sorted_part_sharing_histogram = torch.Tensor():resizeAs(part_sharing_histogram)
+   for i = 1,part_unit_counter do
+      sorted_part_sharing_histogram:select(1,i):copy(part_sharing_histogram:select(1,sort_order[i]))
+   end
+
+   gnuplot.pngfigure(opt.log_directory .. '/part_sharing_histogram.png') 
+   gnuplot.imagesc(sorted_part_sharing_histogram)
+   gnuplot.plotflush()
+   gnuplot.closeall()
+end
+
+function project_from_sphere(old_coords, new_coords)
+   local radius = old_coords:norm()
+   radius = math.max(radius, 1e-3)
+   new_coords[1] = math.acos(old_coords[3] / radius)
+   new_coords[2] = math.atan(math.min(1e5, math.max(-1e-5, old_coords[2] / old_coords[1])))   
+end
+
+-- create a transformation function, which is project-from-sphere for 3d, and the identity function for 2d
+
+-- plot the decoding trajectories formed by progressively accumulating the reconstruction contributions of the n units with the largest activations in response to each network input.  These are then connected to the final reconstruction, and then the original input, making clear the error of the reconstruction.  
+function plot_reconstruction_connections_2d(decoding_filter, activation_tensor, input_tensor, class_tensor, opt, trajectory_plot_length)
+   -- dimensions of activation_tensor are: (total_num_shrink_copies *only if* plot_temporal_reconstructions == 2), nExamples, hidden_layer_size
+   -- different network inputs (elements of the dataset) go along the first dimension of activation_tensor (and input_tensor)
+   -- different hidden units go along the second dimension of activation_tensor
+   local i = -1 -- THIS SHOULD NOT BE USED; I CHANGED IT TO example_index, corresponding to num_examples
+   local plot_temporal_reconstructions = opt.plot_temporal_reconstructions or false
+   local base_trajectory_length, num_examples, hidden_layer_size
+   if plot_temporal_reconstructions then
+      if activation_tensor:dim() ~= 3 then
+	 error('expected a 3d tensor for activation_tensor when plotting temporal reconstructions')
+      end
+      base_trajectory_length, num_examples, hidden_layer_size = activation_tensor:size(1), activation_tensor:size(2), activation_tensor:size(3)
+      trajectory_plot_length = base_trajectory_length + 1 -- + 2 -- (DON'T) start at 0,0 ; (DON'T) end with true input
+   else 
+      if activation_tensor:dim() ~= 2 then
+	 error('expected a 2d tensor for activation_tensor when *not* plotting temporal reconstructions')
+      end
+      num_examples, hidden_layer_size = activation_tensor:size(1), activation_tensor:size(2)
+      trajectory_plot_length = trajectory_plot_length or 10
+      trajectory_plot_length = math.min(hidden_layer_size + 2, trajectory_plot_length)
+      base_trajectory_length = trajectory_plot_length - 2 --3 -- the first column is the origin; the last two columns are the final reconstruction (and the original input)
+   end
+   local num_reconstructions_to_plot = 500 --3 --num_examples -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
+   local preprojection_dim = decoding_filter:size(1)
+   local output_dim = 2
+
+   local project_to_2d
+   if preprojection_dim == 2 then
+      project_to_2d = function(old_coords, new_coords) new_coords:copy(old_coords) end
+   elseif preprojection_dim == 3 then
+      project_to_2d = project_from_sphere
+   else
+      error('expected 2- or 3-dimensional trajectories, rather than ' .. preprojection_dim)
+   end
+   
+   if num_examples ~= input_tensor:size(1) then
+      error('number of data set elements in activation tensor ' .. num_examples .. ' does not match the number in input tensor ' .. input_tensor:size(1))
+   elseif (num_examples < num_reconstructions_to_plot) or (input_tensor:size(1) < num_reconstructions_to_plot) then
+      error('number of data set elements in activation tensor ' .. num_examples .. ' or the number in input tensor ' .. input_tensor:size(1) .. ' is smaller than the number of requested trajectories ' .. num_reconstructions_to_plot)
+   end
+
+   -- reconstruction_trajectories holds all of the trajectories that will be used to build the total plot.  Its dimensions are: different images to reconstruct; columns, corresponding to steps in the reconstruction; the dimensions of the images/trajectories themselves (should be equal to 2)
+   local reconstruction_trajectories = torch.Tensor(num_reconstructions_to_plot, trajectory_plot_length, output_dim):zero() -- tensor in which the figure will be constructed
+   --local desired_examples_for_plot = {5, 10, 47} -- different digits: 6,4,7
+   local desired_examples_for_plot = {88, 471, 379} -- all 3's -- 482
+   local plot_args = {}
+   local activation_mag_vector, activation_mag_vector_sorted, activation_mag_vector_sort_indices, desired_indices, num_points_per_traj, current_filter, last_filter
+   local preprojection_filter = torch.Tensor(preprojection_dim)
+   local last_preprojection_filter = torch.Tensor(preprojection_dim)
+   for traj_num = 1,num_reconstructions_to_plot do
+      local example_index = (desired_examples_for_plot and desired_examples_for_plot[traj_num]) or traj_num
+      preprojection_filter:zero()
+      last_preprojection_filter:zero() -- = reconstruction_trajectories[{traj_num,point_num,{}}]
+      
+      if not(plot_temporal_reconstructions) then
+	 activation_mag_vector = activation_tensor:select(1,example_index):clone():abs() -- abs() probably isn't necessary, since units are non-negative by default, but we do it to be safe and forward-compatible
+	 activation_mag_vector_sorted, activation_mag_vector_sort_indices = activation_mag_vector:sort(true)
+	 desired_indices = activation_mag_vector_sort_indices:narrow(1,1,base_trajectory_length)
+      end
+      
+      -- for each element of the reconstruction, in order of magnitude
+      for point_num = 1,base_trajectory_length do
+	 local offset = 1
+	 --local offset = ((plot_temporal_reconstructions and 0) or 1)
+	 current_filter = reconstruction_trajectories[{traj_num,point_num + offset,{}}] -- the starting point of all trajectories is 0,0, as set by the initial call to zero()
+	 last_filter = reconstruction_trajectories[{traj_num,point_num + offset - 1,{}}]
+	 -- the next point in the trajectory is the last point plus the scaled decoding column with hidden unit of the next largest magnitude
+	 if plot_temporal_reconstructions then
+	    torch.mv(preprojection_filter, decoding_filter, activation_tensor[{point_num, example_index, {}}])
+	 else
+	    preprojection_filter:add(last_preprojection_filter, activation_tensor[{example_index,desired_indices[point_num]}], decoding_filter:select(2,desired_indices[point_num]))
+	    last_preprojection_filter:copy(preprojection_filter)
+	    --current_filter:copy(last_filter):add(activation_tensor[{example_index,desired_indices[point_num]}], decoding_filter:select(2,desired_indices[point_num]))
+	 end
+	 project_to_2d(preprojection_filter, current_filter)
+      end
+
+      if not(plot_temporal_reconstructions) then
+	 current_filter = reconstruction_trajectories[{traj_num,trajectory_plot_length-0,{}}] -- plot the final reconstruction, if we haven't done so already
+	 torch.mv(preprojection_filter, decoding_filter, activation_tensor:select(1,example_index)) 
+	 project_to_2d(preprojection_filter, current_filter)
+      end
+
+      -- plot the initial input
+      --current_filter = reconstruction_trajectories[{traj_num,trajectory_plot_length,{}}]
+      --current_filter:copy(input_tensor:select(1,example_index))
+
+      if class_tensor[example_index] == 1 then
+	 table.insert(plot_args, {reconstruction_trajectories[{traj_num,{},1}], reconstruction_trajectories[{traj_num,{},2}], '-r'})
+      else
+	 table.insert(plot_args, {reconstruction_trajectories[{traj_num,{},1}], reconstruction_trajectories[{traj_num,{},2}], '-b'})
+      end
+   end
+
+   gnuplot.pngfigure(opt.log_directory .. '/reconstruction_connections.png') 
+   gnuplot.plot(unpack(plot_args))
+   gnuplot.plotflush()
+   gnuplot.closeall()
+end
+
+function plot_energy_landscape_2d(model, data_set, pos_max, opt)
+   local input = torch.Tensor()
+   local target = torch.Tensor()
+   local input_position = {0,0}
+   local energy_landscape = torch.Tensor(pos_max,pos_max):zero()
+   local err
+   local class_landscape = torch.Tensor(pos_max,pos_max):zero()
+   local _, class
+
+   local plot_args = {}
+   local traj = torch.Tensor(2,2) -- dims are: pos (1,2), dim (x,y)
+
+   pos_max = pos_max or 100
+   local num_traj_per_dim = 50
+   local traj_interval = math.ceil(pos_max / num_traj_per_dim)
+   
+   local preprojection_dim = model.layers[1].module_list.decoding_feature_extraction_dictionary.weight:size(1)
+   local output_dim = 2
+
+   local project_to_2d
+   if preprojection_dim == 2 then
+      project_to_2d = function(old_coords, new_coords) new_coords:copy(old_coords) end
+   elseif preprojection_dim == 3 then
+      project_to_2d = project_from_sphere
+   else
+      error('expected 2- or 3-dimensional trajectories, rather than ' .. preprojection_dim)
+   end
+
+
+   -- we can't use minibatches, since we need the exact loss function value for each input; using minibatches, a single aggregate loss is calculated for the entire minibatch
+   for x = 1,pos_max do
+      if x % 10 == 0 then
+	 print('x = ' .. x)
+      end
+      for y = 1,pos_max do
+	 input_position[1] = (x-1)/(pos_max-1)
+	 input_position[2] = (y-1)/(pos_max-1)
+	 input = data_set.data[input_position]:double() -- This doesn't copy memory if the type is already correct
+	 target = data_set.labels[input_position]
+
+	 model:set_target(target)
+	 err = model:updateOutput(input)
+	 energy_landscape[{pos_max + 1 - y, x}] = model.layers[1].module_list.L2_reconstruction_criterion.output --model.layers[1].module_list.feature_extraction_sparsifying_module.output --err[1]
+	 --_, class = model.module_list.classification_dictionary.output:max(1)
+	 --class_landscape[{pos_max + 1 - y, x}] = class[1]
+	 class_landscape[{pos_max + 1 - y, x}] = model.module_list.classification_dictionary.output[1]
+
+	 if (x % traj_interval == 0) and (y % traj_interval == 0) then
+	    --traj:select(1,1):copy(input)
+	    --traj:select(1,2):copy(model.layers[1].module_list.decoding_feature_extraction_dictionary.output)
+	    project_to_2d(input, traj:select(1,1))
+	    project_to_2d(model.layers[1].module_list.decoding_feature_extraction_dictionary.output, traj:select(1,2))
+	    table.insert(plot_args, {traj:select(2,1):clone(), traj:select(2,2):clone(), '-'})
+	 end
+      end
+   end
+
+   --energy_landscape:minN(1.5)
+   energy_landscape:add(0.2):log()
+   gnuplot.pngfigure(opt.log_directory .. '/energy_landscape.png') 
+   gnuplot.imagesc(energy_landscape)
+
+   gnuplot.pngfigure(opt.log_directory .. '/class_landscape.png') 
+   gnuplot.imagesc(class_landscape)
+
+   gnuplot.pngfigure(opt.log_directory .. '/energy_trajectories.png') 
+   gnuplot.plot(unpack(plot_args))
+
+   gnuplot.plotflush()
+   gnuplot.closeall()
+end
+
+
+   
+
+
+
+
+
+
+
+
+function plot_filters(opt, time_index, filter_list)
+   local current_filter
+   -- each entry of the filter_list, with the key set to the name of the filter, consists of a table of {filter, 'encoder' or 'decoder'}; some filters may be nil
+   for name,filt_pair in pairs(filter_list) do 
+      if filt_pair[1] then 
+	 if filt_pair[2] == 'encoder' then
+	    current_filter = filt_pair[1]:transpose(1,2)
+	    if name == 'encoding pooling dictionary_1' then
+	       save_filter(torch.mm(filter_list['decoding feature extraction dictionary_1'][1], filt_pair[1]:transpose(1,2)), 'encoder reconstruction', opt.log_directory)
+	    elseif name == 'explaining away_1' then
+	       save_filter(torch.mm(filter_list['encoding feature extraction dictionary_1'][1]:transpose(1,2), filt_pair[1]:transpose(1,2)), 'explaining away reconstruction', opt.log_directory)
+	       --save_filter(torch.mm(filter_list['encoding feature extraction dictionary_1'][1]:transpose(1,2), torch.add(filt_pair[1]:transpose(1,2), torch.diag(torch.ones(filt_pair[1]:size(1))))), 'explaining away reconstruction', opt.log_directory)
+	       save_filter(torch.mm(filter_list['decoding feature extraction dictionary_1'][1], filt_pair[1]:transpose(1,2)), 'explaining away dec reconstruction', opt.log_directory)
+	       -- with ones added to the diag, as is done implicitly during the updates
+	       --save_filter(torch.mm(filter_list['decoding feature extraction dictionary_1'][1], torch.add(filt_pair[1]:transpose(1,2), torch.diag(torch.ones(filt_pair[1]:size(1))))), 'explaining away dec reconstruction', opt.log_directory)
+	       -- with diag forcibly removed
+	       --save_filter(torch.mm(filter_list['decoding feature extraction dictionary_1'][1], torch.add(filt_pair[1]:transpose(1,2), -1, torch.diag(torch.diag(filt_pair[1]:transpose(1,2))))), 'explaining away dec reconstruction', opt.log_directory)
+	    end
+	 elseif filt_pair[2] == 'decoder' then
+	    current_filter = filt_pair[1]
+	    if name == 'decoding pooling dictionary_1' then
+	       save_filter(torch.mm(filter_list['decoding feature extraction dictionary_1'][1], filt_pair[1]), 'decoder reconstruction', opt.log_directory)
+	    end
+	 else
+	    error('filter pair[2] for filter ' .. name .. ' was incorrectly set to ' .. filt_pair[2])
+	 end
+	 
+	 --print('saving filter ', name)
+	 save_filter(current_filter, name, opt.log_directory)
+      else
+	 print('ignoring filter ' .. name)
+      end
+   end -- loop over filter names
 end
 
 function plot_reconstructions(opt, input, output)

@@ -17,18 +17,18 @@ cmd:option('-num_layers','1', 'number of reconstruction pooling layers in the ne
 -- receptive_fields generates figures showing the 'spike-triggered average' receptive fields and the optimal decoding dictionary (shrink_dictionary) for each unit
 -- reconstruction_connections generates figures showing the progressive reconstruction of a few digits 
 -- full_diagnostic generates the scatterplots
-cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic), connection_diagram, receptive_fields, reconstruction_connections; full_diagnostic generates other figures; increase epoch size to generate final figures!!!
+cmd:option('-run_type','quick_train', 'train slowly over the entire training set (except for the held-out validation elements)') -- (full, quick) x (train, test, diagnostic), connection_diagram, receptive_fields, reconstruction_connections, reconstruction_temporal, energy_landscape; full_diagnostic generates other figures; increase epoch size to generate final figures!!!
 cmd:option('-data_set','train', 'data set on which to perform experiment experiments')
 cmd:option('-layer_size','200', 'size of sparse coding layer')
-cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist or cifar)')
+cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar, or spiral_2d)')
 
 -- set parameters, both from the command line and with fixed values
-local L1_scaling = 2 --1.5 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
+local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
 local RESTRICT_TO_WINDOW = {28, 28}
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local quick_train_learning_rate = 0.5e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 10000
 local full_diagnostic_epoch_size = 10000
@@ -44,21 +44,26 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 1000 --200 --501 --201
+local num_epochs_no_classification = 500 -- 1000 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 0 --1000
+local num_epochs = 901
 
 
+-- extract the command line parameters
 local params = cmd:parse(arg)
 params.num_layers = tonumber(params.num_layers)
 params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
 params.p_layer_size = 50 --200 --50
+if params.run_type == 'reconstruction_temporal' then
+   params.run_type = 'reconstruction_connections'
+   params.use_temporal_reconstruction = true
+end
 if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') or 
-   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') then
+   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') then
    num_epochs_no_classification = 0
    num_epochs = 1
 end
@@ -66,7 +71,8 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 10 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 14 --1 --10 --5 --5 --3
+recpool_config_prefs.num_loss_function_ista_iterations = 5
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'
@@ -83,7 +89,6 @@ recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
 --torch.manualSeed(46393475) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
 torch.seed()
 
-
 -- choose the dataset
 if params.selected_dataset == 'mnist' then
    require 'mnist'
@@ -91,6 +96,11 @@ if params.selected_dataset == 'mnist' then
 elseif params.selected_dataset == 'cifar' then
    require 'cifar'
    this_data_set = cifar
+elseif params.selected_dataset == 'spiral_2d' then
+   require 'spiral_2d'
+   this_data_set = spiral_2d
+else
+   error('Did not recognize selected_dataset ' .. params.selected_dataset .. '; available datasets are mnist, cifar, and spiral_2d')
 end
 
 -- create the dataset
@@ -143,11 +153,12 @@ local default_pretraining_minibatches = default_pretraining_num_epochs * this_da
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
+   num_classification_categories = data:nClass(),
    optimization = optimization_algorithm, -- optimization method: SGD | ASGD | CG | LBFGS
    init_eval_counter = (((num_epochs_no_classification <= 0) or force_initial_learning_rate_decay) and default_pretraining_minibatches) or 0, 
    learning_rate = ((params.run_type == 'full_train') and full_train_learning_rate) or 
       ((params.run_type == 'quick_train') and quick_train_learning_rate) or 
-      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram')) and 0) or 0, --1e-3, -- learning rate at t=0
+      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'energy_landscape')) and 0) or 0, --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
@@ -157,7 +168,8 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    t0 = (((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 
 	 num_epochs_no_classification * (data:nExample() / math.max(1, desired_minibatch_size))) + 
       num_classification_epochs_before_averaging_SGD * (data:nExample() / math.max(1, desired_minibatch_size)), -- start averaging at t0 (ASGD only), measured in ASGD calls
-   max_iter = 2 -- maximum nb of iterations for CG and LBFGS
+   max_iter = 2, -- maximum nb of iterations for CG and LBFGS
+   plot_temporal_reconstructions = params.use_temporal_reconstruction
 }
 
 print('Using opt.learning_rate = ' .. opt.learning_rate)
@@ -237,8 +249,8 @@ if params.run_type == 'connection_diagram' then
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				    model.layers[1].module_list.explaining_away.weight, opt, {'destination', 'part', 'categorical'},
 				    model.module_list.classification_dictionary.weight, 1, 20) --16, 3 for ICLR paper
-
-
+   
+   
    local sort_by_class = nil -- normally true
    plot_explaining_away_connections(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight,
 				    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
@@ -249,6 +261,10 @@ if params.run_type == 'connection_diagram' then
 				    model.layers[1].module_list.explaining_away.weight, opt, {'source', 'categorical', 'categorical', sort_by_class},
 				    model.module_list.classification_dictionary.weight, 1, 10) --16, 3 for ICLR paper
    return
+elseif params.run_type == 'energy_landscape' then
+      model:reset_classification_lambda(0)
+      plot_energy_landscape_2d(model, data, 100, opt)
+      return
 end
 
 
@@ -268,7 +284,7 @@ for i = 1,num_epochs_no_classification do
    trainer:train(data, (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and 'display'))
    --print('iterations so far: ' .. trainer.config.evalCounter)
    if (i < 30) or (i % 10 == 1) then
-      plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+      plot_filters(opt, i, model.filter_list)
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
@@ -327,7 +343,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
 
    trainer:train(data, (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and 'display'))
    if (i < 30) or (i % 10 == 1) then
-      plot_filters(opt, i, model.filter_list, model.filter_enc_dec_list, model.filter_name_list)
+      plot_filters(opt, i, model.filter_list)
    end
    print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 
