@@ -16,8 +16,8 @@ FULLY_NORMALIZE_ENC_FE_DICT = false -- if true, force the L2 norm of each row to
 FULLY_NORMALIZE_DEC_FE_DICT = false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
-NORMALIZE_ROWS_OF_CLASS_DICT = true
-BOUND_ROWS_OF_CLASS_DICT = false
+NORMALIZE_ROWS_OF_CLASS_DICT = false --true
+BOUND_ROWS_OF_CLASS_DICT = true --false
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NO_BIAS_ON_EXPLAINING_AWAY = true -- bias on the explaining-away matrix is roughly equivalent to bias on the encoding_feature_extraction_dictionary
@@ -30,7 +30,7 @@ ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
-CLASS_NLL_CRITERION_TYPE = nil --'hinge' -- soft, hinge, nil
+CLASS_NLL_CRITERION_TYPE = 'soft_aggregate' --nil -- soft, soft_aggregate, hinge, nil
 USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
@@ -746,10 +746,14 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
       this_class_nll_criterion = nn.L1Cost()
    elseif CLASS_NLL_CRITERION_TYPE == 'soft' then
       this_class_nll_criterion = nn.SoftClassNLLCriterion()
+   elseif CLASS_NLL_CRITERION_TYPE == 'soft_aggregate' then
+      this_class_nll_criterion = nn.SoftClassNLLCriterion(true)
    elseif CLASS_NLL_CRITERION_TYPE == 'hinge' then
       this_class_nll_criterion = nn.HingeClassNLLCriterion()
-   else
+   elseif not(CLASS_NLL_CRITERION_TYPE) then
       this_class_nll_criterion = nn.ClassNLLCriterion()
+   else
+      error('Did not recognized desired CLASS_NLL_CRITERION_TYPE ' .. CLASS_NLL_CRITERION_TYPE)
    end
    this_class_nll_criterion.sizeAverage = false -- ABSOLUTELY CRITICAL to ensure that the gradients from the classification loss alone are not scaled down in proportion to the minibatch size
    local classification_criterion = nn.L1CriterionModule(this_class_nll_criterion, classification_criterion_lambda) -- on each iteration classfication_criterion:setTarget(target) must be called

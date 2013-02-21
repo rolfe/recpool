@@ -44,13 +44,13 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 1000 -- 1000 --200 --501 --201
+local num_epochs_no_classification = 300 -- 1000 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 901
+local num_epochs = 1001
 
 
 -- extract the command line parameters
@@ -71,8 +71,8 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 14 --1 --10 --5 --5 --3
-recpool_config_prefs.num_loss_function_ista_iterations = 5
+recpool_config_prefs.num_ista_iterations = 10 --14 --1 --10 --5 --5 --3
+recpool_config_prefs.num_loss_function_ista_iterations = 1 --5
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
 --recpool_config_prefs.shrink_style = 'SoftPlus' --'FixedShrink' --'ParameterizedShrink'

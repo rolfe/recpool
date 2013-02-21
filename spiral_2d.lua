@@ -219,7 +219,7 @@ function spiral_2d.loadTestSet(maxLoad, alternative_access_method)
 end
 
 function spiral_2d.loadDataSet(params)
-   return loadFlatDataset(params.maxLoad, params.alternative_access_method, true)
+   return loadFlatDataset(params.maxLoad, params.alternative_access_method, true) -- last argument specifies whether dataset should be natively 2d (false) or embedded in on the surface of a 3d sphere (true)
 end
 
 
