@@ -24,7 +24,7 @@ cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar
 
 -- set parameters, both from the command line and with fixed values
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
-local RESTRICT_TO_WINDOW = {28, 28}
+local RESTRICT_TO_WINDOW = {14, 14} --{28, 28}
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
@@ -299,25 +299,27 @@ if num_epochs_gentle_pretraining >= 0 then
 end
 --trainer:reset_learning_rate(5e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
-local perform_classifier_pretraining = false
+local perform_classifier_pretraining = true
 local perform_slow_burn_in = false
-local num_epochs_classification_pretraining = 5
+local num_epochs_classification_pretraining = 20 --5
 local num_epochs_classification_slow_burn_in = 0
 local slow_burn_in_scale_factor = 0.1 -- 0.05
 
 if perform_classifier_pretraining then
    --trainer:reset_learning_rate(20 * (5000 / data_set_size) * opt.learning_rate) -- Do a few epochs of accelerated training to initialize the classification_dictionary
    --print('resetting learning rate to ' .. 20 * (5000 / data_set_size) * opt.learning_rate)
+   print('Doing fast classifier pretraining')
+   model:reset_classification_lambda(2*classification_scale_factor)
    model:reset_ista_learning_scale_factor(0) -- turn off learning for all ISTA ConstrainedLinear modules, leaving only the classification dictionary to be trained.  THIS DOES NOT WORK PROPERLY WITH PARAMETERIZED_SHRINK!!!
 end
 
 for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification do
    -- Train the entire network with a very low learning rate for a few epochs, to resolve mismatches between the sparse coding layer and the classification layer.  Remember that, since the classification dictionary is now so large, the backpropagated gradients are correspondingly scaled up
    if perform_classifier_pretraining and (i == num_epochs_classification_pretraining + num_epochs_no_classification) then
-      --model:reset_learning_scale_factor(0.05) 
       --trainer:reset_learning_rate(opt.learning_rate) 
 
-      --model:reset_classification_lambda(0.1)
+      print('Ending fast classifier pretraining')
+      model:reset_classification_lambda(classification_scale_factor)
       model:reset_ista_learning_scale_factor(1) 
       --trainer:reset_learning_rate(slow_burn_in_scale_factor * opt.learning_rate) 
       --print('resetting learning rate to ' .. slow_burn_in_scale_factor * opt.learning_rate)
