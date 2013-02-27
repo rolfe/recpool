@@ -490,7 +490,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
       end
       print('FE dec col norms are ', norms:unfold(1,10,10))
 
-      print('FE dec matrix is ', m)
+      --print('FE dec matrix is ', m)
       --]]
 
       --print('dec matrix is', self.model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)

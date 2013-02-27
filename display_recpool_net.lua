@@ -1,8 +1,8 @@
 require 'image'
 require 'gnuplot'
 
-local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
---local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
+local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
 
 
 local function plot_training_error(t)
@@ -661,7 +661,10 @@ end
 
 local function plot_bar(args) -- {bar_length, max_bar_length, image_edge_length, max_decoding, current_column}
    local bar_sign = args.bar_length/math.abs(args.bar_length)
-   if args.bar_length > args.max_bar_length then error('bar length > max bar length') end
+   if args.bar_length > args.max_bar_length then 
+      print('bar length > max bar length') 
+      args.bar_length = args.max_bar_length
+   end
    for i=1,math.ceil((args.image_edge_length - 2) * math.abs(args.bar_length)/args.max_bar_length) do
       args.current_column[args.image_edge_length + 1 + i] = args.max_decoding * bar_sign
    end

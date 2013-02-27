@@ -24,17 +24,19 @@ cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar
 
 -- set parameters, both from the command line and with fixed values
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
-local RESTRICT_TO_WINDOW = {14, 14} --{28, 28}
+local RESTRICT_TO_WINDOW = {8, 8} --{14, 14} --{28, 28}
+local DESIRED_WINDOW_SHIFTS = {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
-local quick_train_learning_rate = 0.5e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+-- use 0.5e-3 for spiral_2d dataset
+local quick_train_learning_rate = 20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
+local full_train_learning_rate = 5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 10000
-local full_diagnostic_epoch_size = 10000
+local full_diagnostic_epoch_size = 1000 --10000
 local plot_receptive_fields_epoch_size = 10000
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 50
+local parameter_save_interval = 1 --50
 local classification_scale_factor = 1 --0.2 --200 --0.025 -- 200
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -44,13 +46,13 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 300 -- 1000 --200 --501 --201
+local num_epochs_no_classification = 1001 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 1001
+local num_epochs = 0 --1001
 
 
 -- extract the command line parameters
@@ -106,7 +108,8 @@ end
 -- create the dataset
 local data, data_inline_test
 -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
-local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternative_access_method = 'recpool_net', offset = nil, RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW}
+local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternative_access_method = 'recpool_net', offset = nil, RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW, 
+			  DESIRED_WINDOW_SHIFTS = DESIRED_WINDOW_SHIFTS}
 if params.data_set == 'train' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
       ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
@@ -116,10 +119,11 @@ if params.data_set == 'train' then
    if params.run_type == 'full_train' then
       -- also load the validation set for inline testing
       data_inline_test = this_data_set.loadDataSet({train_or_test = 'train', maxLoad = this_data_set:validation_set_size(), alternative_access_method = 'recpool_net', 
-						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW})
+						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW, DESIRED_WINDOW_SHIFTS = DESIRED_WINDOW_SHIFTS})
       --data_inline_test:normalizeByColor()
-      data_inline_test:useGrayscale()
-      data_inline_test:normalizeL2()
+      --data_inline_test:useGrayscale()
+      --data_inline_test:normalizeL2()
+      data_inline_test:normalizeStandard()
    end
 elseif params.data_set == 'test' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
@@ -136,8 +140,9 @@ data = this_data_set.loadDataSet(data_set_options)
 
 --Indexing labels returns an index, rather than a tensor
 --data:normalizeByColor()
-data:useGrayscale()
-data:normalizeL2() -- normalize each example to have L2 norm equal to 1
+--data:useGrayscale()
+--data:normalizeL2() -- normalize each example to have L2 norm equal to 1
+data:normalizeStandard()
 
 
 -- the code required to set the structural parameters of a network is messy, so it's been moved to a separate file
