@@ -43,7 +43,7 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
 local cifar_scaling = 0.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 8.0 --6.0 --1.5 --1.1 --1 --1.5 --1.2 -- for CIFAR
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3 --1.6 --1.2 --0.8 --0.6 --0.7 --0.8 -- CIFAR
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 4 --1.6 --1.2 --0.8 --0.6 --0.7 --0.8 -- CIFAR
 --WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- 400 hidden units; when viewed as a weighted L1 loss, -\sum_i e^x_i / (\sum_j e^x_j) * log(e^x_i / (\sum_j e^x_j)) ~ -\sum_i e^x_i / (\sum_j e^x_j) * x_i, then since x is normalized to have L2 norm equal to 1, if we assume that only one unit is significantly active, then the entropy is e^1 / (k - 1 + e^1) * 1, and so is scaled down by a factor approximately equal to the number of hidden units.  When we double the number of hidden units, we should probably double the entropy scaling
 L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (8*8)) -- CIFAR ; otherwise use 1
 
