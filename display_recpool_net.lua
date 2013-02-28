@@ -258,7 +258,7 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       plot_part_sharing_histogram(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
 				  model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 
 				  shrink_val_tensor:select(1,shrink_val_tensor:size(1)), class_tensor, opt)
-      
+
       local activated_at_zero = torch.gt(shrink_val_tensor:select(1,1), 0):double():sum(1):select(1,1)
       local activated_at_one = torch.add(torch.gt(shrink_val_tensor:select(1,2), 0):double(), -1, torch.gt(shrink_val_tensor:select(1,1), 0):double()):maxZero():sum(1):select(1,1)
       local activated_at_end = torch.gt(shrink_val_tensor:select(1,shrink_val_tensor:size(1)), 0):double():sum(1):select(1,1)
