@@ -2,7 +2,8 @@ require 'image'
 require 'gnuplot'
 
 --local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
-local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 
 
 local function plot_training_error(t)
