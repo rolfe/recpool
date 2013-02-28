@@ -201,24 +201,44 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       collectgarbage()
       --image.display{image=torch.reshape(data[{ {1,256} }], 256,32,32), nrow=16, legend='Some samples from the data set after normalization'}
 
+      local sphere_transform
       print('Sphering')
-      local covariance = torch.Tensor(dim, dim):zero()
-      for i = 1,nExample do
-	 covariance:addr(data:select(1,i), data:select(1,i))
+
+      -- try to load sphering matrix
+      local file_name = 'cifar_sphere_matrix.bin'
+      local mf = torch.DiskFile(file_name,'r', true)
+      if mf then
+	 print('Loading sphering matrix from file')
+	 mf = mf:binary()
+	 sphere_transform = mf:readObject()
+	 mf:close()
+      else
+	 local covariance = torch.Tensor(dim, dim):zero()
+	 for i = 1,nExample do
+	    covariance:addr(data:select(1,i), data:select(1,i))
+	 end
+	 covariance:div(nExample)
+	 
+	 local e_vals, e_vecs = torch.symeig(covariance, 'V')
+	 
+	 local zero_check = torch.add(torch.mm(torch.mm(covariance, e_vecs), torch.diag(torch.pow(e_vals, -1))), -1, e_vecs)
+	 print('zero check for eigenvector decomposition ' .. torch.min(zero_check) .. ', ' .. torch.max(zero_check))
+	 
+	 local e_vals_sphere = torch.diag(torch.pow(torch.add(e_vals, whitening_eigenvalue_offset), -1/2)) -- the constant is necessary to keep eigenvalues near or equal to zero from exploding 
+	 sphere_transform = torch.mm(e_vecs, torch.mm(e_vals_sphere, e_vecs:t()))
+	 
+	 --image.display{image=torch.reshape(e_vecs:narrow(2,1,256):t(), 256,32,32), nrow=16, legend='Some samples from the eigenvectors'}
+	 --image.display{image=torch.reshape(sphere_transform:narrow(2,1,256):t(), 256,32,32), nrow=16, legend='Some samples from the whitening transform'}
+	 --print(sphere_transform:select(2, 130):unfold(1,32,32))
+	 
+	 if nExample == cifar:train_set_size() then
+	    -- save sphering matrix to file
+	    print('Saving sphering matrix to file')
+	    local mf = torch.DiskFile(file_name,'w'):binary()
+	    mf:writeObject(sphere_transform)
+	    mf:close()
+	 end
       end
-      covariance:div(nExample)
-
-      local e_vals, e_vecs = torch.symeig(covariance, 'V')
-
-      local zero_check = torch.add(torch.mm(torch.mm(covariance, e_vecs), torch.diag(torch.pow(e_vals, -1))), -1, e_vecs)
-      print('zero check for eigenvector decomposition ' .. torch.min(zero_check) .. ', ' .. torch.max(zero_check))
-
-      local e_vals_sphere = torch.diag(torch.pow(torch.add(e_vals, whitening_eigenvalue_offset), -1/2)) -- the constant is necessary to keep eigenvalues near or equal to zero from exploding 
-      local sphere_transform = torch.mm(e_vecs, torch.mm(e_vals_sphere, e_vecs:t()))
-
-      --image.display{image=torch.reshape(e_vecs:narrow(2,1,256):t(), 256,32,32), nrow=16, legend='Some samples from the eigenvectors'}
-      --image.display{image=torch.reshape(sphere_transform:narrow(2,1,256):t(), 256,32,32), nrow=16, legend='Some samples from the whitening transform'}
-      --print(sphere_transform:select(2, 130):unfold(1,32,32))
 
       local sphered_data = torch.Tensor():resizeAs(data)
       sphered_data:mm(data, sphere_transform:t()) -- keep in mind that the dimensions of data are nExample x dim

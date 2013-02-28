@@ -38,11 +38,14 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
 
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.875 -- for MNIST
-WEIGHTED_L1_SOFTMAX_SCALING = 0.9375 --0.875 -- for CIFAR
-WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2
+--WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
+local cifar_scaling = 0.5
+WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 8.0 --6.0 --1.5 --1.1 --1 --1.5 --1.2 -- for CIFAR
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
-WEIGHTED_L1_ENTROPY_SCALING = 0.8 --0.8 -- CIFAR
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3 --1.6 --1.2 --0.8 --0.6 --0.7 --0.8 -- CIFAR
 --WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- 400 hidden units; when viewed as a weighted L1 loss, -\sum_i e^x_i / (\sum_j e^x_j) * log(e^x_i / (\sum_j e^x_j)) ~ -\sum_i e^x_i / (\sum_j e^x_j) * x_i, then since x is normalized to have L2 norm equal to 1, if we assume that only one unit is significantly active, then the entropy is e^1 / (k - 1 + e^1) * 1, and so is scaled down by a factor approximately equal to the number of hidden units.  When we double the number of hidden units, we should probably double the entropy scaling
+L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (8*8)) -- CIFAR ; otherwise use 1
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
@@ -1275,7 +1278,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 this_layer:add(linearly_reconstruct_input(current_decoding_fe_dict)) --base_decoding_feature_extraction_dictionary))
 	 -- calculate the L2 dist between the reconstruction based on the shrunk code D*z [4], and the original input x [3]; discard all signals but the layer n code z [1], the transformed input W*x [2], the untransformed layer n-1 input x[3], and possibly the layer n-1 offset shrink output [4], as well as the L2 loss criterion
 	 -- crit must be distinct for each copy
-	 local L2_reconstruction_loss_module, L2_reconstruction_criterion = build_L2_reconstruction_loss(lambdas.ista_L2_reconstruction_lambda / 
+	 local L2_reconstruction_loss_module, L2_reconstruction_criterion = build_L2_reconstruction_loss(L2_RECONSTRUCTION_SCALING_FACTOR * lambdas.ista_L2_reconstruction_lambda / 
 													 recpool_config_prefs.num_loss_function_ista_iterations, criteria_list) 
 	 module_list.L2_reconstruction_criterion = module_list.L2_reconstruction_criterion or L2_reconstruction_criterion -- save the first copy
 	 this_layer:add(L2_reconstruction_loss_module) 

@@ -25,15 +25,15 @@ cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar
 -- set parameters, both from the command line and with fixed values
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
 local RESTRICT_TO_WINDOW = {8, 8} --{14, 14} --{28, 28}
-local DESIRED_WINDOW_SHIFTS = {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
+local DESIRED_WINDOW_SHIFTS = {4,4} --{2,2} -- {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
 -- use 0.5e-3 for spiral_2d dataset
 local quick_train_learning_rate = 20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
-local full_train_learning_rate = 5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
+local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local quick_train_epoch_size = 10000
-local full_diagnostic_epoch_size = 1000 --10000
+local full_diagnostic_epoch_size = 10000
 local plot_receptive_fields_epoch_size = 10000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 1 --50
@@ -69,11 +69,19 @@ if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (par
    num_epochs_no_classification = 0
    num_epochs = 1
 end
+if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
+   DESIRED_WINDOW_SHIFTS = {0,0}
+   full_diagnostic_epoch_size = 20000
+elseif params.run_type == 'reconstruction_connections' then
+   full_diagnostic_epoch_size = 500
+   DESIRED_WINDOW_SHIFTS = {1,1}
+end
+   
 
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 10 --14 --1 --10 --5 --5 --3
+recpool_config_prefs.num_ista_iterations = 15 --14 --1 --10 --5 --5 --3
 recpool_config_prefs.num_loss_function_ista_iterations = 1 --5
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'
