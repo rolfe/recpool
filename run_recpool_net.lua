@@ -24,7 +24,7 @@ cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar
 
 -- set parameters, both from the command line and with fixed values
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
-local RESTRICT_TO_WINDOW = {12, 12} --{14, 14} --{28, 28}
+local RESTRICT_TO_WINDOW = {8, 8} --{14, 14} --{28, 28}
 local DESIRED_WINDOW_SHIFTS = {4,4} --{2,2} -- {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD

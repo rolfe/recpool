@@ -40,12 +40,27 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.875 -- for MNIST
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
-local cifar_scaling = 0.125 -- 0.5
-WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 is too large with 1.5 entropy -- 4 is too small with 1.5 entropy -- 6 is the largest that produces sparse codes with reasonable reconstruction accuracy -- for CIFAR
+
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1.5 -- 1.75 is too large with 4 entropy; 1.5 is too small with 4 entropy, but too large with 5 entropy -- CIFAR
+
+-- for 8x8 CIFAR
+local cifar_scaling = 0.25 -- 0.5
+WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 10 -- 12 is good without any entropy 
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3.75 -- 4.5 is too large (just learns one categorical unit); 3 is too small (all units become quasi-categorical)
+
+-- for 12x12 CIFAR
+--local cifar_scaling = 0.125 -- 0.5
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 is too large with 1.5 entropy -- 4 is too small with 1.5 entropy -- 6 is the largest that produces sparse codes with reasonable reconstruction accuracy -- for CIFAR
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1.5 -- 1.75 is too large with 4 entropy; 1.5 is too small with 4 entropy, but too large with 5 entropy -- CIFAR
+
+-- for 16x16 CIFAR
+--local cifar_scaling = 0.5 --1 --2
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 2 --5 is too large with 1.5 entropy -- 4 is too small with 1.5 entropy -- 6 is the largest that produces sparse codes with reasonable reconstruction accuracy -- for CIFAR
+-- O.875 went to nans with scaling 1, but otherwise seemed to be moving towards categorical units
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.875 --0.3 is too small, 0.5 is too small, 0.75 is too small; 1.0 is too large, 0.875 is too large (with scaling 1) 0.75 is too large (with scaling 2)
+
 --WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- 400 hidden units; when viewed as a weighted L1 loss, -\sum_i e^x_i / (\sum_j e^x_j) * log(e^x_i / (\sum_j e^x_j)) ~ -\sum_i e^x_i / (\sum_j e^x_j) * x_i, then since x is normalized to have L2 norm equal to 1, if we assume that only one unit is significantly active, then the entropy is e^1 / (k - 1 + e^1) * 1, and so is scaled down by a factor approximately equal to the number of hidden units.  When we double the number of hidden units, we should probably double the entropy scaling
-L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
+L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (8*8)) -- CIFAR ; otherwise use 1
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
