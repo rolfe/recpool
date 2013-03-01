@@ -44,9 +44,10 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
 
 -- for 8x8 CIFAR
-local cifar_scaling = 0.25 -- 0.5
+local cifar_scaling = 0.5 -- 0.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 10 -- 12 is good without any entropy 
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3.75 -- 4.5 is too large (just learns one categorical unit); 3 is too small (all units become quasi-categorical)
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3.75 -- 4.5 is too large (just learns one categorical unit); 3 is too small (all units become quasi-categorical)
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 4.5 -- 400 hidden units.  This could probably stand being larger, but 4.5 seems sufficient
 
 -- for 12x12 CIFAR
 --local cifar_scaling = 0.125 -- 0.5
