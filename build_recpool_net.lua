@@ -16,8 +16,8 @@ FULLY_NORMALIZE_ENC_FE_DICT = false -- if true, force the L2 norm of each row to
 FULLY_NORMALIZE_DEC_FE_DICT = false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
-NORMALIZE_ROWS_OF_CLASS_DICT = false --true
-BOUND_ROWS_OF_CLASS_DICT = true --false
+NORMALIZE_ROWS_OF_CLASS_DICT = true --false --true 
+BOUND_ROWS_OF_CLASS_DICT = false --true --false -- USE WITH soft_aggregate class criterion
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NO_BIAS_ON_EXPLAINING_AWAY = true -- bias on the explaining-away matrix is roughly equivalent to bias on the encoding_feature_extraction_dictionary
@@ -30,10 +30,10 @@ ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
-CLASS_NLL_CRITERION_TYPE = 'soft_aggregate' --nil -- soft, soft_aggregate, hinge, nil
+CLASS_NLL_CRITERION_TYPE = nil --'soft_aggregate' --nil -- soft, soft_aggregate, hinge, nil -- use bound_rows_of_class_dict with soft_aggregate
 USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
-USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
+USE_PROB_WEIGHTED_L1 = false -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
 
@@ -57,7 +57,7 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
 -- for 12x12 CIFAR with 400 hidden units
 local cifar_scaling = 1 -- 0.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1.5 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
 
 
 -- for 16x16 CIFAR
@@ -290,6 +290,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local normalize_input_parallel = nn.ParallelDistributingTable()
    local normalize_input_seq = nn.Sequential()
    normalize_input_seq:add(nn.SelectTable{1})
+   --normalize_input_seq:add(nn.Narrow(2,1,20)) -- EXPERIMENTAL CODE!  Try only applying the entropy loss to the first twenty units
    normalize_input_seq:add(nn.Abs()) -- this shouldn't actually be necessary, since the units are non-negative
    normalize_input_seq:add(nn.NormalizeTensor())
    if not(only_apply_scaling_to_softmax) then
@@ -329,8 +330,12 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    abs_and_scale_seq:add(nn.SelectTable{3})
    abs_and_scale_seq:add(nn.Abs())
    abs_and_scale_seq:add(nn.MulConstant(nil, pure_L1_lambda))
+   --abs_and_scale_seq:add(nn.SumCriterionModule()) -- EXPERIMENTAL CODE
+   -- wrap in tensor
    weight_normed_input_parallel:add(weight_normed_input_seq)
    weight_normed_input_parallel:add(abs_and_scale_seq)
+   -- weight_normed_input_parallel:add(nn.SumCriterionModule()) -- EXPERIMENTAL CODE
+   -- wrap in tensor
    crit:add(weight_normed_input_parallel)
 
    -- add streams together to get a single tensor [1]

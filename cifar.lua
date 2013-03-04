@@ -194,7 +194,7 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       local whitening_eigenvalue_offset = 0.1 -- the constant is necessary to keep eigenvalues near or equal to zero from exploding when they are raised to the power -0.5
       
       self.sphered_data = true
-      self:convertToStaticGrayscale()
+      --self:convertToStaticGrayscale()
       print('Normalizing')
       self:normalize()
       print('zero check for normalization ' .. torch.sum(data,1):max() .. ', ' .. torch.sum(data,1):min())
@@ -268,7 +268,8 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       local current_example
       for i=1,nExample do
          current_example = data:select(1, i)
-	 current_example:div(torch.norm(current_example:unfold(1,side_length^2,side_length^2):sum(1):select(1,1)) / desired_norm)
+	 current_example:div(torch.norm(current_example) / desired_norm) -- version for 12/7 CIFAR run
+	 --current_example:div(torch.norm(current_example:unfold(1,side_length^2,side_length^2):sum(1):select(1,1)) / desired_norm) -- current version
 	 if i % 1000 == 0 then
 	    collectgarbage()
 	 end

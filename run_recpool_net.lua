@@ -23,9 +23,9 @@ cmd:option('-layer_size','200', 'size of sparse coding layer')
 cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar, or spiral_2d)')
 
 -- set parameters, both from the command line and with fixed values
-local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
-local RESTRICT_TO_WINDOW = {12, 12} --{14, 14} --{28, 28}
-local DESIRED_WINDOW_SHIFTS = {4,4} --{2,2} -- {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
+local L1_scaling = 1.25 --1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
+local RESTRICT_TO_WINDOW = nil --{12, 12} --{14, 14} --{28, 28}
+local DESIRED_WINDOW_SHIFTS = {0,0} --{4,4} --{2,2} -- {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
@@ -46,13 +46,13 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 1001 --200 --501 --201
+local num_epochs_no_classification = 100 --1001 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 0 --1001
+local num_epochs = 1001
 
 
 -- extract the command line parameters
@@ -130,8 +130,8 @@ if params.data_set == 'train' then
 						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW, DESIRED_WINDOW_SHIFTS = DESIRED_WINDOW_SHIFTS})
       --data_inline_test:normalizeByColor()
       --data_inline_test:useGrayscale()
-      --data_inline_test:normalizeL2()
-      data_inline_test:normalizeStandard()
+      --data_inline_test:normalizeL2() -- use for 12/7 CIFAR
+      data_inline_test:normalizeStandard() -- use otherwise
    end
 elseif params.data_set == 'test' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
@@ -149,8 +149,8 @@ data = this_data_set.loadDataSet(data_set_options)
 --Indexing labels returns an index, rather than a tensor
 --data:normalizeByColor()
 --data:useGrayscale()
---data:normalizeL2() -- normalize each example to have L2 norm equal to 1
-data:normalizeStandard()
+--data:normalizeL2() -- normalize each example to have L2 norm equal to 1 -- use for 12/7 CIFAR
+data:normalizeStandard() -- use otherwise
 
 
 -- the code required to set the structural parameters of a network is messy, so it's been moved to a separate file

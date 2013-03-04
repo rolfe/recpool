@@ -96,6 +96,10 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
    function dataset:useGrayscale() -- this need not do anything, since MNIST is already in grayscale
    end
 
+   function dataset:normalizeStandard(desired_norm)
+      self:normalizeL2(desired_norm)
+      self:useGrayscale()
+   end
 
    function dataset:normalizeGlobal(mean_, std_)
       local data = tensor:narrow(2, 1, dim-1)
