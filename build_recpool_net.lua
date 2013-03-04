@@ -57,7 +57,7 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
 -- for 12x12 CIFAR with 400 hidden units
 local cifar_scaling = 1 -- 0.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1.5 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
 
 
 -- for 16x16 CIFAR
