@@ -47,7 +47,7 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
 --local cifar_scaling = 0.5 -- 0.5
 --WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 10 -- 12 is good without any entropy 
 --WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3.75 -- 4.5 is too large (just learns one categorical unit); 3 is too small (all units become quasi-categorical)
---WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 5.25 --4.5 -- 400 hidden units.  This could probably stand being larger, but 4.5 seems sufficient
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 5.25 --4.5 -- 400 hidden units.  5.25 is too large.  Although it seems to perform well initially, eventually categorical units explode and are suppressed.  All units then become pseudo-categorical.  4.5 is better and continues to yield distinct populations of part- and categorical-units with extensive training, but part-units are still pulled to be pseudo-categorical.  Try 4.0.
 
 -- for 12x12 CIFAR
 --local cifar_scaling = 0.125 -- 0.5
@@ -57,7 +57,7 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.9375 --0.875 -- for CIFAR
 -- for 12x12 CIFAR with 400 hidden units
 local cifar_scaling = 1 -- 0.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.5 
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
 
 
 -- for 16x16 CIFAR
