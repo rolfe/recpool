@@ -194,7 +194,7 @@ local function loadFlatDataset(desired_data_set, max_load, alternative_access_me
       local whitening_eigenvalue_offset = 0.1 -- the constant is necessary to keep eigenvalues near or equal to zero from exploding when they are raised to the power -0.5
       
       self.sphered_data = true
-      --self:convertToStaticGrayscale()
+      self:convertToStaticGrayscale()
       print('Normalizing')
       self:normalize()
       print('zero check for normalization ' .. torch.sum(data,1):max() .. ', ' .. torch.sum(data,1):min())

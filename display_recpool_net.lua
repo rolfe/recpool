@@ -25,7 +25,7 @@ function save_filter(current_filter, filter_name, log_directory, num_display_col
    if symmetric == nil then symmetric = true end -- default value of symmetric is true
    num_display_columns = num_display_columns or 10
    local current_filter_side_length 
-   if true and (current_filter:size(1) % 3 == 0) then -- make sure that CIFAR input filters align the R, G, and B channels coherently
+   if false and (current_filter:size(1) % 3 == 0) then -- make sure that CIFAR input filters align the R, G, and B channels coherently
       current_filter_side_length = math.sqrt(current_filter:size(1)/3) 
       --current_filter = current_filter:reshape(current_filter:size(2),3,32,32) -- reshape makes a copy of the entire filter, which seems unnecessarily inefficient
       -- after unfolding, the original dimension iterates across groups; the last dimension iterates within groups
@@ -1456,7 +1456,7 @@ function plot_filters(opt, time_index, filter_list)
 	    error('filter pair[2] for filter ' .. name .. ' was incorrectly set to ' .. filt_pair[2])
 	 end
 	 
-	 --print('saving filter ', name)
+	 --print('saving filter ', name, current_filter:size())
 	 save_filter(current_filter, name, opt.log_directory)
       else
 	 print('ignoring filter ' .. name)
