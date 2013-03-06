@@ -40,7 +40,7 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 -- Because the hidden units are L2-normalized before the softmax, only a limited domain of the entropy loss is accessible.  It's essential that the entropy loss plateau within this domain.  With softmax_scaling = 0.875, the plateau begins when the activity of a single hidden unit reaches about 0.75 or 1.  With softmax_scaling = 0.875*2, the plateau begins closer to 0.25 or 0.5.  Since softmax scaling is applied after the L2 normalization, it increases the range of the entropy loss, necessitating that the entropy loss be scaled down so that the maximum gradient is kept roughly constant.  When the increase in softmax_scaling is properly balanced with the decrease in entropy_scaling, the hidden unit configurations at which the entropy gradient is maximal is shifted to configurations of intermediate entropy, whereas previously the maximal gradients occured at the lowest obtainable entropies.  As a result, the entropy loss will pull towards low entropy, but will gradually reduce its influence as the representation is dominated by a single large input.  Previously, the entropy gradient only became larger as the entropy decreased, leading to instability.
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.875 -- for MNIST
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2 --0.9375 --0.875 -- for CIFAR
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2 --0.9375 --0.875 -- for CIFAR -- USE THIS ONE
 
 --WEIGHTED_L1_ENTROPY_SCALING = 0.2 -- general case
 
@@ -56,9 +56,15 @@ WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2 --0.9375 --0.875 -- for CIFAR
 --WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1.5 -- 1.75 is too large with 4 entropy; 1.5 is too small with 4 entropy, but too large with 5 entropy -- CIFAR
 
 -- for 12x12 CIFAR with 400 hidden units
+--local cifar_scaling = 1 -- 0.5
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 -- 10 is too large, even without any entropy
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.5 * 0.0625 * 0.875 --2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
+
+-- for 12x12 CIFAR with 400 hidden units, no L1 norm!
 local cifar_scaling = 1 -- 0.5
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.5 * 0.0625 * 0.875 --2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 --2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
 
 
 -- for 16x16 CIFAR
@@ -282,6 +288,7 @@ end
 local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local use_true_entropy_loss = true
    local only_apply_scaling_to_softmax = false -- if true, the hidden representation is not uniformly scaled after being subject to L2 normalization but before the entropy or weighted-L1 loss is calculated; rather only the softmax branch is scaled
+   local no_l1_norm = true
 
    local narrow_entropy = false
 
@@ -297,7 +304,9 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
       normalize_input_seq:add(nn.Narrow(2,1,20)) -- EXPERIMENTAL CODE!  Try only applying the entropy loss to the first twenty units
    end
    normalize_input_seq:add(nn.Abs()) -- this shouldn't actually be necessary, since the units are non-negative
-   normalize_input_seq:add(nn.NormalizeTensor())
+   if not(no_l1_norm) then
+      normalize_input_seq:add(nn.NormalizeTensor())
+   end
    if not(only_apply_scaling_to_softmax) then
       normalize_input_seq:add(nn.MulConstant(nil, WEIGHTED_L1_SOFTMAX_SCALING * CLASS_DICT_BOUND)) -- this should probably be an input parameter
    end
