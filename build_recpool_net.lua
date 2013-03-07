@@ -61,7 +61,7 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 --WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2.5 * 0.0625 * 0.875 --2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
 
 -- for 12x12 CIFAR with 400 hidden units, no L1 norm!
-local cifar_scaling = 1 -- 0.5
+local cifar_scaling = 0.5 --1 -- 0.5
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 -- 10 is too large, even without any entropy
 WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 --2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
@@ -75,6 +75,15 @@ WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 --2.0 -- 2.5 is too large.  P
 
 --WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- 400 hidden units; when viewed as a weighted L1 loss, -\sum_i e^x_i / (\sum_j e^x_j) * log(e^x_i / (\sum_j e^x_j)) ~ -\sum_i e^x_i / (\sum_j e^x_j) * x_i, then since x is normalized to have L2 norm equal to 1, if we assume that only one unit is significantly active, then the entropy is e^1 / (k - 1 + e^1) * 1, and so is scaled down by a factor approximately equal to the number of hidden units.  When we double the number of hidden units, we should probably double the entropy scaling
 L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
+
+
+-- for MNIST with 400 hidden units, no L1 norm!
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5 -- for MNIST
+--WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
+--WEIGHTED_L1_ENTROPY_SCALING = 0.02 -- 0.04 is too large, but is close
+--L2_RECONSTRUCTION_SCALING_FACTOR = 1
+
+
 
 GROUP_SPARISTY_TEN_FIXED_GROUPS = false -- sets scaling of gradient for classification dictionary to 0, intializes it to consist of ten uniform disjoint groups, and replaces logistic regression with square root of sum of squares
 if GROUP_SPARISTY_TEN_FIXED_GROUPS then
