@@ -31,7 +31,7 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 1 --50
+local parameter_save_interval = 20 --50
 local classification_scale_factor = 1 --0.2 --200 --0.025 -- 200
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
