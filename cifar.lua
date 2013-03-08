@@ -447,8 +447,8 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 	 local e_vals_sphere = torch.diag(torch.pow(torch.add(e_vals, whitening_eigenvalue_offset), -1/2)) -- the constant is necessary to keep eigenvalues near or equal to zero from exploding 
 	 sphere_transform = torch.mm(e_vecs, torch.mm(e_vals_sphere, e_vecs:t()))
 	 
-	 image.display{image=torch.reshape(e_vecs:narrow(2,1,256):t(), 256,windowed_side_length,windowed_side_length), nrow=16, legend='Some samples from the eigenvectors'}
-	 image.display{image=torch.reshape(sphere_transform:narrow(2,1,256):t(), 256,windowed_side_length,windowed_side_length), nrow=16, legend='Some samples from the whitening transform'}
+	 --image.display{image=torch.reshape(e_vecs:narrow(2,1,256):t(), 256,windowed_side_length,windowed_side_length), nrow=16, legend='Some samples from the eigenvectors'}
+	 --image.display{image=torch.reshape(sphere_transform:narrow(2,1,256):t(), 256,windowed_side_length,windowed_side_length), nrow=16, legend='Some samples from the whitening transform'}
 	 --print(sphere_transform:select(2, 130):unfold(1,32,32))
 	 
 	 if use_all_data then -- save sphering matrix to file
