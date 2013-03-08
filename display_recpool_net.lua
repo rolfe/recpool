@@ -1074,7 +1074,7 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    -- different hidden units go along the second dimension of activation_tensor
    local SHOW_PROGRESSIVE_SUBTRACTION = false
    num_display_columns = num_display_columns or 10
-   local num_reconstructions_to_plot = 500 --3 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
+   local num_reconstructions_to_plot = 200 --3 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
    local num_sorted_inputs = num_display_columns - 2 -- the first two columns are the original input and the final reconstruction
    local num_display_rows_per_input = ((SHOW_PROGRESSIVE_SUBTRACTION and 3) or 2)
    local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)

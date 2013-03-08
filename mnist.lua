@@ -1,29 +1,50 @@
 require 'torch'
 require 'paths'
 
-mnist = {}
+mnist_spec = {}
 
-mnist.path_remote = 'http://data.neuflow.org/data/mnist-th7.tgz'
-mnist.path_dataset = 'mnist-th7'
-mnist.path_trainset = paths.concat(mnist.path_dataset, 'train.th7')
-mnist.path_testset = paths.concat(mnist.path_dataset, 'test.th7')
+mnist_spec.path_remote = 'http://data.neuflow.org/data/mnist-th7.tgz'
+mnist_spec.path_dataset = 'mnist-th7'
+mnist_spec.path_trainset = paths.concat(mnist_spec.path_dataset, 'train.th7')
+mnist_spec.path_testset = paths.concat(mnist_spec.path_dataset, 'test.th7')
 
-function mnist:train_set_size()
+function mnist_spec:train_set_size()
    return 50000
 end
 
-function mnist:validation_set_size()
+function mnist_spec:validation_set_size()
    return 10000
 end
 
-function mnist:test_set_size()
+function mnist_spec:train_set_size()
+   return self:train_set_size()
+end
+
+
+function mnist_spec:test_set_size()
    return 10000
 end
+
+-- return restrict_to_window, desired_window_shifts, window_shift_increment, desired_whitened_output_window
+function mnist_spec:window_params()
+   return nil, nil, nil, nil
+end
+
+-- returns set size, window_shifts for quick and full diagnostic
+function mnist_spec:diagnostic_params()
+   return 10000, nil
+end
+
+-- returns set size, window_shifts for reconstruction_connections
+function mnist_spec:reconstruction_params()
+   return 500, nil, nil
+end
+
 
 
 local function download()
-   if not paths.filep(mnist.path_trainset) or not paths.filep(mnist.path_testset) then
-      local remote = mnist.path_remote
+   if not paths.filep(mnist_spec.path_trainset) or not paths.filep(mnist_spec.path_testset) then
+      local remote = mnist_spec.path_remote
       local tar = paths.basename(remote)
       os.execute('wget ' .. remote .. '; ' .. 'tar xvf ' .. tar .. '; rm ' .. tar)
    end
@@ -168,20 +189,20 @@ local function loadFlatDataset(fileName, maxLoad, alternative_access_method, off
    return dataset
 end
 
-function mnist.loadTrainSet(maxLoad, alternative_access_method, offset)
-   return loadFlatDataset(mnist.path_trainset, maxLoad, alternative_access_method, offset)
+function mnist_spec:loadTrainSet(maxLoad, alternative_access_method, offset)
+   return loadFlatDataset(mnist_spec.path_trainset, maxLoad, alternative_access_method, offset)
 end
 
-function mnist.loadTestSet(maxLoad, alternative_access_method, offset)
-   return loadFlatDataset(mnist.path_testset, maxLoad, alternative_access_method, offset)
+function mnist_spec:loadTestSet(maxLoad, alternative_access_method, offset)
+   return loadFlatDataset(mnist_spec.path_testset, maxLoad, alternative_access_method, offset)
 end
 
-function mnist.loadDataSet(params)
+function mnist_spec:loadDataSet(params)
    local chosen_path
    if params.train_or_test == 'train' then
-      chosen_path = mnist.path_trainset
+      chosen_path = mnist_spec.path_trainset
    elseif params.train_or_test == 'test' then
-      chosen_path = mnist.path_testset
+      chosen_path = mnist_spec.path_testset
    else
       error('unrecognized train/test request')
    end
@@ -189,4 +210,4 @@ function mnist.loadDataSet(params)
 end
 
 
-return mnist
+return mnist_spec

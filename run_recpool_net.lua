@@ -24,17 +24,12 @@ cmd:option('-selected_dataset','mnist', 'dataset on which to train (mnist, cifar
 
 -- set parameters, both from the command line and with fixed values
 local L1_scaling = 1 -- CIFAR: 2 works with windows, but seems to be too much with the entire dataset; 1 is too small for the entire dataset; 1.5 - 50% of units are untrained after 30 epochs, 25% are untrained after 50 epochs and many trained units are still distributed high-frequency; 1.25 - 10% of units are untrained after 50 epochs and many trained units are still disbtributed high-frequency
-local RESTRICT_TO_WINDOW = {12, 12} --{14, 14} --{28, 28}
-local DESIRED_WINDOW_SHIFTS = {4,4} --{4,4} --{2,2} -- {4,4} -- shift window +/- DESIRED_WINDOW_SHIFTS[1] on the x axis, and +/-DWS[2] on the y axis
 
 local desired_minibatch_size = 10 -- 0 does pure matrix-vector SGD, >=1 does matrix-matrix minibatch SGD
 local desired_test_minibatch_size = 50
 -- use 0.5e-3 for spiral_2d dataset
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
-local quick_train_epoch_size = 10000
-local full_diagnostic_epoch_size = 10000
-local plot_receptive_fields_epoch_size = 10000
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 1 --50
 local classification_scale_factor = 1 --0.2 --200 --0.025 -- 200
@@ -54,29 +49,52 @@ local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
 local num_epochs = 0 --1001
 
-
 -- extract the command line parameters
 local params = cmd:parse(arg)
-params.num_layers = tonumber(params.num_layers)
-params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
-params.p_layer_size = 50 --200 --50
 if params.run_type == 'reconstruction_temporal' then
    params.run_type = 'reconstruction_connections'
    params.use_temporal_reconstruction = true
 end
+-- choose the dataset
+local data_set_spec
+if params.selected_dataset == 'mnist' then
+   require 'mnist'
+   data_set_spec = mnist
+elseif params.selected_dataset == 'cifar' then
+   require 'cifar'
+   data_set_spec = cifar_spec
+elseif params.selected_dataset == 'berkeley' then
+   require 'cifar'
+   data_set_spec = berkeley_spec
+elseif params.selected_dataset == 'spiral_2d' then
+   require 'spiral_2d'
+   data_set_spec = spiral_2d
+else
+   error('Did not recognize selected_dataset ' .. params.selected_dataset .. '; available datasets are mnist, cifar, and spiral_2d')
+end
+
+local restrict_to_window, desired_window_shifts, window_shift_increment, desired_whitened_output_window = data_set_spec:window_params()
+
+local quick_train_epoch_size = math.ceil(0.2 * data_set_spec:train_set_size()) -- 10000 (out of 50000)
+local plot_receptive_fields_epoch_size = math.ceil(0.2 * data_set_spec:train_set_size()) --10000 (out of 50000)
+local full_diagnostic_epoch_size --this is set separately for diagnostic runs and reconstructions below
+
+if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
+   full_diagnostic_epoch_size, desired_window_shifts = data_set_spec:diagnostic_params()
+elseif params.run_type == 'reconstruction_connections' then
+   full_diagnostic_epoch_size, desired_window_shifts, window_shift_increment = data_set_spec:reconstruction_params()
+end
+   
+
+params.num_layers = tonumber(params.num_layers)
+params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
+params.p_layer_size = 50 --200 --50
+
 if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') or 
    (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') then
    num_epochs_no_classification = 0
    num_epochs = 1
 end
-if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') then
-   DESIRED_WINDOW_SHIFTS = {0,0}
-   full_diagnostic_epoch_size = 20000
-elseif params.run_type == 'reconstruction_connections' then
-   full_diagnostic_epoch_size = 500
-   DESIRED_WINDOW_SHIFTS = {1,1}
-end
-   
 
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
@@ -99,51 +117,39 @@ recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
 --torch.manualSeed(46393475) -- init random number generator.  Obviously, this should be taken from the clock when doing an actual run
 torch.seed()
 
--- choose the dataset
-if params.selected_dataset == 'mnist' then
-   require 'mnist'
-   this_data_set = mnist
-elseif params.selected_dataset == 'cifar' then
-   require 'cifar'
-   this_data_set = cifar
-elseif params.selected_dataset == 'spiral_2d' then
-   require 'spiral_2d'
-   this_data_set = spiral_2d
-else
-   error('Did not recognize selected_dataset ' .. params.selected_dataset .. '; available datasets are mnist, cifar, and spiral_2d')
-end
 
 -- create the dataset
 local data, data_inline_test
 -- 'recpool_net' option ensures that the returned table contains elements data and labels, for which the __index method is overloaded.  
-local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternative_access_method = 'recpool_net', offset = nil, RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW, 
-			  DESIRED_WINDOW_SHIFTS = DESIRED_WINDOW_SHIFTS}
+local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternative_access_method = 'recpool_net', offset = nil, restrict_to_window = restrict_to_window, 
+			  desired_window_shifts = desired_window_shifts, window_shift_increment = window_shift_increment, desired_whitened_output_window = desired_whitened_output_window}
 if params.data_set == 'train' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and this_data_set:train_set_size()) or 
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and data_set_spec:train_set_size()) or 
       ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
       (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and full_diagnostic_epoch_size) or
       ((params.run_type == 'receptive_fields') and plot_receptive_fields_epoch_size) or
       quick_train_epoch_size
    if params.run_type == 'full_train' then
       -- also load the validation set for inline testing
-      data_inline_test = this_data_set.loadDataSet({train_or_test = 'train', maxLoad = this_data_set:validation_set_size(), alternative_access_method = 'recpool_net', 
-						    offset = this_data_set:train_set_size(), RESTRICT_TO_WINDOW = RESTRICT_TO_WINDOW, DESIRED_WINDOW_SHIFTS = DESIRED_WINDOW_SHIFTS})
+      data_inline_test = data_set_spec:loadDataSet({train_or_test = 'train', maxLoad = data_set_spec:validation_set_size(), alternative_access_method = 'recpool_net', 
+						    offset = data_set_spec:validation_set_offset(), restrict_to_window = restrict_to_window, desired_window_shifts = desired_window_shifts, 
+						    window_shift_increment = window_shift_increment, desired_whitened_output_window = desired_whitened_output_window})
       --data_inline_test:normalizeByColor()
       --data_inline_test:useGrayscale()
       --data_inline_test:normalizeL2() -- use for 12/7 CIFAR
       data_inline_test:normalizeStandard() -- use otherwise
    end
 elseif params.data_set == 'test' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
 elseif params.data_set == 'validation' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and this_data_set:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
    data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
-   data_set_options.offset = this_data_set:train_set_size()
+   data_set_options.offset = data_set_spec:train_set_size()
 else
    error('unrecognized data set: ' .. params.data_set)
 end
 
-data = this_data_set.loadDataSet(data_set_options) 
+data = data_set_spec:loadDataSet(data_set_options) 
 
 
 --Indexing labels returns an index, rather than a tensor
@@ -162,7 +168,7 @@ local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_
 local model = build_recpool_net(layer_size, layered_lambdas, classification_scale_factor, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
-local default_pretraining_minibatches = default_pretraining_num_epochs * this_data_set:train_set_size() / math.max(1, desired_minibatch_size)
+local default_pretraining_minibatches = default_pretraining_num_epochs * data_set_spec:train_set_size() / math.max(1, desired_minibatch_size)
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot
