@@ -69,7 +69,7 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm!
 local cifar_scaling = 0.5 --2 -- 0.5
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.25 --2.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
 WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 --0.05 --0.15 
 
