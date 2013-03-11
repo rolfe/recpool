@@ -86,7 +86,7 @@ end
 
 -- returns set size, window_shifts
 function berkeley_spec:diagnostic_params()
-   return 100, {9, 9}
+   return 50, {9, 9}
 end
 
 -- returns set size, window_shifts, window_shift_increment
@@ -492,9 +492,9 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 
    function dataset:normalizeStandard() -- standard normalization
       dataset:sphere()
-      dataset:useDynamicNormalizeL2()
-      --local max_L2_norm = dataset:findMaxL2Norm()
-      --dataset:useDynamicNormalizeL2(max_L2_norm)
+      --dataset:useDynamicNormalizeL2()
+      local max_L2_norm = dataset:findMaxL2Norm()
+      dataset:useDynamicNormalizeL2(max_L2_norm) -- this is equivalent to directly scaling the inputs.  However, it results in the variance per pixel being a value other than one
    end
       
 
@@ -623,12 +623,19 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 					final_output_val = output_data_element
 				     end
 
+				     --print('norm is ' .. final_output_val:norm())
 				     if dataset.use_dynamic_normalize_L2 then
 					if dataset.dynamic_norm then
 					   final_output_val:div(dataset.dynamic_norm)
 					else
 					   final_output_val:div(final_output_val:norm())
 					end
+				     end
+
+				     zero_mean = false
+				     if zero_mean then
+					print('mean is : ' .. final_output_val:mean() .. ', L2 norm is: ' .. final_output_val:norm())
+					final_output_val:add(-1 * final_output_val:mean())
 				     end
 
 				     return final_output_val

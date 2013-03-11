@@ -68,10 +68,16 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm!
-local cifar_scaling = 0.5 --2 -- 0.5
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.25 --2.5
+local cifar_scaling = 1 --0.1 --0.5 
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 --0.05 --0.15 
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 
+
+-- for 12x12 Berkeley with 400 hidden units, no L1 norm, unnormed inputs (L2); but any global scaling of the input is roughly equivalent to a rescaling of the loss function components, although not equally
+--local cifar_scaling = 0.05 --0.5 
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 30 --5 --5 -- 10 is too large, even without any entropy
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.3 --0.15 
 
 
 -- for 16x16 CIFAR
@@ -304,9 +310,10 @@ end
 local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local use_true_entropy_loss = true
    local only_apply_scaling_to_softmax = false -- if true, the hidden representation is not uniformly scaled after being subject to L2 normalization but before the entropy or weighted-L1 loss is calculated; rather only the softmax branch is scaled
-   local no_l1_norm = true
+   local use_l2_norm = true -- fix the L2 norm equal to 1 before calculating the entropy loss
 
    local narrow_entropy = false
+   local append_constant_values = {0.1}
 
    local crit = nn.Sequential()
    -- wrap the input tensor into a table z [1]
@@ -319,8 +326,11 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    if narrow_entropy then
       normalize_input_seq:add(nn.Narrow(2,1,20)) -- EXPERIMENTAL CODE!  Try only applying the entropy loss to the first twenty units
    end
+   if append_constant_values then
+      normalize_input_seq:add(nn.AppendConstant(append_constant_values))
+   end
    normalize_input_seq:add(nn.Abs()) -- this shouldn't actually be necessary, since the units are non-negative
-   if not(no_l1_norm) then
+   if use_l2_norm then
       normalize_input_seq:add(nn.NormalizeTensor())
    end
    if not(only_apply_scaling_to_softmax) then
@@ -356,7 +366,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    weight_normed_input_seq:add(nn.SafeCMulTable())
    -- multiply by -1, since the entropy is -p*log(p)
    weight_normed_input_seq:add(nn.MulConstant(nil, -1 * weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
-   if narrow_entropy then
+   if narrow_entropy or append_constant_values then
       weight_normed_input_seq:add(nn.SumCriterionModule()) -- EXPERIMENTAL CODE -- returns a number
       weight_normed_input_seq:add(nn.IdentityTensor()) -- EXPERIMENTAL CODE -- wrap in tensor
    end
@@ -364,7 +374,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    abs_and_scale_seq:add(nn.SelectTable{3})
    abs_and_scale_seq:add(nn.Abs())
    abs_and_scale_seq:add(nn.MulConstant(nil, pure_L1_lambda))
-   if narrow_entropy then
+   if narrow_entropy or append_constant_values then
       abs_and_scale_seq:add(nn.SumCriterionModule()) -- EXPERIMENTAL CODE -- returns a number
       abs_and_scale_seq:add(nn.IdentityTensor()) -- EXPERIMENTAL CODE -- wrap in tensor
    end

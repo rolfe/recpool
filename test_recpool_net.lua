@@ -283,6 +283,32 @@ function rec_pool_test.MulConstant()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
 end
 
+function rec_pool_test.AppendConstant()
+   local input = torch.rand(10,20)
+   local random_append = math.random()
+   local module = nn.AppendConstant(random_append)
+   local out = module:forward(input)
+   local err_orig = out:narrow(2, 1, input:size(2)):dist(input)
+   local err_append = out:narrow(2, input:size(2)+1, 1):dist(torch.Tensor(input:size(1)):fill(random_append))
+   mytester:asserteq(err_orig, 0, torch.typename(module) .. ' - forward err orig ')
+   mytester:asserteq(err_append, 0, torch.typename(module) .. ' - forward err append ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.AppendConstant(random_append, 3)
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
 
 function create_parameterized_shrink_test(require_nonnegative_units)
    local function this_parameterized_shrink_test()
