@@ -313,7 +313,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local use_l2_norm = true -- fix the L2 norm equal to 1 before calculating the entropy loss
 
    local narrow_entropy = false
-   local append_constant_values = {0.1}
+   local append_constant_values = {0.2} --{0.1}
 
    local crit = nn.Sequential()
    -- wrap the input tensor into a table z [1]
