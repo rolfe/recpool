@@ -59,7 +59,7 @@ end
 local data_set_spec
 if params.selected_dataset == 'mnist' then
    require 'mnist'
-   data_set_spec = mnist
+   data_set_spec = mnist_spec
 elseif params.selected_dataset == 'cifar' then
    require 'cifar'
    data_set_spec = cifar_spec

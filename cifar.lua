@@ -92,6 +92,7 @@ end
 -- returns set size, window_shifts, window_shift_increment
 function berkeley_spec:reconstruction_params()
    return 10, {3, 3}, {16, 16}
+   --return 60, {1, 1}, {1, 1}
 end
 
 

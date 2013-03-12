@@ -68,10 +68,10 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm!
-local cifar_scaling = 1 --0.1 --0.5 
+local cifar_scaling = 0.5 --0.1 --0.5 
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.25 --0.15 
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm, unnormed inputs (L2); but any global scaling of the input is roughly equivalent to a rescaling of the loss function components, although not equally
 --local cifar_scaling = 0.05 --0.5 
@@ -1309,7 +1309,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    ista_seq = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink) -- this function does not actually copy shrink, so a shrink_copy does not need to be returned
    this_layer:add(ista_seq)
 
-   if recpool_config_prefs.num_ista_iterations <= recpool_config_prefs.num_loss_function_ista_iterations then
+   if recpool_config_prefs.num_ista_iterations < recpool_config_prefs.num_loss_function_ista_iterations then
       error('not presently configured to handle num_ista_iterations = ' .. recpool_config_prefs.num_ista_iterations .. ' > num_loss_function_ista_iteration = ' .. 
 	    recpool_config_prefs.num_loss_function_ista_iterations)
    end
