@@ -467,6 +467,55 @@ function rec_pool_test.SafePower()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
 end
 
+function rec_pool_test.SafeLog()
+   local in1 = torch.rand(10,20)
+   local offset = 1e-5
+   local module = nn.SafeLog(offset)
+   local out = module:forward(in1)
+   local err = out:dist(in1:add(offset):log())
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.SafeLog()
+
+   local err = nn.Jacobian.testJacobian(module, input, 1e-5, 2)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = nn.Jacobian.testIO(module,input, 1e-5, 2)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+function rec_pool_test.SafeEntropy()
+   local in1 = torch.rand(10,20)
+   local offset = 1e-5
+   local module = nn.SafeEntropy(offset)
+   local out = module:forward(in1)
+   local log_calc = in1:clone():add(offset):log()
+   local err = out:dist(log_calc:cmul(in1):mul(-1))
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.SafeEntropy()
+
+   local err = nn.Jacobian.testJacobian(module, input, 0, 2)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = nn.Jacobian.testIO(module,input, 0, 2)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
 function rec_pool_test.SafeCMulTable()
    local ini = math.random(10,20)
    local inj = math.random(10,20)
@@ -520,6 +569,41 @@ function rec_pool_test.NormalizeTensor2D()
    local inj = math.random(10,20)
    local input = torch.Tensor(inj,ini):zero()
    local module = nn.NormalizeTensor()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+   local err = jac.testJacobian(module,input)
+   mytester:assertlt(err,precision, 'error on state (non-table) ')
+
+   --local ferr,berr = jac.testIOTable(module,input)
+   local ferr,berr = jac.testIO(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+
+function rec_pool_test.NormalizeTensorL11D()
+   local ini = math.random(10,20)
+   local input = torch.Tensor(ini):zero()
+   local module = nn.NormalizeTensorL1()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state ')
+   local err = jac.testJacobian(module,input)
+   mytester:assertlt(err,precision, 'error on state (non-table) ')
+
+   --local ferr,berr = jac.testIOTable(module,input)
+   local ferr,berr = jac.testIO(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+function rec_pool_test.NormalizeTensorL12D()
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local input = torch.Tensor(inj,ini):zero()
+   local module = nn.NormalizeTensorL1()
 
    local err = jac.testJacobianTable(module,input)
    mytester:assertlt(err,precision, 'error on state ')

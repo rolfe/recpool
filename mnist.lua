@@ -16,9 +16,9 @@ function mnist_spec:validation_set_size()
    return 10000
 end
 
---function mnist_spec:train_set_size()
---   return self:train_set_size()
---end
+function mnist_spec:validation_set_offset()
+   return self:train_set_size()
+end
 
 
 function mnist_spec:test_set_size()

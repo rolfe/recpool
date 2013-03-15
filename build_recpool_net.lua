@@ -16,8 +16,8 @@ FULLY_NORMALIZE_ENC_FE_DICT = false -- if true, force the L2 norm of each row to
 FULLY_NORMALIZE_DEC_FE_DICT = false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
-NORMALIZE_ROWS_OF_CLASS_DICT = false --true 
-BOUND_ROWS_OF_CLASS_DICT = true --false -- USE WITH soft_aggregate class criterion
+NORMALIZE_ROWS_OF_CLASS_DICT = true 
+BOUND_ROWS_OF_CLASS_DICT = false -- USE WITH soft_aggregate class criterion
 CLASS_DICT_BOUND = 5
 CLASS_DICT_GRAD_SCALING = 0.2
 NO_BIAS_ON_EXPLAINING_AWAY = true -- bias on the explaining-away matrix is roughly equivalent to bias on the encoding_feature_extraction_dictionary
@@ -30,10 +30,11 @@ ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
-CLASS_NLL_CRITERION_TYPE = 'soft_aggregate' --nil -- soft, soft_aggregate, hinge, nil -- use bound_rows_of_class_dict with soft_aggregate
+CLASS_NLL_CRITERION_TYPE = nil --'soft_aggregate' --nil -- soft, soft_aggregate, hinge, nil -- use bound_rows_of_class_dict with soft_aggregate
 USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
-USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
+USE_PROB_WEIGHTED_L1 = false -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
+USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with the entropy of the L1-normalized hidden unit activation, pluse the original L1
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
 
@@ -68,10 +69,18 @@ USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer wit
 
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm!
-local cifar_scaling = 0.5 --0.1 --0.5 
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
-WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.25 --0.15 
+--local cifar_scaling = 0.5 --0.1 --0.5 
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.25 --0.15 -- softmax entropy
+
+
+-- for 12x12 Berkeley with 400 hidden units, hard entropy
+--local cifar_scaling = 1 --0.1 --0.5 
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.25 --0.001 --0.0025 -- 0.01 --0.025 --0.1 --0.25 --1 -- hard entropy, L1 normed
+
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm, unnormed inputs (L2); but any global scaling of the input is roughly equivalent to a rescaling of the loss function components, although not equally
 --local cifar_scaling = 0.05 --0.5 
@@ -87,14 +96,14 @@ WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.25 --0.15
 --WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.875 --0.3 is too small, 0.5 is too small, 0.75 is too small; 1.0 is too large, 0.875 is too large (with scaling 1) 0.75 is too large (with scaling 2)
 
 --WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- 400 hidden units; when viewed as a weighted L1 loss, -\sum_i e^x_i / (\sum_j e^x_j) * log(e^x_i / (\sum_j e^x_j)) ~ -\sum_i e^x_i / (\sum_j e^x_j) * x_i, then since x is normalized to have L2 norm equal to 1, if we assume that only one unit is significantly active, then the entropy is e^1 / (k - 1 + e^1) * 1, and so is scaled down by a factor approximately equal to the number of hidden units.  When we double the number of hidden units, we should probably double the entropy scaling
-L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
+--L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
 
 
 -- for MNIST with 400 hidden units, no L1 norm!
---WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5 -- for MNIST
---WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
---WEIGHTED_L1_ENTROPY_SCALING = 0.02 -- 0.04 is too large, but is close
---L2_RECONSTRUCTION_SCALING_FACTOR = 1
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5 -- for MNIST
+WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
+WEIGHTED_L1_ENTROPY_SCALING = 0.02 -- 0.04 is too large, but is close
+L2_RECONSTRUCTION_SCALING_FACTOR = 1
 
 
 
@@ -114,6 +123,14 @@ end
 
 if NORMALIZE_ROWS_OF_EXPLAINING_AWAY and BOUND_ELEMENTS_OF_EXPLAINING_AWAY then
    error('cannot both normalize and bound explaining away')
+end
+
+if (CLASS_NLL_CRITERION_TYPE == 'soft_aggregate') and (NORMALIZE_ROWS_OF_CLASS_DICT == true) then
+   error('soft-aggregate NLL criterion should be combined with boudned class dict rows, not normalized class dict rows')
+end
+
+if (NORMALIZE_ROWS_OF_CLASS_DICT == true) and (BOUND_ROWS_OF_CLASS_DICT == true) then
+   error('The rows of the classification dictionary should not be both normalized and bounded')
 end
 
 
@@ -313,7 +330,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local use_l2_norm = true -- fix the L2 norm equal to 1 before calculating the entropy loss
 
    local narrow_entropy = false
-   local append_constant_values = {0.2} --{0.1}
+   local append_constant_values = {0.1}
 
    local crit = nn.Sequential()
    -- wrap the input tensor into a table z [1]
@@ -391,6 +408,69 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
 
    return crit
 end
+
+
+
+
+
+
+-- the input is a tensor (*not* a table) consisting of the hidden state z
+-- the output is a scalar consisting of the loss
+-- rather than using the softmax to compute the probability, just do an L1 normalization
+local function build_hard_entropy_criterion(weighted_L1_lambda, pure_L1_lambda) 
+   local append_constant_values = {0.1} --{0.05} --{0.1}
+   local add_constant_value = (1/400) -- note that the first-order Taylor expansion of the exponential around 0 is x + 1.  Using a smaller additive constant seems similar to using a larger softmax scaling factor.  Note that, when computing the entropy, the contribution of a single unit is weighted against approximately 400 units with the add_constant_value.  If the largest value attainable by a single unit is about 1, then add_constant_value should have order less than 1/400.  
+
+   local crit = nn.Sequential()
+   -- wrap the input tensor into a table z [1]
+   crit:add(nn.IdentityTable()) -- wrap the input tensor in a table z [1]
+
+   -- separate into two streams: L2 normalized input [1], and original input z [2]
+   local entropy_parallel = nn.ParallelDistributingTable()
+   local entropy_seq = nn.Sequential()
+   entropy_seq:add(nn.SelectTable{1})
+   if append_constant_values then
+      entropy_seq:add(nn.AppendConstant(append_constant_values))
+   end
+   if add_constant_value then
+      entropy_seq:add(nn.AddConstant(nil, add_constant_value))
+   end
+   entropy_seq:add(nn.Abs()) -- this shouldn't actually be necessary, since the units are non-negative
+   entropy_seq:add(nn.NormalizeTensorL1())
+   entropy_seq:add(nn.SafeEntropy()) -- returns -p*log(p) for each input (already normalized)
+   if append_constant_values then
+      entropy_seq:add(nn.SumCriterionModule()) -- returns a number
+      entropy_seq:add(nn.IdentityTensor()) -- wrap in tensor
+   end
+   entropy_seq:add(nn.MulConstant(nil, weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
+
+   local abs_and_scale_seq = nn.Sequential()
+   abs_and_scale_seq:add(nn.SelectTable{1})
+   abs_and_scale_seq:add(nn.Abs())
+   if append_constant_values then
+      abs_and_scale_seq:add(nn.SumCriterionModule()) -- returns a number
+      abs_and_scale_seq:add(nn.IdentityTensor()) -- wrap in tensor
+   end
+   abs_and_scale_seq:add(nn.MulConstant(nil, pure_L1_lambda))
+
+   entropy_parallel:add(entropy_seq)
+   entropy_parallel:add(abs_and_scale_seq)
+   crit:add(entropy_parallel)
+
+   -- add streams together to get a single tensor [1]
+   crit:add(nn.CAddTable())
+
+   -- add the elements of the tensor to get the criterion output
+   crit:add(nn.SumCriterionModule())
+
+   return crit
+end
+
+
+
+
+
+
 
 
 -- Use two different values for L1 on disjoint subsets of the hidden units
@@ -1251,6 +1331,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       elseif USE_PROB_WEIGHTED_L1 then 
 	 -- -2 seems to be too strong; -1 may be about right
 	 return build_weighted_L1_criterion(WEIGHTED_L1_ENTROPY_SCALING * lambda_scale_factor, 
+					    WEIGHTED_L1_PURE_L1_SCALING * lambda_scale_factor * lambdas.ista_L1_lambda)
+      elseif USE_HARD_ENTROPY then
+	 return build_hard_entropy_criterion(WEIGHTED_L1_ENTROPY_SCALING * lambda_scale_factor, 
 					    WEIGHTED_L1_PURE_L1_SCALING * lambda_scale_factor * lambdas.ista_L1_lambda)
       else
 	 return nn.L1CriterionModule(nn.L1Cost(), lambda_scale_factor * lambdas.ista_L1_lambda) -- NORMAL VERSION

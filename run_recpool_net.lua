@@ -31,8 +31,8 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 20 --50
-local classification_scale_factor = 1 --0.2 --200 --0.025 -- 200
+local parameter_save_interval = 50 --20 --50
+local classification_scale_factor = 0.3 --1 --0.2 --200 --0.025 -- 200
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
@@ -41,13 +41,13 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 1001 --200 --501 --201
+local num_epochs_no_classification = 100 --1001 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
-local default_pretraining_num_epochs = 100
-local num_epochs = 0 --1001
+local default_pretraining_num_epochs = 100 -- 100
+local num_epochs = 1001
 
 -- extract the command line parameters
 local params = cmd:parse(arg)
@@ -142,7 +142,7 @@ if params.data_set == 'train' then
 elseif params.data_set == 'test' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
 elseif params.data_set == 'validation' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or 5000
    data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
    data_set_options.offset = data_set_spec:train_set_size()
 else
@@ -163,6 +163,8 @@ data:normalizeStandard() -- use otherwise
 local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors = 
    set_recpool_net_structural_params(recpool_config_prefs, data, params, L1_scaling)
 
+--layered_lambdas[1].ista_L2_reconstruction_lambda = 0 -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
+--layered_lambdas[1].ista_L1_lambda = 0 -- DEBUG ONLY!!! FOR THE LOVE OF GOD!!!
 
 
 local model = build_recpool_net(layer_size, layered_lambdas, classification_scale_factor, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
@@ -196,7 +198,7 @@ print('Using opt.learning_rate = ' .. opt.learning_rate)
 
 local track_criteria_outputs = always_track_criteria_outputs or not((params.run_type == 'full_train') or (params.run_type == 'full_test'))
 local receptive_field_builder = nil
-if (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'reconstruction_connections') then
+if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'reconstruction_connections') then
    receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
 end
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
@@ -318,7 +320,7 @@ if num_epochs_gentle_pretraining >= 0 then
 end
 --trainer:reset_learning_rate(5e-3) -- potentially use faster learning rate for the unsupervised pretraining, then revert to a more careful learning rate for supervised training with the classification loss
 --trainer.config.evalCounter = 0 -- reset counter for learning rate decay; this maintains consistency between full runs and runs initialized with an unsupervised-pretrained network
-local perform_classifier_pretraining = true
+local perform_classifier_pretraining = false
 local perform_slow_burn_in = false
 local num_epochs_classification_pretraining = 20 --5
 local num_epochs_classification_slow_burn_in = 0
@@ -373,6 +375,7 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
 						    model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) 
    end
    if (receptive_field_builder and (params.run_type == 'full_diagnostic')) then receptive_field_builder:plot_other_figures(opt) end
+   if (receptive_field_builder and (params.run_type == 'quick_diagnostic')) then receptive_field_builder:quick_diagnostic_plots(opt) end
    if (receptive_field_builder and (params.run_type == 'reconstruction_connections')) then receptive_field_builder:plot_reconstruction_connections(opt) end
 
 end

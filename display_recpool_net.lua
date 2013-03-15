@@ -1,11 +1,11 @@
 require 'image'
 require 'gnuplot'
 
---local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
+local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
 --local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
-local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
---local part_thresh, cat_thresh = 0.3, 0.5 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
+--local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
+--local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -245,7 +245,11 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 					    ((opt.plot_temporal_reconstructions and shrink_val_tensor) or shrink_val_tensor:select(1,shrink_val_tensor:size(1))), 
 					    data_set_tensor, class_tensor, opt, 20)
       else -- plot filters, as well as reconstructions, as square bitmaps
-	 plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 20)
+	 if opt.plot_temporal_reconstructions then
+	    plot_reconstruction_evolution(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor, data_set_tensor, opt, 20)
+	 else
+	    plot_reconstruction_connections(model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, shrink_val_tensor:select(1,shrink_val_tensor:size(1)), data_set_tensor, opt, 20)
+	 end
       end
    end
 
@@ -650,6 +654,17 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       --]]
    end
    
+   function receptive_field_builder:quick_diagnostic_plots(opt)
+      for i = 1,1 do
+	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400)
+	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400, 1, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+				       model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size)
+	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400, -1, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+				       model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, 
+      end
+   end
+
+
    function receptive_field_builder:reset()
       data_set_index = 0
       for i = 1,#accumulated_inputs do
@@ -1182,6 +1197,80 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
       end
    end
    image.savePNG(paths.concat(opt.log_directory, 'sorted_reconstruction_dictionary_columns.png'), image_out)
+
+   --save_filter(sorted_reconstruction_filter, 'sorted reconstruction dictionary columns', opt.log_directory, num_display_columns) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
+end
+
+
+-- plot the reconstructions after successive iterations
+function plot_reconstruction_evolution(decoding_filter, shrink_val_tensor, input_tensor, opt, num_display_columns)
+   -- shrink_val_tensor dimensions are: total_num_shrink_copies, nExamples, hidden_layer_size -- output of the shrink nonlinearities for each element of the dataset
+   -- input_tensor dimensions are: nExamples, hidden_layer_size
+
+   num_display_columns = math.min(shrink_val_tensor:size(1) + 1, (num_display_columns or 10))
+   local num_reconstructions_to_plot = 200 --activation_tensor:size(1) -- reduce this to restrict to fewer examples; activation_tensor and input_tensor contain WAY TOO MANY examples to plot them all
+   local num_progressive_reconstructions = num_display_columns - 2 -- the first two columns are the original input and the final reconstruction
+
+   if shrink_val_tensor:size(2) ~= input_tensor:size(1) then
+      error('number of data set elements in shrink val tensor ' .. shrink_val_tensor:size(2) .. ' does not match the number in input tensor ' .. input_tensor:size(1))
+   elseif (shrink_val_tensor:size(2) < num_reconstructions_to_plot) or (input_tensor:size(1) < num_reconstructions_to_plot) then
+      error('number of data set elements in shrink val tensor ' .. shrink_val_tensor:size(2) .. ' or the number in input tensor ' .. input_tensor:size(1) .. ' is smaller than the number of requested trajectories ' .. num_reconstructions_to_plot)
+   elseif shrink_val_tensor:size(1) < num_progressive_reconstructions then
+      error('number of shrink iterations ' .. shrink_val_tensor:size(1) .. ' is smaller than the number of requested progressive reconstructions ' .. num_progressive_reconstructions)
+   end
+
+   -- progressive_reconstruction_filter holds all of the small images that will be used to build the larger image.  Its dimensions are: different images to reconstruct, each of which corresponds to one row; columns, corresponding to steps in the reconstruction; the filters themselves
+   local progressive_reconstruction_filter = torch.Tensor(num_reconstructions_to_plot, num_display_columns, decoding_filter:size(1)):zero() -- tensor in which the figure will be constructed
+   --local desired_run_iterations_for_plot = {5, 10, 47} -- different digits: 6,4,7
+   local desired_run_iterations_for_plot = {88, 471, 379} -- all 3's -- 482
+   for counter = 1,num_reconstructions_to_plot do
+      i = (desired_run_iterations_for_plot and desired_run_iterations_for_plot[counter]) or counter
+      local current_filter
+      
+      -- for each element of the reconstruction, in order of magnitude
+      for j = 1,num_progressive_reconstructions do
+	 local desired_iter = 1 + math.ceil(((j-1)/(num_progressive_reconstructions - 1)) * (shrink_val_tensor:size(1) - 2)) -- linearly move between 1 and total_num_shrink_copies-1
+	 current_filter = progressive_reconstruction_filter[{counter,j,{}}] 
+	 torch.mv(current_filter, decoding_filter, shrink_val_tensor[{desired_iter, i, {}}])
+      end
+
+      -- plot the final reconstruction
+      current_filter = progressive_reconstruction_filter[{counter,num_progressive_reconstructions+1,{}}]
+      torch.mv(current_filter, decoding_filter, shrink_val_tensor[{shrink_val_tensor:size(1), i, {}}])
+
+      -- plot the initial input
+      current_filter = progressive_reconstruction_filter[{counter,num_progressive_reconstructions+2,{}}]
+      current_filter:copy(input_tensor:select(1,i))
+   end
+
+   -- the image must be bounded between 0 and 1 to be passed into image.savePNG()
+   local max_total = math.max(math.abs(progressive_reconstruction_filter:min()), math.abs(progressive_reconstruction_filter:max()))
+   progressive_reconstruction_filter:mul(-1)
+   progressive_reconstruction_filter:add(max_total):div(2*max_total)
+   
+   -- construct the full image from the composite pieces
+   local image_size = decoding_filter:size(1)
+   local filter_side_length_y = math.ceil(math.sqrt(image_size))
+   local filter_side_length_x = image_size / filter_side_length_y
+   --local current_filter = current_filter:unfold(1,current_filter_side_length, current_filter_side_length)
+   
+   local padding = 1
+   local extra_padding = 8
+   local total_extra_padding = (num_display_columns - num_progressive_reconstructions) * extra_padding
+   local xmaps = num_display_columns
+   local ymaps = num_reconstructions_to_plot
+   local height = filter_side_length_y + padding
+   local width = filter_side_length_x + padding
+   local white_value = 1 --(args.symmetric and math.max(math.abs(args.input:min()),math.abs(args.input:max()))) or args.input:max()
+   local image_out = torch.Tensor(height*ymaps, width*xmaps + total_extra_padding):fill(white_value)
+   for y = 1,ymaps do
+      for x = 1,xmaps do
+	 local current_extra_padding = math.max(x - num_progressive_reconstructions, 0) * extra_padding
+	 local selected_image_region = image_out:narrow(1,(y-1)*height+1+padding/2,filter_side_length_y):narrow(2,(x-1)*width+1+padding/2 + current_extra_padding,filter_side_length_x)
+	 selected_image_region:copy(progressive_reconstruction_filter[{y, x, {}}]:unfold(1, filter_side_length_x, filter_side_length_x))
+      end
+   end
+   image.savePNG(paths.concat(opt.log_directory, 'progressive_reconstruction.png'), image_out)
 
    --save_filter(sorted_reconstruction_filter, 'sorted reconstruction dictionary columns', opt.log_directory, num_display_columns) -- this depends upon save_filter using a row length of num_sorted_inputs!!!
 end
