@@ -32,7 +32,7 @@ local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desi
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50 --20 --50
-local classification_scale_factor = 0.3 --1 --0.2 --200 --0.025 -- 200
+local classification_scale_factor = 0.6 --0.3 --1 --0.2 --200 --0.025 -- 200
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
