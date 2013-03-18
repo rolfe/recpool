@@ -278,6 +278,7 @@ function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- aft
    elseif self.bounded_elements then
       if desired_norm_value then
 	 self.weight:minN(desired_norm_value)
+	 self.weight:maxN(-desired_norm_value)
       end
    end
 

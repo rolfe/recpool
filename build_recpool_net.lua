@@ -25,8 +25,9 @@ NORMALIZE_ROWS_OF_EXPLAINING_AWAY = false
 BOUND_ELEMENTS_OF_EXPLAINING_AWAY = false -- EXPERIMENTAL CODE for use with UNSUPERVISED_CLASSIFICATION - keeps the diagonal elements of the explaining_away matrix from growing very large and alone inducing large activations for the categorical-units
 EXPLAINING_AWAY_BOUND = 0.075
 EXPLAINING_AWAY_BOUND_SCALE_FACTOR = 3 -- keep in mind that the expected row magnitude of the explaining away matrix increases linearly with the number of hidden units, and thus will tend to be larger than the rows of the encoding_feature_extraction_dictionary
-ENC_CUMULATIVE_STEP_SIZE_INIT = 0.2 --1.25 -- USE 0.2 FOR STRONG TEMPLATE PRIMING -- 0.3 works with 2 ISTA iterations
-ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
+ENC_CUMULATIVE_STEP_SIZE_INIT_1 = 0.2 -- for use with 2 ISTA iterations, to avoid instability in the initial dynamics
+ENC_CUMULATIVE_STEP_SIZE_INIT_10 = 0.8 --1.25 -- USE 0.2 FOR STRONG TEMPLATE PRIMING -- CHANGE THIS BACK WHEN USING MORE THAN 2 ISTA ITERATIONS!!!
+ENC_CUMULATIVE_STEP_SIZE_BOUND = 1 --1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
@@ -99,11 +100,20 @@ USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with t
 --L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
 
 
--- for MNIST with 400 hidden units, no L1 norm!
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5 -- for MNIST
+-- for MNIST with 400 hidden units, no L2 norm!
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5 -- for MNIST
+--WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
+--WEIGHTED_L1_ENTROPY_SCALING = 0.02 -- 0.04 is too large, but is close
+--L2_RECONSTRUCTION_SCALING_FACTOR = 1
+
+-- for MNIST with 400 hidden units, *with* L2 norm
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.875 -- for MNIST
 WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
-WEIGHTED_L1_ENTROPY_SCALING = 0.02 -- 0.04 is too large, but is close
+WEIGHTED_L1_ENTROPY_SCALING = 0 --1.0 --0.5 --0.2 -- general case
 L2_RECONSTRUCTION_SCALING_FACTOR = 1
+USE_L2_NORM_FOR_WEIGHTED_L1 = true
+APPEND_CONSTANT_VALUES = {0.1}
+
 
 
 
@@ -327,10 +337,10 @@ end
 local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local use_true_entropy_loss = true
    local only_apply_scaling_to_softmax = false -- if true, the hidden representation is not uniformly scaled after being subject to L2 normalization but before the entropy or weighted-L1 loss is calculated; rather only the softmax branch is scaled
-   local use_l2_norm = true -- fix the L2 norm equal to 1 before calculating the entropy loss
+   local use_l2_norm = USE_L2_NORM_FOR_WEIGHTED_L1 -- fix the L2 norm equal to 1 before calculating the entropy loss
 
    local narrow_entropy = false
-   local append_constant_values = {0.1}
+   local append_constant_values = APPEND_CONSTANT_VALUES --{0.1}
 
    local crit = nn.Sequential()
    -- wrap the input tensor into a table z [1]
@@ -1137,19 +1147,28 @@ local function initialize_parameters(encoding_feature_extraction_dictionary, bas
    base_decoding_feature_extraction_dictionary:repair(true) -- make sure that the norm of each column is 1
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
+   local selected_enc_cumulative_step_size_init
+   if recpool_config_prefs.num_ista_iterations == 1 then
+      selected_enc_cumulative_step_size_init = ENC_CUMULATIVE_STEP_SIZE_INIT_1
+   elseif recpool_config_prefs.num_ista_iterations >= 10 then
+      selected_enc_cumulative_step_size_init = ENC_CUMULATIVE_STEP_SIZE_INIT_10
+   else
+      error('Do not have initialization specified for ' .. recpool_config_prefs.num_ista_iterations .. ' ISTA iterations')
+   end
+
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice; this depends upon the fact that encoding_feature_extraction_dictionary was just set to be the transpose of base_decoding_feature_extraction_dictionary
    if recpool_config_prefs.shrink_style == 'SoftPlus' then
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(recpool_config_prefs.num_ista_iterations + 1)))
    else
       -- scale the encoder so that if all rows are orthogonal and ignoring explaining-away (which have opposite effects), the magnitude of the reconstruction will just match that of the input after num_ista_iterations + 1; the first ista iteration doesn't count towards num_ista_iterations
       encoding_feature_extraction_dictionary.weight:mul(math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling,
-												       ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) 
+												       selected_enc_cumulative_step_size_init/(recpool_config_prefs.num_ista_iterations + 1)))) 
    end
    encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, 
 						 math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, 
 												ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1))))
    -- multiply by -1, since the explaining_away matrix is added, rather than subtracted
-   base_explaining_away.weight:mul(-math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_INIT/(recpool_config_prefs.num_ista_iterations + 1)))) 
+   base_explaining_away.weight:mul(-math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, selected_enc_cumulative_step_size_init/(recpool_config_prefs.num_ista_iterations + 1)))) 
    --[[
       -- this is only necessary when we preload the feature extraction dictionary with elements of the data set, in which case explaining_away has many strongly negative elements.  
       encoding_feature_extraction_dictionary.weight:mul(1e-1)

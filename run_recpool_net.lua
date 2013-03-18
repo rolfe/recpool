@@ -99,7 +99,7 @@ end
 
 -- recpool_config_prefs are num_ista_iterations, shrink_style, disable_pooling, use_squared_weight_matrix, normalize_each_layer, repair_interval
 local recpool_config_prefs = {}
-recpool_config_prefs.num_ista_iterations = 1 --10 --15 --14 
+recpool_config_prefs.num_ista_iterations = 10 --15 --14 
 recpool_config_prefs.num_loss_function_ista_iterations = 1 --5
 --recpool_config_prefs.shrink_style = 'ParameterizedShrink'
 recpool_config_prefs.shrink_style = 'FixedShrink'

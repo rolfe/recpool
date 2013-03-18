@@ -979,8 +979,8 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
    end
 
    -- choose between different definitions of categoricalness
-   local categoricalness = categoricalness_classification_filter 
-   --local categoricalness = categoricalness_enc_dec_alignment
+   local categoricalness_classification = categoricalness_classification_filter 
+   local categoricalness_enc_dec = categoricalness_enc_dec_alignment
 
 
    local max_decoding = math.max(math.abs(decoding_filter:max()), math.abs(decoding_filter:min()))
@@ -988,16 +988,24 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
    local total_max_output = math.max(max_decoding, max_average_digits)
 
    local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)
+   local num_plain_sorted_filters = 60 -- 20 most categorical, 20 evenly distributed, 20 least categorical
 
    -- sort each row (i.e., along the columns) of the explaining_away_mag_filter, and extract the permutation induced
-   local categoricalness_of_all_units = torch.Tensor(decoding_filter:size(2))
+   local categoricalness_of_all_units_classification = torch.Tensor(decoding_filter:size(2))
+   local categoricalness_of_all_units_enc_dec = torch.Tensor(decoding_filter:size(2))
    local most_categorical_filters = torch.Tensor(data:nClass(), num_sorted_connections, decoding_filter:size(1))
+   local selected_filters_decoding_enc_dec = torch.Tensor(num_plain_sorted_filters, decoding_filter:size(1))
+   local selected_filters_encoding_enc_dec = torch.Tensor(num_plain_sorted_filters, decoding_filter:size(1))
    local max_enc_dec_alignment = math.abs(categoricalness_enc_dec_alignment(1))
    for i = 1,decoding_filter:size(2) do
-      categoricalness_of_all_units[i] = categoricalness(i)
+      categoricalness_of_all_units_classification[i] = categoricalness_classification(i)
+      categoricalness_of_all_units_enc_dec[i] = categoricalness_enc_dec(i)
       max_enc_dec_alignment = math.max(max_enc_dec_alignment, math.abs(categoricalness_enc_dec_alignment(i)))
    end
-   local categoricalness_sorted, sorted_indices = categoricalness_of_all_units:sort(true)
+   local categoricalness_sorted, sorted_indices = categoricalness_of_all_units_classification:sort(true)
+   local categoricalness_enc_dec_sorted, sorted_indices_enc_dec = categoricalness_of_all_units_enc_dec:sort(true)
+
+   -- select filters that contribute most to classifications for each digit class
    for i = 1,data:nClass() do
       current_index = 1
       for j = 1,num_sorted_connections do
@@ -1017,7 +1025,26 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
 	 current_index = current_index + 1
       end
    end
+
+   -- select filters that are most, least, and of distributed categoricalness
+   for i = 1,num_plain_sorted_filters/3 do
+      selected_filters_decoding_enc_dec[{i, {}}]:copy(decoding_filter:select(2,sorted_indices_enc_dec[i]))
+      selected_filters_encoding_enc_dec[{i, {}}]:copy(encoding_filter:select(1,sorted_indices_enc_dec[i]))
+      local index_from_end_filters = decoding_filter:size(2) - i + 1
+      local index_from_end_figure = num_plain_sorted_filters - i + 1
+      selected_filters_decoding_enc_dec[{index_from_end_figure, {}}]:copy(decoding_filter:select(2,sorted_indices_enc_dec[index_from_end_filters]))
+      selected_filters_encoding_enc_dec[{index_from_end_figure, {}}]:copy(encoding_filter:select(1,sorted_indices_enc_dec[index_from_end_filters]))
+      local index_from_middle_filters = math.ceil(num_plain_sorted_filters/3 + (i/(1 + num_plain_sorted_filters/3)) * (decoding_filter:size(2) - 2*num_plain_sorted_filters/3))
+      local index_from_middle_figure = num_plain_sorted_filters/3 + i
+      selected_filters_decoding_enc_dec[{index_from_middle_figure, {}}]:copy(decoding_filter:select(2,sorted_indices_enc_dec[index_from_middle_filters]))
+      selected_filters_encoding_enc_dec[{index_from_middle_figure, {}}]:copy(encoding_filter:select(1,sorted_indices_enc_dec[index_from_middle_filters]))
+   end
 	 
+   --save_filter(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:t():narrow(2,90,40), 'selected_encoding_fe_dict', opt.log_directory, 20)
+   save_filter(selected_filters_decoding_enc_dec:t(), 'sorted_decoding_fe_dict', opt.log_directory, 20)
+   save_filter(selected_filters_encoding_enc_dec:t(), 'sorted_encoding_fe_dict', opt.log_directory, 20)
+
+
    -- the image must be bounded between 0 and 1 to be passed into image.savePNG()
    average_digits:mul(-1)
    average_digits:add(total_max_output):div(2*total_max_output)
@@ -1028,7 +1055,7 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
    
    -- construct the full image from the composite pieces
    local filter_side_length = math.sqrt(decoding_filter:size(1))
-   local classes_per_row = 5 --2
+   local classes_per_row = 2 --5
    
    local padding = 1
    local extra_padding_class = 5 --filter_side_length --5 -- padding between different digit classes
