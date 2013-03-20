@@ -13,13 +13,13 @@ PARAMETER_UPDATE_METHOD = 'optim' -- 'module' -- when updating using the optim p
 FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, unrolled ISTA reconstructions tend to be poor unless there are more than twice as many hidden units as visible units, since about half of the hidden units will be prevented from growing smaller than zero, as would be required for optimal reconstruction
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false -- if false, scale down the learning rate for the ISTA modules in proportion to the number of repeats
 FULLY_NORMALIZE_ENC_FE_DICT = false -- if true, force the L2 norm of each row to be constant, rather than merely bounded the L2 norm above
-FULLY_NORMALIZE_DEC_FE_DICT = false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
+FULLY_NORMALIZE_DEC_FE_DICT = true --false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
 NORMALIZE_ROWS_OF_CLASS_DICT = true 
 BOUND_ROWS_OF_CLASS_DICT = false -- USE WITH soft_aggregate class criterion
 CLASS_DICT_BOUND = 5 --2 --5
-CLASS_DICT_GRAD_SCALING = nil --0.2
+CLASS_DICT_GRAD_SCALING = 0.2
 NO_BIAS_ON_EXPLAINING_AWAY = true -- bias on the explaining-away matrix is roughly equivalent to bias on the encoding_feature_extraction_dictionary
 NORMALIZE_ROWS_OF_EXPLAINING_AWAY = false
 BOUND_ELEMENTS_OF_EXPLAINING_AWAY = false -- EXPERIMENTAL CODE for use with UNSUPERVISED_CLASSIFICATION - keeps the diagonal elements of the explaining_away matrix from growing very large and alone inducing large activations for the categorical-units
@@ -27,7 +27,7 @@ EXPLAINING_AWAY_BOUND = 0.075
 EXPLAINING_AWAY_BOUND_SCALE_FACTOR = 3 -- keep in mind that the expected row magnitude of the explaining away matrix increases linearly with the number of hidden units, and thus will tend to be larger than the rows of the encoding_feature_extraction_dictionary
 ENC_CUMULATIVE_STEP_SIZE_INIT_1 = 0.2 -- for use with 2 ISTA iterations, to avoid instability in the initial dynamics
 ENC_CUMULATIVE_STEP_SIZE_INIT_10 = 0.8 --1.25 -- USE 0.2 FOR STRONG TEMPLATE PRIMING -- CHANGE THIS BACK WHEN USING MORE THAN 2 ISTA ITERATIONS!!!
-ENC_CUMULATIVE_STEP_SIZE_BOUND = 1 --1.25 --1.25
+ENC_CUMULATIVE_STEP_SIZE_BOUND = 1.25 --1.25
 NORMALIZE_ROWS_OF_P_FE_DICT = false
 CREATE_BUFFER_ON_L1_LOSS = false --0.001
 --MANUALLY_MAINTAIN_EXPLAINING_AWAY_DIAGONAL = true
@@ -1464,9 +1464,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 
 	 -- input and output are the subject of the shrink operation z [1], the transformed input W*x [2], the original input x [3]
 
-	 --local L2_elastic_net_loss = build_sparsifying_loss(nn.L1CriterionModule(nn.L2Cost(0.25 * lambdas.ista_L1_lambda / recpool_config_prefs.num_loss_function_ista_iterations, 1, false)), 
-	 --						    criteria_list, false)
-	 --this_layer:add(L2_elastic_net_loss)
+	 local L2_elastic_net_loss = build_sparsifying_loss(nn.L1CriterionModule(nn.L2Cost(1 * lambdas.ista_L1_lambda / recpool_config_prefs.num_loss_function_ista_iterations, 1, false)), 
+	 						    criteria_list, false)
+	 this_layer:add(L2_elastic_net_loss)
 	 
       end
    end
