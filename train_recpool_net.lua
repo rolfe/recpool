@@ -481,7 +481,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
       end
       --print('normalized output', self.model.layers[i].debug_module_list.normalize_output.output[1]:unfold(1,10,10))
 
-      --[[
+      ---[[
       local m = self.model.layers[i].module_list.decoding_feature_extraction_dictionary.weight
       --local m = self.model.layers[i].module_list.decoding_pooling_dictionary.weight
       local norms = torch.Tensor(m:size(2))
