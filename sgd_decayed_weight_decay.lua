@@ -29,6 +29,7 @@ function optim.sgd_decayed_weight_decay(opfunc, x, state)
    state.evalCounter = state.evalCounter or 0
    local nevals = state.evalCounter
    state.sign_tensor = state.sign_tensor or torch.Tensor()
+   state.abs_x = state.abs_x or torch.Tensor()
 
    -- (1) evaluate f(x) and df/dx
    local fx,dfdx = opfunc(x)
@@ -49,6 +50,13 @@ function optim.sgd_decayed_weight_decay(opfunc, x, state)
    -- (3) weight decay -- weight decay is applied *AFTER* learning rate decay, as opposed to before as in the standard optim.sgd implementation
    if wd ~= 0 then
       x:add(-wd*clr, x)
+   end
+
+   -- (3.25) L3 weight decay 
+   if state.L3weightDecay ~= 0 then
+      state.abs_x:resizeAs(x)
+      state.abs_x:abs(x)
+      x:addcmul(-wd*clr, state.abs_x, x)
    end
 
    -- (3.5) L1 weight decay 
