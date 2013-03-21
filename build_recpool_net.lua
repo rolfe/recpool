@@ -1464,7 +1464,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 
 	 -- input and output are the subject of the shrink operation z [1], the transformed input W*x [2], the original input x [3]
 
-	 local L2_elastic_net_loss = build_sparsifying_loss(nn.L1CriterionModule(nn.L2Cost(1 * lambdas.ista_L1_lambda / recpool_config_prefs.num_loss_function_ista_iterations, 1, false)), 
+	 local L2_elastic_net_loss = build_sparsifying_loss(nn.L1CriterionModule(nn.L2Cost(0.25 * lambdas.ista_L1_lambda / recpool_config_prefs.num_loss_function_ista_iterations, 1, false)), 
 	 						    criteria_list, false)
 	 this_layer:add(L2_elastic_net_loss)
 	 

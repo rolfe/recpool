@@ -83,6 +83,9 @@ if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnost
    full_diagnostic_epoch_size, desired_window_shifts = data_set_spec:diagnostic_params()
 elseif params.run_type == 'reconstruction_connections' then
    full_diagnostic_epoch_size, desired_window_shifts, window_shift_increment = data_set_spec:reconstruction_params()
+elseif params.run_type == 'invariance' then
+   desired_test_minibatch_size = 100 -- make sure to run network in 'validation' mode
+   full_diagnostic_epoch_size, desired_window_shifts, window_shift_increment = data_set_spec:invariance_params(desired_test_minibatch_size)
 end
    
 
@@ -179,11 +182,11 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    init_eval_counter = (((num_epochs_no_classification <= 0) or force_initial_learning_rate_decay) and default_pretraining_minibatches) or 0, 
    learning_rate = ((params.run_type == 'full_train') and full_train_learning_rate) or 
       ((params.run_type == 'quick_train') and quick_train_learning_rate) or 
-      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'energy_landscape')) and 0) or 0, --1e-3, -- learning rate at t=0
+      (((params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') or (params.run_type == 'invariance')) and 0) or 0, --1e-3, -- learning rate at t=0
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
-   weight_decay = 0, -- weight decay (SGD only)
+   weight_decay = 1e-3, --0, -- weight decay (SGD only)
    L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0.5, -- momentum (SGD only) --WAS 0!!!
    t0 = (((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 
@@ -192,6 +195,13 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    max_iter = 2, -- maximum nb of iterations for CG and LBFGS
    plot_temporal_reconstructions = params.use_temporal_reconstruction
 }
+
+local trainer_run_type = nil
+if (params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections') then
+   trainer_run_type = 'display' -- always plot the same elements, in the same order; forcibly disable training 
+elseif (params.run_type == 'full_test') or (params.run_type == 'quick_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'energy_landscape') or (params.run_type == 'invariance') then
+   trainer_run_type = 'validation' -- forcibly disable training
+end
 
 print('Using opt.learning_rate = ' .. opt.learning_rate)
 
@@ -302,7 +312,7 @@ for i = 1,num_epochs_no_classification do
       trainer:reset_learning_rate(fast_pretraining_scale_factor * opt.learning_rate)
    end
 
-   trainer:train(data, (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and 'display'))
+   trainer:train(data, trainer_run_type)
    --print('iterations so far: ' .. trainer.config.evalCounter)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list)
@@ -359,12 +369,12 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
 
    if (i % 2 == 1) and (i > 1) and data_inline_test then
       print('starting test epoch')
-      trainer:train(data_inline_test, 'validation') --second argument specifies that this is a test epoch
+      trainer:train(data_inline_test, 'validation') --second argument specifies that this is a test epoch; no learning is performed even though the learning rate is not set to zero
       print('writing performance ' .. trainer.current_performance)
       save_performance_history(trainer.current_performance, opt.log_directory, i) -- defined in display_recpool_net
    end
 
-   trainer:train(data, (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and 'display'))
+   trainer:train(data, trainer_run_type)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list)
    end

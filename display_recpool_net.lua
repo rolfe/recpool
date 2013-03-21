@@ -91,6 +91,20 @@ function construct_optimal_dictionary(data_set, hidden_activation, output_matrix
 											  conservative_hidden_activation:size(1) - conservative_hidden_activation:size(2)):pow(2):sum()))
 end
 
+-- use in place of receptive_field_builder_factory to accumulate invariance information across epochs
+-- for invariance statistics, use something like prob(h(x+1) > 0 | h(x) > 0) / (prob(h(x+1) > 0)) ; this is what Goodfellow et al. 2009 use, but with a threshold (non-zero) tuned so that each hidden unit is "active" a fixed percentage of the time.  We can separately accumulate the conditional and marginal probability that h(x+1) > 0, and then find the ratio at the end.  Plot this relative to the categoricalness of the unit.  
+
+function invariance_builder_factory(hidden_layer_size)
+   local invariance_builder = {}
+   -- p(x+1) > 0 = num_iters_activated / num_iters_processed
+   -- p(h(x+1) > 0 | h(x) > 0) = num_iters_conditionally_activated / num_iters_condition_satisfied
+   local num_iters_processed = 0
+   local num_iters_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0
+   local num_iters_condition_satisfied = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0, not counting the last iter of a trajectory, since conditional activation is not possible
+   local num_iters_conditionally_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
+   function invariance_builder:accumulate_invariances(new_input, base_shrink, shrink_copies, new_target) -- arguments are fixed by receptive_field_builder for compatibility
+   end
+end
 
 function receptive_field_builder_factory(nExamples, input_size, hidden_layer_size, total_num_shrink_copies, model)
    local accumulated_inputs = {} -- array holding the (unscaled) receptive fields; initialized by the first call to accumulate_weighted_inputs

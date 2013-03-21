@@ -630,6 +630,42 @@ function RecPoolTrainer:train(train_data, epoch_type)
    end
    print('explaining away grad mags are ', exp_away_grad_mags)
 
+   --[[
+   local class_crit_index = 0
+   for j = 1,#(self.model.criteria_list.criteria) do
+      if self.model.criteria_list.names[j] == 'classification criterion' then
+	 class_crit_index = j
+	 print('classification criterion grad is', self.model.criteria_list.criteria[j].gradInput)
+      end
+   end
+   print('pre-classification grad is ', self.model.module_list.logsoftmax.gradInput)
+   local grad_inp = self.model.criteria_list.criteria[class_crit_index].gradInput
+   local grad_inp_sum = grad_inp:sum(2):select(2,1)
+   local exp_val = torch.exp(self.model.module_list.classification_dictionary.output)
+   print('correct pre-class grad is ', torch.add(grad_inp, torch.epandAs(-1 * grad_inp_sum, torch.div(exp_val, exp_val:sum(2):select(2,1)), grad_inp))) 
+   --]]
+
+   print('pre-classification grad mag is ' .. self.model.module_list.logsoftmax.gradInput:norm())
+   print('post-classification grad mag is ' .. self.model.module_list.classification_dictionary.gradInput:norm())
+
+   print('pre-classification grad mag is ', self.model.module_list.logsoftmax.gradInput)
+   print('logsoftmax output is ', self.model.module_list.logsoftmax.output)
+
+
+   for j = 1,#(self.model.criteria_list.criteria) do
+      if self.model.criteria_list.criteria[j].output then -- this need not be defined if we've disabled pooling or other layers
+	 local criteria_norm = 0
+	 if type(self.model.criteria_list.criteria[j].gradInput) == 'table' then
+	    for k = 1,#self.model.criteria_list.criteria[j].gradInput do
+	       criteria_norm = criteria_norm + self.model.criteria_list.criteria[j].gradInput[k]:norm()
+	    end
+	 else
+	    criteria_norm = self.model.criteria_list.criteria[j].gradInput:norm()
+	 end
+	 print(self.model.criteria_list.names[j], criteria_norm)
+      end -- if critera output exists
+   end -- for all criteria
+
 
    --[[
    -- save/log current net

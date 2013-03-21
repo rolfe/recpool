@@ -95,6 +95,16 @@ function berkeley_spec:reconstruction_params()
    --return 60, {1, 1}, {1, 1}
 end
 
+-- construct a dataset so that each minibatch consists solely of successive shifted versions of a single image, along a single axis.  Each minibatch then constitutes an independent trajectory, and it is easy to compute invariance statistics
+-- for invariance statistics, use something like prob(h(x+1) > 0 | h(x) > 0) / (prob(h(x+1) > 0)) ; this is what Goodfellow et al. 2009 use, but with a threshold (non-zero) tuned so that each hidden unit is "active" a fixed percentage of the time.  We can separately accumulate the conditional and marginal probability that h(x+1) > 0, and then find the ratio at the end.  Plot this relative to the categoricalness of the unit.  
+-- returns set size, window_shifts, window_shift_increment
+function berkeley_spec:invariance_params(minibatch_size)
+   if minibatch_size % 2 ~= 1 then
+      error('To compute invariance statistics, minibatch size must be odd, since shifts are made symmetrically around ???')
+   end
+   return 50, {(minibatch_size -1 )/2, 0}, {1, 1}
+end
+
 
 local function download_cifar()
    -- Note: files were converted from their original format
