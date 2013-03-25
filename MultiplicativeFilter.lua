@@ -16,8 +16,9 @@ end
 function MultiplicativeFilter:randomize()
    if not(forbid_randomize) then
       --self.bias_filter:copy(torch.rand(self.bias_filter:size(2))):mul(0.25):add(0.875) -- the multiplicative bias should be mean-1
-      self.bias_filter:copy(torch.rand(self.bias_filter:size(2))) -- the multiplicative bias should be mean-1
-      self.bias_filter:add(-0.1):sign():add(1):mul(0.5)
+      self.bias_filter:copy(torch.rand(self.bias_filter:size(2))):mul(0.1):add(0.95)
+      --self.bias_filter:copy(torch.rand(self.bias_filter:size(2))) -- the multiplicative bias should be mean-1
+      --self.bias_filter:add(-0.1):sign():add(1):mul(0.5)
       --print(self.bias_filter)
    end
 end
