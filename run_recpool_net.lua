@@ -46,8 +46,9 @@ local force_initial_learning_rate_decay = false -- force the initial learning ra
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
-local default_pretraining_num_epochs = 100 -- 100
+local default_pretraining_num_epochs = 100
 local num_epochs = 1001
+local use_multiplicative_filter = true -- do dropout with nn.MultiplicativeFilter?
 
 -- extract the command line parameters
 local params = cmd:parse(arg)
@@ -84,7 +85,7 @@ if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnost
 elseif params.run_type == 'reconstruction_connections' then
    full_diagnostic_epoch_size, desired_window_shifts, window_shift_increment = data_set_spec:reconstruction_params()
 elseif params.run_type == 'invariance' then
-   desired_test_minibatch_size = 100 -- make sure to run network in 'validation' mode
+   desired_test_minibatch_size = 101 -- must be odd, since window shifts are symmetric around the center index
    full_diagnostic_epoch_size, desired_window_shifts, window_shift_increment = data_set_spec:invariance_params(desired_test_minibatch_size)
 end
    
@@ -94,7 +95,8 @@ params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
 params.p_layer_size = 50 --200 --50
 
 if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') or 
-   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') then
+   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') or
+   (params.run_type == 'invariance') then
    num_epochs_no_classification = 0
    num_epochs = 1
 end
@@ -114,6 +116,7 @@ recpool_config_prefs.normalize_each_layer = false -- THIS IS NOT YET IMPLEMENTED
 recpool_config_prefs.randomize_pooling_dictionary = true
 recpool_config_prefs.repair_interval = 5 --((desired_minibatch_size <= 1) and 5) or 1
 recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
+recpool_config_prefs.use_multiplicative_filter = use_multiplicative_filter -- do dropout with nn.MultiplicativeFilter?
 
 
 -- seed the random number generator
@@ -128,8 +131,8 @@ local data_set_options = {train_or_test = params.data_set, maxLoad = 0, alternat
 			  desired_window_shifts = desired_window_shifts, window_shift_increment = window_shift_increment, desired_whitened_output_window = desired_whitened_output_window}
 if params.data_set == 'train' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test')) and data_set_spec:train_set_size()) or 
-      ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or
-      (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections')) and full_diagnostic_epoch_size) or
+      ((params.run_type == 'quick_diagnostic') and desired_test_minibatch_size) or
+      (((params.run_type == 'full_diagnostic') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'invariance')) and full_diagnostic_epoch_size) or
       ((params.run_type == 'receptive_fields') and plot_receptive_fields_epoch_size) or
       quick_train_epoch_size
    if params.run_type == 'full_train' then
@@ -145,7 +148,7 @@ if params.data_set == 'train' then
 elseif params.data_set == 'test' then
    data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:test_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or 5000
 elseif params.data_set == 'validation' then
-   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or ((params.run_type == 'quick_diagnostic') and desired_minibatch_size) or 5000
+   data_set_options.maxLoad = (((params.run_type == 'full_train') or (params.run_type == 'full_test') or (params.run_type == 'full_diagnostic') or (params.run_type == 'receptive_fields')) and data_set_spec:validation_set_size()) or ((params.run_type == 'reconstruction_connections') and 1000) or ((params.run_type == 'quick_diagnostic') and desired_test_minibatch_size) or 5000
    data_set_options.train_or_test = 'train' -- validation set is just the end of the train set; 'test' is already set correctly in the original definition of data_set_options
    data_set_options.offset = data_set_spec:train_set_size()
 else
@@ -187,7 +190,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
    weight_decay = 0, --1e-3, --0, -- weight decay (SGD only)
-   L3_weight_decay = 1e-3, 
+   L3_weight_decay = 0, 
    L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0.5, -- momentum (SGD only) --WAS 0!!!
    t0 = (((num_epochs_no_classification <= 0) and default_pretraining_minibatches) or 
@@ -211,6 +214,8 @@ local track_criteria_outputs = always_track_criteria_outputs or not((params.run_
 local receptive_field_builder = nil
 if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'reconstruction_connections') then
    receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
+elseif params.run_type == 'invariance' then
+   receptive_field_builder = invariance_builder_factory(layer_size[2])
 end
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
 
@@ -388,6 +393,12 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    if (receptive_field_builder and (params.run_type == 'full_diagnostic')) then receptive_field_builder:plot_other_figures(opt) end
    if (receptive_field_builder and (params.run_type == 'quick_diagnostic')) then receptive_field_builder:quick_diagnostic_plots(opt) end
    if (receptive_field_builder and (params.run_type == 'reconstruction_connections')) then receptive_field_builder:plot_reconstruction_connections(opt) end
+   if (receptive_field_builder and (params.run_type == 'invariance')) then 
+      print('plotting invariance')
+      receptive_field_builder:plot_invariance_scatterplot(opt, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+							  model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)  
+      io.read()
+   end
 
 end
 

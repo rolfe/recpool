@@ -6,6 +6,7 @@ local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
+--local part_thresh, cat_thresh = 0.25, 0.35 -- CIFAR ENTROPY EXPERIMENTS
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -96,14 +97,52 @@ end
 
 function invariance_builder_factory(hidden_layer_size)
    local invariance_builder = {}
-   -- p(x+1) > 0 = num_iters_activated / num_iters_processed
+   -- p(h(x+1) > 0) = num_iters_activated / num_iters_processed
    -- p(h(x+1) > 0 | h(x) > 0) = num_iters_conditionally_activated / num_iters_condition_satisfied
    local num_iters_processed = 0
    local num_iters_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0
    local num_iters_condition_satisfied = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0, not counting the last iter of a trajectory, since conditional activation is not possible
    local num_iters_conditionally_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
-   function invariance_builder:accumulate_invariances(new_input, base_shrink, shrink_copies, new_target) -- arguments are fixed by receptive_field_builder for compatibility
+   local shrink_sign = torch.Tensor()
+   local shrink_sign_sum = torch.Tensor(1,hidden_layer_size)
+   local conditionally_activated = torch.Tensor()
+   function invariance_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies, new_target) -- name and arguments are fixed by receptive_field_builder for compatibility
+      -- we can assume that the input is in minibatches, since this is the format in which the invariant trajectories are presented
+      local final_shrink_output = shrink_copies[#shrink_copies].output
+      local num_iters_batch = final_shrink_output:size(2)
+      num_iters_processed = num_iters_processed + num_iters_batch
+
+      shrink_sign:resizeAs(final_shrink_output):copy(final_shrink_output):sign()
+      conditionally_activated:resizeAs(shrink_sign):copy(shrink_sign):narrow(1,2,num_iters_batch-1)
+
+      print(shrink_sign:size(), num_iters_activated:size(), shrink_sign_sum:size())
+      shrink_sign_sum:sum(shrink_sign, 1) -- calculate num iters that h(x) > 0
+      num_iters_activated:add(shrink_sign_sum:select(1,1))
+      local shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - 1) -- calculate num iters that h(x) > 0, not counting the last iter
+      shrink_sign_sum:sum(shrink_sign_restricted, 1)
+      print(num_iters_condition_satisfied:size(), shrink_sign_sum:size())
+      num_iters_condition_satisfied:add(shrink_sign_sum:select(1,1)) 
+      
+      conditionally_activated:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
+      shrink_sign_sum:sum(conditionally_activated, 1)
+      num_iters_conditionally_activated:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
    end
+
+   function invariance_builder:plot_invariance_scatterplot(opt, encoding_filter, decoding_filter)
+      local angle_between_encoder_and_decoder = torch.cdiv(torch.cmul(encoding_filter:t(), decoding_filter):sum(1), 
+							   torch.cmul(torch.pow(encoding_filter, 2):sum(2):sqrt(), 
+								      torch.pow(decoding_filter, 2):sum(1):sqrt())):acos()
+
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance.png') 
+      -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
+      gnuplot.plot(angle_between_encoder_and_decoder, torch.cdiv(torch.cdiv(num_iters_conditionally_activated, num_iters_condition_satisfied), 
+								 torch.div(num_iters_activated, num_iters_processed)))
+      gnuplot.xlabel('angle between encoder and decoder')
+      gnuplot.ylabel('invariance')
+      gnuplot.plotflush()
+   end
+
+   return invariance_builder
 end
 
 function receptive_field_builder_factory(nExamples, input_size, hidden_layer_size, total_num_shrink_copies, model)
@@ -1519,6 +1558,7 @@ function plot_energy_landscape_2d(model, data_set, pos_max, opt)
 	 target = data_set.labels[input_position]
 
 	 model:set_target(target)
+	 model:prepare_test_batch()
 	 err = model:updateOutput(input)
 	 energy_landscape[{pos_max + 1 - y, x}] = model.layers[1].module_list.L2_reconstruction_criterion.output --model.layers[1].module_list.feature_extraction_sparsifying_module.output --err[1]
 	 --_, class = model.module_list.classification_dictionary.output:max(1)

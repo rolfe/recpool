@@ -187,6 +187,11 @@ local function duplicate_shrink(base_shrink, layer_size, RUN_JACOBIAN_TEST)
    return shrink
 end
    
+local function duplicate_multiplicative_filter(base_multiplicative_filter, layer_size)
+   local multiplicative_filter = nn.MultiplicativeFilter(layer_size, true) -- second argument prevents the duplicate from randomizing the filter
+   multiplicative_filter:share(base_multiplicative_filter, 'bias_filter', 'filter_active') -- sharing the filter_active component slaves the duplicates to the original
+   return multiplicative_filter
+end
 
 
 -- the input is x [1] (already wrapped in a table)
@@ -269,6 +274,25 @@ local function build_ISTA_iteration(explaining_away, shrink, RUN_JACOBIAN_TEST, 
 
    return ista_seq
 end
+
+-- the input is a table of three (four) elements: the subject of the shrink operation z [1], the transformed input W*x [2], the untransformed input x [3], and possibly the offset shrink [4]
+-- the output is a table of three (four) elements: the filtered subject of the shrink operation z [1], the transformed input W*x [2], the untransformed input x [3], and possibly the offset shrink [4]
+local function build_multiplicative_filter_layer(this_multiplicative_filter, potentially_create_buffer_on_L1_loss)
+   local multiplicative_filter_parallel = nn.ParallelDistributingTable()
+   local multiplicative_filter_seq = nn.Sequential()
+   multiplicative_filter_seq:add(nn.SelectTable{1})
+   multiplicative_filter_seq:add(this_multiplicative_filter)
+   
+   multiplicative_filter_parallel:add(multiplicative_filter_seq)
+   multiplicative_filter_parallel:add(nn.SelectTable{2})
+   multiplicative_filter_parallel:add(nn.SelectTable{3})
+   if potentially_create_buffer_on_L1_loss and CREATE_BUFFER_ON_L1_LOSS then
+      multiplicative_filter_parallel:add(nn.SelectTable{4}) 
+   end
+   return multiplicative_filter_parallel
+end
+
+
 
 
 -- the input is a table of three (four) elments: the subject of the shrink operation z [1], the transformed input W*x [2], the untransformed input x [3], and possibly the offset shrink output [4] 
@@ -1091,6 +1115,20 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 return classification_dictionary.output
       end
 
+      -- model:prepare_train_batch() and model:prepare_test_batch() can be safely called even if dropout (multiplicative_filter) is not used
+      if recpool_config_prefs.use_multiplicative_filter then
+	 function model:prepare_train_batch() 
+	    for i = 1,#layer_list do 
+	       layer_list[i]:activate_dropout() 
+	       layer_list[i]:randomize_dropout()
+	    end 
+	 end
+	 function model:prepare_test_batch() for i = 1,#layer_list do layer_list[i]:inactivate_dropout() end end
+      else
+	 function model:prepare_train_batch() end
+	 function model:prepare_test_batch() end
+      end
+
       function model:repair()  -- repair each layer; classification dictionary is a normal linear, and so does not need to be repaired
 	 for i = 1,#layer_list do
 	    layer_list[i]:repair()
@@ -1411,6 +1449,17 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
    ista_seq = build_ISTA_first_iteration(encoding_feature_extraction_dictionary, base_shrink) -- this function does not actually copy shrink, so a shrink_copy does not need to be returned
    this_layer:add(ista_seq)
 
+   local base_multiplicative_filter
+   if recpool_config_prefs.use_multiplicative_filter then
+      base_multiplicative_filter = nn.MultiplicativeFilter(layer_size[2], false)
+      local multiplicative_filter_parallel = build_multiplicative_filter_layer(base_multiplicative_filter, false) -- last argument indicates whether this is the last ISTA iteration, in which case we should also pass on the offset shrink
+      this_layer:add(multiplicative_filter_parallel)
+
+      function this_layer:activate_dropout() base_multiplicative_filter:activate() end
+      function this_layer:inactivate_dropout() base_multiplicative_filter:inactivate() end
+      function this_layer:randomize_dropout() base_multiplicative_filter:randomize() end
+   end
+
    if recpool_config_prefs.num_ista_iterations < recpool_config_prefs.num_loss_function_ista_iterations then
       error('not presently configured to handle num_ista_iterations = ' .. recpool_config_prefs.num_ista_iterations .. ' > num_loss_function_ista_iteration = ' .. 
 	    recpool_config_prefs.num_loss_function_ista_iterations)
@@ -1435,6 +1484,12 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       explaining_away_copies[#explaining_away_copies + 1], shrink_copies[#shrink_copies + 1] = this_explaining_away, this_shrink
       ista_seq = build_ISTA_iteration(this_explaining_away, this_shrink, RUN_JACOBIAN_TEST, (i == recpool_config_prefs.num_ista_iterations), this_offset_shrink, recpool_config_prefs.manually_maintain_explaining_away_diagonal) -- last argument indicates whether this is the last ISTA iteration, in which case we should also pass on the offset shrink
       this_layer:add(ista_seq)
+
+      if base_multiplicative_filter then 
+	 local this_multiplicative_filter = duplicate_multiplicative_filter(base_multiplicative_filter, layer_size[2])
+	 local multiplicative_filter_parallel = build_multiplicative_filter_layer(this_multiplicative_filter, (i == recpool_config_prefs.num_ista_iterations)) -- last argument indicates whether this is the last ISTA iteration, in which case we should also pass on the offset shrink
+	 this_layer:add(multiplicative_filter_parallel)
+      end
 
       if recpool_config_prefs.num_ista_iterations - i + 1 <= recpool_config_prefs.num_loss_function_ista_iterations then
 	 print('adding copy ' .. recpool_config_prefs.num_ista_iterations - i + 1 .. ' of the L2 reconstruction, L1 sparsity, and entropy loss functions')

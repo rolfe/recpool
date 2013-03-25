@@ -309,6 +309,33 @@ function rec_pool_test.AppendConstant()
 end
 
 
+function rec_pool_test.MultiplicativeFilter()
+   local input = torch.rand(10,20)
+   local module = nn.MultiplicativeFilter(input:size(2))
+   local out = module:forward(input)
+   local err = 0
+   for i = 1,input:size(1) do
+      err = err + out:select(1,i):dist(torch.cmul(input:select(1,i), module.bias_filter))
+   end
+   mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local input = torch.Tensor(inj, ini):zero()
+
+   local module = nn.MultiplicativeFilter(input:size(2))
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
+
+
+
 
 function create_parameterized_shrink_test(require_nonnegative_units)
    local function this_parameterized_shrink_test()
@@ -986,7 +1013,7 @@ function rec_pool_test.full_network_test()
    recpool_config_prefs.normalize_each_layer = false
    recpool_config_prefs.repair_interval = 1
    recpool_config_prefs.manually_maintain_explaining_away_diagonal = true
-
+   recpool_config_prefs.use_multiplicative_filter = true -- do dropout with nn.MultiplicativeFilter?
 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(5,10)} 
    --local layer_size = {math.random(10,20), math.random(10,20), math.random(5,10), math.random(10,20), math.random(5,10), math.random(5,10)} 

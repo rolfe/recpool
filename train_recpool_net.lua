@@ -86,6 +86,7 @@ function RecPoolTrainer:reset_options(new_opt)
    self.opt.learning_rate_decay = new_opt.learning_rate_decay or 5e-7 -- should be adjusted based upon minibatch size in run_recpool_net
    self.opt.init_eval_counter = new_opt.init_eval_counter or 0
    self.opt.batch_size = new_opt.batch_size or 0 -- mini-batch size (0 = pure stochastic)
+   self.opt.test_batch_size = new_opt.test_batch_size or 0 -- mini-batch size (0 = pure stochastic)
    self.opt.weight_decay = new_opt.weight_decay or 0 -- weight decay (SGD only)
    self.opt.L1_weight_decay = new_opt.L1_weight_decay or 0 -- weight decay (SGD only)
    self.opt.momentum = new_opt.momentum or 0 -- momentum (SGD only)
@@ -216,6 +217,7 @@ function RecPoolTrainer:make_feval()
       end
       --]]
 
+      --print('grad mag is ' .. self.flattened_grad_parameters:norm())
        
       --check_for_nans(self, self.flattened_grad_parameters, 'gradParameters')
       -- return f and df/dX
@@ -234,6 +236,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
    end
 
    local this_epoch_batch_size = ((epoch_type == 'validation') and self.opt.test_batch_size) or self.opt.batch_size
+   print('using batch size ' .. this_epoch_batch_size .. ' from choices ' .. self.opt.test_batch_size .. ' and ' .. self.opt.batch_size)
    
    -- local vars
    local time = sys.clock()
@@ -285,6 +288,8 @@ function RecPoolTrainer:train(train_data, epoch_type)
       
       -- optimize on current mini-batch
       if ((epoch_type == 'validation') or (epoch_type == 'display')) then
+	 self.model:prepare_test_batch()
+	 --self.model:prepare_train_batch() -- DEBUG ONLY
 	 self.feval(self.flattened_parameters) -- just run the network on the minibatch_inputs and minibatch_targets to generate the confusion matrix, without doing any training
 	 -- this is necessary since some of these value are accessed by run_recpool_net.  Ideally, we should eliminate this break in the abstraction barrier
 	 self.config = self.config or {evalCounter = self.opt.init_eval_counter or 0, 
@@ -293,41 +298,44 @@ function RecPoolTrainer:train(train_data, epoch_type)
 				       L1weightDecay = self.opt.L1_weight_decay,
 				       momentum = self.opt.momentum,
 				       learningRateDecay = self.opt.learning_rate_decay}
-      elseif self.opt.optimization == 'CG' then
-         self.config = self.config or {maxIter = self.opt.max_iter}
-         optim.cg(self.feval, self.flattened_parameters, self.config)
-	 
-      elseif self.opt.optimization == 'LBFGS' then
-         self.config = self.config or {learningRate = self.opt.learning_rate,
-                             maxIter = self.opt.max_iter,
-                             nCorrection = 10}
+      else -- perform a train batch
+	 self.model:prepare_train_batch()
+
+	 if self.opt.optimization == 'CG' then
+	    self.config = self.config or {maxIter = self.opt.max_iter}
+	    optim.cg(self.feval, self.flattened_parameters, self.config)
+	    
+	 elseif self.opt.optimization == 'LBFGS' then
+	    self.config = self.config or {learningRate = self.opt.learning_rate,
+					  maxIter = self.opt.max_iter,
+					  nCorrection = 10}
          optim.lbfgs(self.feval, self.flattened_parameters, self.config)
 	 
-      elseif self.opt.optimization == 'SGD' then
-         self.config = self.config or {evalCounter = self.opt.init_eval_counter or 0,
-				       learningRate = self.opt.learning_rate,
-				       weightDecay = self.opt.weight_decay,
-				       L1weightDecay = self.opt.L1_weight_decay,
-				       momentum = self.opt.momentum,
-				       learningRateDecay = self.opt.learning_rate_decay} -- 5e-7
-	 self.config.learningRate = self.opt.learning_rate -- make sure that the sgd learning rate reflects any resets
-         optim.sgd_decayed_weight_decay(self.feval, self.flattened_parameters, self.config)
-	 
-      elseif self.opt.optimization == 'ASGD' then
-         self.config = self.config or {t = self.opt.init_eval_counter or 0,
-				       eta0 = self.opt.learning_rate,
-				       lambda = self.opt.learning_rate_decay / self.opt.learning_rate, -- matches the decay to that in SGD
-				       t0 = self.opt.t0} -- measured in calls to ASGD
-	 self.config.eta0 = self.opt.learning_rate -- make sure that asgd learning rate reflects any resets
-	 self.config.lambda = self.opt.learning_rate_decay / self.opt.learning_rate
-         _,_,self.average_parameters = optim.asgd_no_weight_decay(self.feval, self.flattened_parameters, self.config)
-	 
-      else
-         error('unknown optimization method')
-      end
-
-      -- repair the parameters one final time
-      if not((epoch_type == 'validation') or (epoch_type == 'display')) then self.model:repair() end -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
+	 elseif self.opt.optimization == 'SGD' then
+	    self.config = self.config or {evalCounter = self.opt.init_eval_counter or 0,
+					  learningRate = self.opt.learning_rate,
+					  weightDecay = self.opt.weight_decay,
+					  L1weightDecay = self.opt.L1_weight_decay,
+					  momentum = self.opt.momentum,
+					  learningRateDecay = self.opt.learning_rate_decay} -- 5e-7
+	    self.config.learningRate = self.opt.learning_rate -- make sure that the sgd learning rate reflects any resets
+	    optim.sgd_decayed_weight_decay(self.feval, self.flattened_parameters, self.config)
+	    
+	 elseif self.opt.optimization == 'ASGD' then
+	    self.config = self.config or {t = self.opt.init_eval_counter or 0,
+					  eta0 = self.opt.learning_rate,
+					  lambda = self.opt.learning_rate_decay / self.opt.learning_rate, -- matches the decay to that in SGD
+					  t0 = self.opt.t0} -- measured in calls to ASGD
+	    self.config.eta0 = self.opt.learning_rate -- make sure that asgd learning rate reflects any resets
+	    self.config.lambda = self.opt.learning_rate_decay / self.opt.learning_rate
+	    _,_,self.average_parameters = optim.asgd_no_weight_decay(self.feval, self.flattened_parameters, self.config)
+	    
+	 else
+	    error('unknown optimization method')
+	 end
+	 -- repair the parameters one final time
+	 self.model:repair() -- EFFICIENCY NOTE: Keep in mind that this is the most time consuming part of the operation!!!
+      end -- perform a train batch
    end -- loop over the current epoch
    
    -- time taken for the current epoch (each call to train() only runs one epoch)
