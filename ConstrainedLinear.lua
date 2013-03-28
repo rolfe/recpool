@@ -255,7 +255,7 @@ function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- aft
    end
 
    if self.normalized_columns then
-      do_normalize_rows_or_columns(self.weight, nil, full_normalization, 2, self.squared_weight_matrix) -- 2 specificies that the second dimension (columns) should be normalized
+      do_normalize_rows_or_columns(self.weight, desired_norm_value, full_normalization, 2, self.squared_weight_matrix) -- 2 specificies that the second dimension (columns) should be normalized
    elseif self.normalized_columns_pooling then
       if(self.weight:size(1) < self.weight:size(2)) then
 	 error('Did not expect output dimension to be smaller than input dimension for ConstrainedLinear with normalized_columns_pooling')

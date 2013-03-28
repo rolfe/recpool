@@ -14,6 +14,7 @@ FORCE_NONNEGATIVE_SHRINK_OUTPUT = true -- if the shrink output is non-negative, 
 USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES = false -- if false, scale down the learning rate for the ISTA modules in proportion to the number of repeats
 FULLY_NORMALIZE_ENC_FE_DICT = false -- if true, force the L2 norm of each row to be constant, rather than merely bounded the L2 norm above
 FULLY_NORMALIZE_DEC_FE_DICT = true --false -- if true, force the L2 norm of each column to be constant; this is turned on below when using entropy or weighted-L1 regularizers
+DEC_FE_DICT_NORM_VALUE = 0.75 --nil
 NORMALIZE_ROWS_OF_ENC_FE_DICT = true
 NORMALIZE_CLASS_DICT_OUTPUT = false
 NORMALIZE_ROWS_OF_CLASS_DICT = true 
@@ -1183,7 +1184,7 @@ local function initialize_parameters(encoding_feature_extraction_dictionary, bas
 	 --selected_column:add(-1*selected_column:mean()) -- this is necessary to keep the dynamics stable; otherwise, unit activities tend to oscillate, since the inner product between columns is large, so explaining-away suppression overwhelms the input activation
       end
    end
-   base_decoding_feature_extraction_dictionary:repair(true) -- make sure that the norm of each column is 1
+   base_decoding_feature_extraction_dictionary:repair(true, DEC_FE_DICT_NORM_VALUE) -- make sure that the norm of each column is 1
    encoding_feature_extraction_dictionary.weight:copy(base_decoding_feature_extraction_dictionary.weight:t())
 
    local selected_enc_cumulative_step_size_init
@@ -1605,7 +1606,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       -- normalizing these two large dictionaries is the slowest part of the algorithm, consuming perhaps 75% of the running time.  Normalizing less often obviously increases running speed considerably.  We'll need to evaluate whether it's safe...
       if repair_counter == 0 then
 	 encoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_ENC_FE_DICT, math.min(init_dictionary_max_scaling, math.max(init_dictionary_min_scaling, ENC_CUMULATIVE_STEP_SIZE_BOUND/(recpool_config_prefs.num_ista_iterations + 1))))
-	 base_decoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_DEC_FE_DICT) -- force full normalization of columns
+	 base_decoding_feature_extraction_dictionary:repair(FULLY_NORMALIZE_DEC_FE_DICT, DEC_FE_DICT_NORM_VALUE) -- force full normalization of columns
       end
       repair_counter = (repair_counter + 1) % recpool_config_prefs.repair_interval
       
