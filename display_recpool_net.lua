@@ -1,12 +1,12 @@
 require 'image'
 require 'gnuplot'
 
-local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER
+--local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER (MNIST)
 --local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
---local part_thresh, cat_thresh = 0.25, 0.35 -- CIFAR ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.25, 0.4 -- CIFAR ENTROPY EXPERIMENTS
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -103,35 +103,51 @@ function invariance_builder_factory(hidden_layer_size)
    local num_iters_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0
    local num_iters_condition_satisfied = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0, not counting the last iter of a trajectory, since conditional activation is not possible
    local num_iters_conditionally_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
+   local num_iters_condition_satisfied_2 = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0, not counting the last iter of a trajectory, since conditional activation is not possible
+   local num_iters_conditionally_activated_2 = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
+
    local shrink_sign = torch.Tensor()
    local shrink_sign_sum = torch.Tensor(1,hidden_layer_size)
    local conditionally_activated = torch.Tensor()
+   local conditionally_activated_2 = torch.Tensor()
    function invariance_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies, new_target) -- name and arguments are fixed by receptive_field_builder for compatibility
       -- we can assume that the input is in minibatches, since this is the format in which the invariant trajectories are presented
       local final_shrink_output = shrink_copies[#shrink_copies].output
-      local num_iters_batch = final_shrink_output:size(2)
+      local num_iters_batch = final_shrink_output:size(1)
       num_iters_processed = num_iters_processed + num_iters_batch
 
       shrink_sign:resizeAs(final_shrink_output):copy(final_shrink_output):sign()
-      conditionally_activated:resizeAs(shrink_sign):copy(shrink_sign):narrow(1,2,num_iters_batch-1)
+      -- looking at the invariance after requiring that the unit activities exceed some threshold greater than 0 doesn't seem to improve the correlation between categoricalness and invariance
+      --shrink_sign:resizeAs(final_shrink_output):copy(final_shrink_output):zeroLtN(0.001) 
+      shrink_sign:sign()
+      conditionally_activated:resize(shrink_sign:size(1) - 1, shrink_sign:size(2)):copy(shrink_sign:narrow(1,2,num_iters_batch-1))
+      conditionally_activated_2:resize(shrink_sign:size(1) - 2, shrink_sign:size(2)):copy(shrink_sign:narrow(1,3,num_iters_batch-2))
 
-      print(shrink_sign:size(), num_iters_activated:size(), shrink_sign_sum:size())
       shrink_sign_sum:sum(shrink_sign, 1) -- calculate num iters that h(x) > 0
       num_iters_activated:add(shrink_sign_sum:select(1,1))
+
       local shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - 1) -- calculate num iters that h(x) > 0, not counting the last iter
       shrink_sign_sum:sum(shrink_sign_restricted, 1)
-      print(num_iters_condition_satisfied:size(), shrink_sign_sum:size())
       num_iters_condition_satisfied:add(shrink_sign_sum:select(1,1)) 
       
       conditionally_activated:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
       shrink_sign_sum:sum(conditionally_activated, 1)
       num_iters_conditionally_activated:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
+
+
+      shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - 2) -- calculate num iters that h(x) > 0, not counting the last iter
+      shrink_sign_sum:sum(shrink_sign_restricted, 1)
+      num_iters_condition_satisfied_2:add(shrink_sign_sum:select(1,1)) 
+
+      conditionally_activated_2:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
+      shrink_sign_sum:sum(conditionally_activated_2, 1)
+      num_iters_conditionally_activated_2:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
    end
 
    function invariance_builder:plot_invariance_scatterplot(opt, encoding_filter, decoding_filter)
-      local angle_between_encoder_and_decoder = torch.cdiv(torch.cmul(encoding_filter:t(), decoding_filter):sum(1), 
-							   torch.cmul(torch.pow(encoding_filter, 2):sum(2):sqrt(), 
-								      torch.pow(decoding_filter, 2):sum(1):sqrt())):acos()
+      local angle_between_encoder_and_decoder = torch.cdiv(torch.cmul(encoding_filter:t(), decoding_filter):sum(1):select(1,1), 
+							   torch.cmul(torch.pow(encoding_filter, 2):sum(2):select(2,1):sqrt(), 
+								      torch.pow(decoding_filter, 2):sum(1):select(1,1):sqrt())):acos()
 
       gnuplot.pngfigure(opt.log_directory .. '/scat_invariance.png') 
       -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
@@ -139,6 +155,15 @@ function invariance_builder_factory(hidden_layer_size)
 								 torch.div(num_iters_activated, num_iters_processed)))
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('invariance')
+      gnuplot.plotflush()
+
+      
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_2.png') 
+      -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
+      gnuplot.plot(angle_between_encoder_and_decoder, torch.cdiv(torch.cdiv(num_iters_conditionally_activated_2, num_iters_condition_satisfied_2), 
+								 torch.div(num_iters_activated, num_iters_processed)))
+      gnuplot.xlabel('angle between encoder and decoder')
+      gnuplot.ylabel('invariance span 2')
       gnuplot.plotflush()
    end
 
@@ -178,14 +203,21 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	 error('accumulated ' .. data_set_index .. ' elements in the receptive field builder, but only expected ' .. nExamples)
       end
 
+      --print(data_set_tensor:size(), data_set_index, batch_size)
+      if data_set_index + batch_size - 1 > data_set_tensor:size(1) then -- if the number of elements is not a multiple of the batch size, ensure that the last batch is truncated.  THIS IS PROBABLY INCORRECT FOR RECONSTRUCTION RECEPTIVE FIELDS, BUT IS NECESSARY FOR RECONSTRUCTION CONNECTIONS
+	 print('WARNING: truncating batch!  THIS IS PROBABLY INCORRECT IF WE ARE ACTUALLY RECONSTRUCTING RECEPTIVE FIELDS!!!')
+	 batch_size = data_set_tensor:size(1) - data_set_index + 1
+	 new_input = new_input:narrow(1,1,batch_size)
+	 new_target = new_target:narrow(1,1,batch_size)
+      end
       data_set_tensor:narrow(1,data_set_index,batch_size):copy(new_input) -- copy the input values from the dataset
       class_tensor:narrow(1,data_set_index,batch_size):copy(new_target)
 
-      self:accumulate_weighted_inputs(new_input, base_shrink.output, 1) -- accumulate the linear receptive fields
-      shrink_val_tensor:select(1,1):narrow(1,data_set_index,batch_size):copy(base_shrink.output) -- copy the hidden unit values
+      self:accumulate_weighted_inputs(new_input, base_shrink.output:narrow(1,1,batch_size), 1) -- accumulate the linear receptive fields
+      shrink_val_tensor:select(1,1):narrow(1,data_set_index,batch_size):copy(base_shrink.output:narrow(1,1,batch_size)) -- copy the hidden unit values
       for i = 1,#shrink_copies do
-	 self:accumulate_weighted_inputs(new_input, shrink_copies[i].output, i+1)
-	 shrink_val_tensor:select(1,i+1):narrow(1,data_set_index,batch_size):copy(shrink_copies[i].output)
+	 self:accumulate_weighted_inputs(new_input, shrink_copies[i].output:narrow(1,1,batch_size), i+1)
+	 shrink_val_tensor:select(1,i+1):narrow(1,data_set_index,batch_size):copy(shrink_copies[i].output:narrow(1,1,batch_size))
       end
 
       data_set_index = data_set_index + batch_size
@@ -1187,7 +1219,7 @@ function plot_reconstruction_connections(decoding_filter, activation_tensor, inp
    local progressive_accretion_filter = torch.Tensor(decoding_filter:size(1)) -- temporary storage for constructing the built-up output
    local progressive_subtraction_filter = torch.Tensor(decoding_filter:size(1)) -- temporary storage for constructing the built-down residual
    --local desired_run_iterations_for_plot = {5, 10, 47} -- different digits: 6,4,7
-   local desired_run_iterations_for_plot = {88, 471, 379} -- all 3's -- 482
+   --local desired_run_iterations_for_plot = {88, 471, 379} -- all 3's -- 482
    for counter = 1,num_reconstructions_to_plot do
       i = (desired_run_iterations_for_plot and desired_run_iterations_for_plot[counter]) or counter
 

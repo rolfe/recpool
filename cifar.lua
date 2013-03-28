@@ -102,7 +102,7 @@ function berkeley_spec:invariance_params(minibatch_size)
    if minibatch_size % 2 ~= 1 then
       error('To compute invariance statistics, minibatch size must be odd, since shifts are made symmetrically around ???')
    end
-   return 50, {(minibatch_size -1 )/2, 0}, {1, 1}
+   return 50, {(minibatch_size -1 )/2, 2}, {1, 1}
 end
 
 
@@ -602,6 +602,8 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 					local num_x_shifts, num_y_shifts = 2*desired_window_shifts[1] + 1, 2*desired_window_shifts[2] + 1
 					local shift_x = ((shift_index % num_x_shifts) - desired_window_shifts[1]) * window_shift_increment[1]
 					local shift_y = (math.floor(shift_index  / num_x_shifts) - desired_window_shifts[2]) * window_shift_increment[2]
+					--print('accessing dataset element ' .. dataset_index .. ', ' .. shift_x .. ', ' .. shift_y)
+					--io.read()
 					
 					-- after unfolding, the original dimension iterates across groups; the last dimension iterates within groups; as a result, the two unfolds leave the color channel in the second dimension, and put x/y position in the third and fourth dimensions
 					local data_element = data[dataset_index]:unfold(1,side_length,side_length):unfold(1,side_length,side_length):transpose(2,3)

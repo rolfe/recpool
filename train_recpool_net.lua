@@ -235,7 +235,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
       self.epoch = self.epoch + 1
    end
 
-   local this_epoch_batch_size = ((epoch_type == 'validation') and self.opt.test_batch_size) or self.opt.batch_size
+   local this_epoch_batch_size = (((epoch_type == 'validation') or (epoch_type == 'display')) and self.opt.test_batch_size) or self.opt.batch_size
    print('using batch size ' .. this_epoch_batch_size .. ' from choices ' .. self.opt.test_batch_size .. ' and ' .. self.opt.batch_size)
    
    -- local vars
@@ -276,6 +276,7 @@ function RecPoolTrainer:train(train_data, epoch_type)
 	 for i = 1,this_epoch_batch_size do 
 	    --ensure that batches are full by wrapping around to the beginning if necessary; since the order of the dataset is reshuffled on each epoch, this shouldn't cause a big problem
 	    local shuffle_index = ((t+i-2) % train_data:nExample()) + 1
+	    --print('accessing element ' .. shuffle_index .. ', ' .. shuffle[shuffle_index])
 	    self.minibatch_inputs:select(1,i):copy(train_data.data[shuffle[shuffle_index]]:double())
 	    if train_data:labelSize() == 1 then
 	       self.minibatch_targets[i] = train_data.labels[shuffle[shuffle_index]]
