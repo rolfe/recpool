@@ -189,7 +189,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
-   weight_decay = 1e-3, --0, -- weight decay (SGD only)
+   weight_decay = 2e-3, --1e-3, --0, -- weight decay (SGD only)
    L3_weight_decay = 0, --1e-3
    L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0.5, -- momentum (SGD only) --WAS 0!!!
@@ -215,7 +215,7 @@ local receptive_field_builder = nil
 if (params.run_type == 'full_diagnostic') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'receptive_fields') or (params.run_type == 'reconstruction_connections') then
    receptive_field_builder = receptive_field_builder_factory(data:nExample(), data:dataSize(), layer_size[2], 1+recpool_config_prefs.num_ista_iterations, model)
 elseif params.run_type == 'invariance' then
-   receptive_field_builder = invariance_builder_factory(layer_size[2])
+   receptive_field_builder = invariance_builder_factory(layer_size[2], desired_test_minibatch_size)
 end
 local trainer = nn.RecPoolTrainer(model, opt, layered_lambdas, track_criteria_outputs, receptive_field_builder) -- layered_lambdas is required for debugging purposes only
 
@@ -238,6 +238,11 @@ if params.load_file ~= '' then
    end
    --model.layers[1].module_list.explaining_away.weight:add(1, torch.diag(torch.ones(model.layers[1].module_list.explaining_away.weight:size(1))))
    --print(torch.diag(model.layers[1].module_list.explaining_away.weight):unfold(1,10,10))
+end
+
+if params.run_type == 'invariance' then
+   receptive_field_builder:set_encoder_and_decoder(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+						   model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)
 end
 
 os.execute('rm -rf ' .. opt.log_directory)

@@ -91,8 +91,8 @@ end
 
 -- returns set size, window_shifts, window_shift_increment
 function berkeley_spec:reconstruction_params()
-   return 10, {3, 3}, {16, 16}
-   --return 60, {1, 1}, {1, 1}
+   --return 10, {3, 3}, {16, 16}
+   return 60, {1, 1}, {1, 1}
 end
 
 -- construct a dataset so that each minibatch consists solely of successive shifted versions of a single image, along a single axis.  Each minibatch then constitutes an independent trajectory, and it is easy to compute invariance statistics

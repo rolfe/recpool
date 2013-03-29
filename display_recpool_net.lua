@@ -6,7 +6,8 @@ require 'gnuplot'
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
-local part_thresh, cat_thresh = 0.25, 0.4 -- CIFAR ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.225, 0.275 -- CIFAR ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -95,7 +96,7 @@ end
 -- use in place of receptive_field_builder_factory to accumulate invariance information across epochs
 -- for invariance statistics, use something like prob(h(x+1) > 0 | h(x) > 0) / (prob(h(x+1) > 0)) ; this is what Goodfellow et al. 2009 use, but with a threshold (non-zero) tuned so that each hidden unit is "active" a fixed percentage of the time.  We can separately accumulate the conditional and marginal probability that h(x+1) > 0, and then find the ratio at the end.  Plot this relative to the categoricalness of the unit.  
 
-function invariance_builder_factory(hidden_layer_size)
+function invariance_builder_factory(hidden_layer_size, max_num_shifts)
    local invariance_builder = {}
    -- p(h(x+1) > 0) = num_iters_activated / num_iters_processed
    -- p(h(x+1) > 0 | h(x) > 0) = num_iters_conditionally_activated / num_iters_condition_satisfied
@@ -110,6 +111,24 @@ function invariance_builder_factory(hidden_layer_size)
    local shrink_sign_sum = torch.Tensor(1,hidden_layer_size)
    local conditionally_activated = torch.Tensor()
    local conditionally_activated_2 = torch.Tensor()
+
+   local accumulated_distance_per_shift = torch.Tensor(max_num_shifts):zero()
+   local accumulated_distance_per_shift_part = torch.Tensor(max_num_shifts):zero()
+   local accumulated_distance_per_shift_cat = torch.Tensor(max_num_shifts):zero()
+   local num_samples_per_shift = torch.Tensor(max_num_shifts):zero()
+
+   local angle_between_encoder_and_decoder, part_filter, cat_filter
+
+   function invariance_builder:set_encoder_and_decoder(encoding_filter, decoding_filter)
+      angle_between_encoder_and_decoder = torch.cdiv(torch.cmul(encoding_filter:t(), decoding_filter):sum(1):select(1,1), 
+						     torch.cmul(torch.pow(encoding_filter, 2):sum(2):select(2,1):sqrt(), 
+								torch.pow(decoding_filter, 2):sum(1):select(1,1):sqrt())):acos()
+      part_filter = torch.Tensor(1,hidden_layer_size):copy(angle_between_encoder_and_decoder:le(part_thresh))
+      cat_filter = torch.Tensor(1,hidden_layer_size):copy(angle_between_encoder_and_decoder:ge(cat_thresh))
+      print('part_filter', part_filter)
+      print('cat_filter', cat_filter)
+   end
+   
    function invariance_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies, new_target) -- name and arguments are fixed by receptive_field_builder for compatibility
       -- we can assume that the input is in minibatches, since this is the format in which the invariant trajectories are presented
       local final_shrink_output = shrink_copies[#shrink_copies].output
@@ -142,6 +161,23 @@ function invariance_builder_factory(hidden_layer_size)
       conditionally_activated_2:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
       shrink_sign_sum:sum(conditionally_activated_2, 1)
       num_iters_conditionally_activated_2:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
+      
+      if num_iters_batch ~= max_num_shifts then
+	 error('number of shifts in this batch ' .. num_iters_batch .. ' does not match the expected number ' .. max_num_shifts)
+      end
+      for i = 0,max_num_shifts - 1 do
+	 local narrowed_left = final_shrink_output:narrow(1,1,max_num_shifts - i)
+	 local narrowed_right = final_shrink_output:narrow(1,1+i, max_num_shifts - i)
+	 local diff_tensor = torch.add(narrowed_left, -1, narrowed_right):pow(2):sum(2):select(2,1):sqrt()
+	 accumulated_distance_per_shift[i+1] = accumulated_distance_per_shift[i+1] + diff_tensor:sum()
+	 num_samples_per_shift[i+1] = num_samples_per_shift[i+1] + diff_tensor:size(1)
+
+	 local diff_tensor_part = torch.add(narrowed_left, -1, narrowed_right):cmul(torch.expandAs(part_filter, narrowed_left)):pow(2):sum(2):select(2,1):sqrt()
+	 accumulated_distance_per_shift_part[i+1] = accumulated_distance_per_shift_part[i+1] + diff_tensor_part:sum()
+	 local diff_tensor_cat = torch.add(narrowed_left, -1, narrowed_right):cmul(torch.expandAs(cat_filter, narrowed_left)):pow(2):sum(2):select(2,1):sqrt()
+	 accumulated_distance_per_shift_cat[i+1] = accumulated_distance_per_shift_cat[i+1] + diff_tensor_cat:sum()
+
+      end
    end
 
    function invariance_builder:plot_invariance_scatterplot(opt, encoding_filter, decoding_filter)
@@ -165,6 +201,21 @@ function invariance_builder_factory(hidden_layer_size)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('invariance span 2')
       gnuplot.plotflush()
+
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_rep_diff.png') 
+      local linspace = torch.linspace(0,max_num_shifts-1,max_num_shifts)
+      local avg_distance_per_shift = torch.cdiv(accumulated_distance_per_shift, num_samples_per_shift)
+      local avg_distance_per_shift_part = torch.cdiv(accumulated_distance_per_shift_part, num_samples_per_shift)
+      local avg_distance_per_shift_cat = torch.cdiv(accumulated_distance_per_shift_cat, num_samples_per_shift)
+      local baseline_interval = 30
+      local baseline_offset = 20
+      gnuplot.plot({'full', linspace, avg_distance_per_shift:div(avg_distance_per_shift:narrow(1,baseline_offset,baseline_interval):mean())}, 
+		   {'part', linspace, avg_distance_per_shift_part:div(avg_distance_per_shift_part:narrow(1,baseline_offset,baseline_interval):mean())},
+		   {'cat', linspace, avg_distance_per_shift_cat:div(avg_distance_per_shift_cat:narrow(1,baseline_offset,baseline_interval):mean())})
+      gnuplot.xlabel('shift magnitude')
+      gnuplot.ylabel('average z difference')
+      gnuplot.plotflush()
+
    end
 
    return invariance_builder
