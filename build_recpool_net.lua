@@ -37,7 +37,7 @@ USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for 
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with the entropy of the L1-normalized hidden unit activation, pluse the original L1
-USE_ELASTIC_NET_LOSS = false --true
+USE_ELASTIC_NET_LOSS = true
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
 
@@ -72,10 +72,10 @@ USE_ELASTIC_NET_LOSS = false --true
 
 
 -- for 12x12 Berkeley with 400 hidden units, no L1 norm!
---local cifar_scaling = 0.5 --0.1 --0.5 
---WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
---WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
---WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.25 --0.15 -- softmax entropy
+local cifar_scaling = 0.5 --0.1 --0.5 
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
+WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1 --0.25 --0.15 -- softmax entropy
 
 
 -- for 12x12 Berkeley with 400 hidden units, hard entropy
@@ -99,7 +99,7 @@ USE_ELASTIC_NET_LOSS = false --true
 --WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.875 --0.3 is too small, 0.5 is too small, 0.75 is too small; 1.0 is too large, 0.875 is too large (with scaling 1) 0.75 is too large (with scaling 2)
 
 --WEIGHTED_L1_ENTROPY_SCALING = 0.3 -- 400 hidden units; when viewed as a weighted L1 loss, -\sum_i e^x_i / (\sum_j e^x_j) * log(e^x_i / (\sum_j e^x_j)) ~ -\sum_i e^x_i / (\sum_j e^x_j) * x_i, then since x is normalized to have L2 norm equal to 1, if we assume that only one unit is significantly active, then the entropy is e^1 / (k - 1 + e^1) * 1, and so is scaled down by a factor approximately equal to the number of hidden units.  When we double the number of hidden units, we should probably double the entropy scaling
---L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
+L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) -- CIFAR ; otherwise use 1
 
 
 -- for MNIST with 400 hidden units, no L2 norm!
@@ -109,10 +109,10 @@ USE_ELASTIC_NET_LOSS = false --true
 --L2_RECONSTRUCTION_SCALING_FACTOR = 1
 
 -- for MNIST with 400 hidden units, *with* L2 norm
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.875 -- for MNIST
-WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
-WEIGHTED_L1_ENTROPY_SCALING = 1.0 --0.5 --0.2 -- general case
-L2_RECONSTRUCTION_SCALING_FACTOR = 1
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.875 -- for MNIST
+--WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
+--WEIGHTED_L1_ENTROPY_SCALING = 1.0 --0.5 --0.2 -- general case
+--L2_RECONSTRUCTION_SCALING_FACTOR = 1
 USE_L2_NORM_FOR_WEIGHTED_L1 = true
 APPEND_CONSTANT_VALUES = {0.1}
 
