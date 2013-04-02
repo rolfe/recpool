@@ -31,7 +31,7 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 20 --50 --20 --50
+local parameter_save_interval = 50 --50 --20 --50
 local classification_scale_factor = 1 --0.3 --1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -47,7 +47,7 @@ local num_epochs_gentle_pretraining = -1 -- negative values disable; positive va
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 0 --1001
+local num_epochs = 0
 local use_multiplicative_filter = false -- do dropout with nn.MultiplicativeFilter?
 
 -- extract the command line parameters
@@ -189,7 +189,7 @@ opt = {log_directory = params.log_directory, -- subdirectory in which to save/lo
    batch_size = desired_minibatch_size, -- mini-batch size (0 = pure stochastic)
    test_batch_size = desired_test_minibatch_size,
    learning_rate_decay = desired_learning_rate_decay * math.max(1, desired_minibatch_size), -- learning rate decay is performed based upon the number of calls to SGD.  When using minibatches, we must increase the decay in proportion to the minibatch size to maintain parity based upon the number of datapoints examined
-   weight_decay = 2e-3, --1e-3, --0, -- weight decay (SGD only)
+   weight_decay = 0, --2e-3, --1e-3, --0, -- weight decay (SGD only)
    L3_weight_decay = 0, --1e-3
    L1_weight_decay = 0, --1e-4, --1e-5, -- L1 weight decay (SGD only)
    momentum = 0.5, -- momentum (SGD only) --WAS 0!!!
