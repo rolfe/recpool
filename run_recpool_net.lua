@@ -32,7 +32,7 @@ local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desi
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
 local parameter_save_interval = 50 --50 --20 --50
-local classification_scale_factor = 1 --0.3 --1
+local classification_scale_factor = 0 -- DEBUG ONLY!!! 1 --0.3 --1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
 local desired_learning_rate_decay = 5e-7
@@ -41,13 +41,13 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 1001 --200 --501 --201
+local num_epochs_no_classification = 100 --200 --501 --201
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
 local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
-local num_epochs = 0
+local num_epochs = 1001
 local use_multiplicative_filter = false -- do dropout with nn.MultiplicativeFilter?
 
 -- extract the command line parameters
@@ -313,6 +313,7 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
+model:reset_entropy_scale_factor(0)
 
 for i = 1,num_epochs_no_classification do
    if ((i % parameter_save_interval == 1) or (parameter_save_interval == 1)) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
@@ -333,6 +334,7 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(classification_scale_factor) -- 0.2 seems to strike an even balance between reconstruction and classification
+model:reset_entropy_scale_factor(1)
 if ((opt.weight_decay > 0) or (opt.L1_weight_decay > 0)) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
    model:reset_classification_dictionary() -- ensure that weight decay during the unsupervised pretraining doesn't cause the classification dictionary to grow too small
 end

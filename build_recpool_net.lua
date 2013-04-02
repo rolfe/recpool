@@ -35,7 +35,7 @@ CREATE_BUFFER_ON_L1_LOSS = false --0.001
 CLASS_NLL_CRITERION_TYPE = nil --'soft_aggregate' --nil -- soft, soft_aggregate, hinge, nil -- use bound_rows_of_class_dict with soft_aggregate
 USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for the first few units than for the rest; my initial hope was that this would induce a small group of units with a reduced L1 coefficient to become categorical units, but instead of learning prototypes, they just learned a small basis set of traditional sparse parts, with many parts used to reconstruct each input
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
-USE_PROB_WEIGHTED_L1 = false -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
+USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with the entropy of the L1-normalized hidden unit activation, pluse the original L1
 USE_ELASTIC_NET_LOSS = false --true
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
@@ -111,7 +111,7 @@ USE_ELASTIC_NET_LOSS = false --true
 -- for MNIST with 400 hidden units, *with* L2 norm
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.875 -- for MNIST
 WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
-WEIGHTED_L1_ENTROPY_SCALING = 0.25 --1.0 --0.5 --0.2 -- general case
+WEIGHTED_L1_ENTROPY_SCALING = 1.0 --0.5 --0.2 -- general case
 L2_RECONSTRUCTION_SCALING_FACTOR = 1
 USE_L2_NORM_FOR_WEIGHTED_L1 = true
 APPEND_CONSTANT_VALUES = {0.1}
@@ -419,6 +419,8 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    weight_normed_input_seq:add(nn.SafeCMulTable())
    -- multiply by -1, since the entropy is -p*log(p)
    weight_normed_input_seq:add(nn.MulConstant(nil, -1 * weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
+   local entropy_loss_scaling = nn.MulConstant(nil, 1)
+   weight_normed_input_seq:add(entropy_loss_scaling)
    if narrow_entropy or append_constant_values then
       weight_normed_input_seq:add(nn.SumCriterionModule()) -- EXPERIMENTAL CODE -- returns a number
       weight_normed_input_seq:add(nn.IdentityTensor()) -- EXPERIMENTAL CODE -- wrap in tensor
@@ -441,6 +443,8 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    -- add the elements of the tensor to get the criterion output
    crit:add(nn.SumCriterionModule())
    --crit:add(nn.L1CriterionModule(nn.L1Cost()))
+
+   function crit:reset_entropy_scale_factor(new_constant) entropy_loss_scaling:reset_constant(new_constant) end
 
    return crit
 end
@@ -479,6 +483,8 @@ local function build_hard_entropy_criterion(weighted_L1_lambda, pure_L1_lambda)
       entropy_seq:add(nn.IdentityTensor()) -- wrap in tensor
    end
    entropy_seq:add(nn.MulConstant(nil, weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
+   local entropy_loss_scaling = nn.MulConstant(nil, 1)
+   entropy_seq:add(entropy_loss_scaling) 
 
    local abs_and_scale_seq = nn.Sequential()
    abs_and_scale_seq:add(nn.SelectTable{1})
@@ -498,6 +504,8 @@ local function build_hard_entropy_criterion(weighted_L1_lambda, pure_L1_lambda)
 
    -- add the elements of the tensor to get the criterion output
    crit:add(nn.SumCriterionModule())
+
+   function crit:reset_entropy_scale_factor(new_constant) entropy_loss_scaling:reset_constant(new_constant) end
 
    return crit
 end
@@ -1154,6 +1162,13 @@ function build_recpool_net(layer_size, lambdas, classification_criterion_lambda,
 	 end
       end
 
+      function model:reset_entropy_scale_factor(new_scale_factor)
+	 print('Setting entropy scale factor to ' .. new_scale_factor)
+	 for i = 1,#layer_list do
+	    layer_list[i]:reset_entropy_scale_factor(new_scale_factor)
+	 end
+      end
+
       function model:randomize_pooling()
 	 for i = 1,#layer_list do
 	    layer_list[i]:randomize_pooling()
@@ -1435,7 +1450,7 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 			--feature_extraction_sparsifying_module = feature_extraction_sparsifying_module, -- now that we're potentially creating many of these, just save the first after it is made
 			pooling_sparsifying_module = pooling_sparsifying_module, 
 			mask_sparsifying_module = mask_sparsifying_module}
-   
+   local entropy_crit_list = {}
 
    -- Initialize the parameters to consistent values
    local init_dictionary_min_scaling = 0.01 -- USE 0 FOR STRONG TEMPLATE PRIMING
@@ -1517,6 +1532,9 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 local feature_extraction_sparsifying_module = feature_extraction_sparsifying_module_factory(1 / recpool_config_prefs.num_loss_function_ista_iterations) -- criteria must be distinct for each copy, since it is saved in the criteria_list for jacobian testing
 	 local ista_sparsifying_loss_seq = build_sparsifying_loss(feature_extraction_sparsifying_module, criteria_list, CREATE_BUFFER_ON_L1_LOSS)
 	 module_list.feature_extraction_sparsifying_module = module_list.feature_extraction_sparsifying_module or feature_extraction_sparsifying_module -- save the first copy
+	 if feature_extraction_sparsifying_module.reset_entropy_scale_factor then -- only add to entropy_crit_list if there is an entropy_scale_factor to reset
+	    table.insert(entropy_crit_list, feature_extraction_sparsifying_module)
+	 end
 	 this_layer:add(ista_sparsifying_loss_seq)
 	 
 	 -- input and output are the subject of the shrink operation z [1], the transformed input W*x [2], the original input x [3]
@@ -1636,6 +1654,12 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
       if not(recpool_config_prefs.disable_pooling) and not(disable_trainable_pooling) then
 	 encoding_pooling_dictionary:reset_learning_scale_factor(new_scale_factor)
 	 decoding_pooling_dictionary:reset_learning_scale_factor(new_scale_factor)
+      end
+   end
+
+   function this_layer:reset_entropy_scale_factor(new_entropy_scale_factor)
+      for _,crit in ipairs(entropy_crit_list) do
+	 crit:reset_entropy_scale_factor(new_entropy_scale_factor)
       end
    end
 

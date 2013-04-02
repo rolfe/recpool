@@ -9,6 +9,10 @@ function MulConstant:__init(input_size, constant_value)
    self.constant_value = constant_value
 end
 
+function MulConstant:reset_constant(new_constant)
+   self.constant_value = new_constant
+end
+
 function MulConstant:updateOutput(input)
    self.output:resizeAs(input)
    self.output:copy(input):mul(self.constant_value)
