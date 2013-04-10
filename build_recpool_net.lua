@@ -38,7 +38,7 @@ USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer wit
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with the entropy of the L1-normalized hidden unit activation, pluse the original L1
 LOW_PASS_FILTERED_ENTROPY = false
-ELASTIC_NET_LOSS = 0.25 --0.25 --true
+ELASTIC_NET_LOSS = 1 --0.25 --true
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
 
