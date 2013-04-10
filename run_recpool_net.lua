@@ -31,7 +31,7 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 50 --50 --20 --50
+local parameter_save_interval = 1 --50 --50 --20 --50
 local classification_scale_factor = 0 -- DEBUG ONLY!!! 1 --0.3 --1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -41,7 +41,8 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 100
+local num_epochs_no_classification = 0 --100
+local delay_entropy_regularization = true -- only apply the entropy loss function after num_epochs_no_classification
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
 local fast_pretraining_scale_factor = 2
@@ -49,6 +50,12 @@ local num_classification_epochs_before_averaging_SGD = 300
 local default_pretraining_num_epochs = 100
 local num_epochs = 1001
 local use_multiplicative_filter = false -- do dropout with nn.MultiplicativeFilter?
+
+local divide_L2_invariance_based_on_L0_invariance = false
+
+if delay_entropy_regularization and classification_scale_factor ~= 0 then
+   error('Both delaying entropy regularization and using the classification loss function; make sure that regularization should be delayed')
+end
 
 -- extract the command line parameters
 local params = cmd:parse(arg)
@@ -95,10 +102,16 @@ params.fe_layer_size = tonumber(params.layer_size) --200 --400 --200
 params.p_layer_size = 50 --200 --50
 
 if (params.run_type == 'quick_test') or (params.run_type == 'full_test') or (params.run_type == 'quick_diagnostic') or (params.run_type == 'full_diagnostic') or 
-   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') or
-   (params.run_type == 'invariance') then
+   (params.run_type == 'receptive_fields') or (params.run_type == 'connection_diagram') or (params.run_type == 'reconstruction_connections') or (params.run_type == 'energy_landscape') then
    num_epochs_no_classification = 0
    num_epochs = 1
+elseif (params.run_type == 'invariance') then
+   num_epochs_no_classification = 0
+   if divide_L2_invariance_based_on_L0_invariance then
+      num_epochs = 2 -- one epoch to determine which units are invariant to single-pixel shifts, one epoch to calculate average hidden unit differences on these units
+   else
+      num_epochs = 1
+   end
 end
 
 
@@ -313,7 +326,9 @@ end
 
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
-model:reset_entropy_scale_factor(0)
+if delay_entropy_regularization then
+   model:reset_entropy_scale_factor(0)
+end
 
 for i = 1,num_epochs_no_classification do
    if ((i % parameter_save_interval == 1) or (parameter_save_interval == 1)) and (i >= 1) then -- make sure to save the initial paramters, before any training occurs, to allow comparisons later
@@ -334,7 +349,9 @@ end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(classification_scale_factor) -- 0.2 seems to strike an even balance between reconstruction and classification
-model:reset_entropy_scale_factor(1)
+if delay_entropy_regularization then
+   model:reset_entropy_scale_factor(1)
+end
 if ((opt.weight_decay > 0) or (opt.L1_weight_decay > 0)) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
    model:reset_classification_dictionary() -- ensure that weight decay during the unsupervised pretraining doesn't cause the classification dictionary to grow too small
 end
@@ -401,10 +418,16 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    if (receptive_field_builder and (params.run_type == 'quick_diagnostic')) then receptive_field_builder:quick_diagnostic_plots(opt) end
    if (receptive_field_builder and (params.run_type == 'reconstruction_connections')) then receptive_field_builder:plot_reconstruction_connections(opt) end
    if (receptive_field_builder and (params.run_type == 'invariance')) then 
-      receptive_field_builder:plot_invariance_scatterplot(opt, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
-							  model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)  
+      if divide_L2_invariance_based_on_L0_invariance and (i == 1) then
+	 print('resetting filters based on invariance')
+	 receptive_field_builder:reset_filters_based_on_invariance(10, 50)
+      else
+	 print('producing invariance scatterplots')
+	 receptive_field_builder:plot_invariance_scatterplot(opt, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
+							     model.layers[1].module_list.decoding_feature_extraction_dictionary.weight)  
+      end
    end
-
+   
 end
 
 

@@ -1,13 +1,14 @@
 require 'image'
 require 'gnuplot'
 
-local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER (MNIST)
+--local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER (MNIST)
+--local part_thresh, cat_thresh = 0.6, 0.9 -- Unsupervised MNIST with entropy loss
 --local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
 --local part_thresh, cat_thresh = 0.225, 0.275 -- CIFAR ENTROPY EXPERIMENTS
---local part_thresh, cat_thresh = 0.3, 0.7 -- CIFAR ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.3, 0.6 -- CIFAR ENTROPY EXPERIMENTS
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -43,6 +44,31 @@ function save_filter(current_filter, filter_name, log_directory, num_display_col
    -- ideally, the pdf viewer should refresh automatically.  This 
    image.savePNG(paths.concat(log_directory, filter_name .. '.png'), current_image)
 end
+
+-- plot filters that are most, least, and of distributed values of the selected_measure
+function plot_sorted_filters(encoding_filter, decoding_filter, sorted_indices, opt)
+   local num_plain_sorted_filters = 60 -- 20 most categorical, 20 evenly distributed, 20 least categorical
+   local selected_filters_decoding = torch.Tensor(num_plain_sorted_filters, decoding_filter:size(1))
+   local selected_filters_encoding = torch.Tensor(num_plain_sorted_filters, decoding_filter:size(1))
+
+   for i = 1,num_plain_sorted_filters/3 do
+      selected_filters_decoding[{i, {}}]:copy(decoding_filter:select(2,sorted_indices[i]))
+      selected_filters_encoding[{i, {}}]:copy(encoding_filter:select(1,sorted_indices[i]))
+      local index_from_end_filters = decoding_filter:size(2) - i + 1
+      local index_from_end_figure = num_plain_sorted_filters - i + 1
+      selected_filters_decoding[{index_from_end_figure, {}}]:copy(decoding_filter:select(2,sorted_indices[index_from_end_filters]))
+      selected_filters_encoding[{index_from_end_figure, {}}]:copy(encoding_filter:select(1,sorted_indices[index_from_end_filters]))
+      local index_from_middle_filters = math.ceil(num_plain_sorted_filters/3 + (i/(1 + num_plain_sorted_filters/3)) * (decoding_filter:size(2) - 2*num_plain_sorted_filters/3))
+      local index_from_middle_figure = num_plain_sorted_filters/3 + i
+      selected_filters_decoding[{index_from_middle_figure, {}}]:copy(decoding_filter:select(2,sorted_indices[index_from_middle_filters]))
+      selected_filters_encoding[{index_from_middle_figure, {}}]:copy(encoding_filter:select(1,sorted_indices[index_from_middle_filters]))
+   end
+	 
+   --save_filter(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:t():narrow(2,90,40), 'selected_encoding_fe_dict', opt.log_directory, 20)
+   save_filter(selected_filters_decoding:t(), 'sorted_decoding_fe_dict', opt.log_directory, 20)
+   save_filter(selected_filters_encoding:t(), 'sorted_encoding_fe_dict', opt.log_directory, 20)
+end
+
 
 -- dataset is nExamples x input_dim
 -- hidden_activation is nExamples x hidden_dim
@@ -128,17 +154,36 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       print('part_filter', part_filter)
       print('cat_filter', cat_filter)
    end
-   
+
+   function invariance_builder:reset_filters_based_on_invariance(part_upper_bound, cat_lower_bound) -- set part_filter and cat_filter based upon the invariance of the units
+      local invariance = torch.cdiv(torch.cdiv(num_iters_conditionally_activated, num_iters_condition_satisfied), 
+				    torch.div(num_iters_activated, num_iters_processed))
+      part_filter = torch.Tensor(1,hidden_layer_size):copy(invariance:le(part_upper_bound))
+      cat_filter = torch.Tensor(1,hidden_layer_size):copy(invariance:ge(cat_lower_bound))
+      print('part_filter', part_filter)
+      print('cat_filter', cat_filter)
+      
+      num_iters_processed = 0
+      num_iters_activated:zero()
+      num_iters_condition_satisfied:zero()
+      num_iters_conditionally_activated:zero()
+      num_iters_condition_satisfied_2:zero()
+      num_iters_conditionally_activated_2:zero()
+   end
+
    function invariance_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies, new_target) -- name and arguments are fixed by receptive_field_builder for compatibility
       -- we can assume that the input is in minibatches, since this is the format in which the invariant trajectories are presented
       local final_shrink_output = shrink_copies[#shrink_copies].output
-      local num_iters_batch = final_shrink_output:size(1)
+      local intermediate_shrink_output = shrink_copies[math.min(2, #shrink_copies)].output
+      local selected_shrink_output = final_shrink_output --intermediate_shrink_output -- determines whether configuration invariance is calculated based upon the intermediate or final state
+
+      local num_iters_batch = selected_shrink_output:size(1)
       num_iters_processed = num_iters_processed + num_iters_batch
 
-      shrink_sign:resizeAs(final_shrink_output):copy(final_shrink_output):sign()
+      shrink_sign:resizeAs(selected_shrink_output):copy(selected_shrink_output):sign()
       -- looking at the invariance after requiring that the unit activities exceed some threshold greater than 0 doesn't seem to improve the correlation between categoricalness and invariance
       --shrink_sign:resizeAs(final_shrink_output):copy(final_shrink_output):zeroLtN(0.001) 
-      shrink_sign:sign()
+      --shrink_sign:sign()
       conditionally_activated:resize(shrink_sign:size(1) - 1, shrink_sign:size(2)):copy(shrink_sign:narrow(1,2,num_iters_batch-1))
       conditionally_activated_2:resize(shrink_sign:size(1) - 2, shrink_sign:size(2)):copy(shrink_sign:narrow(1,3,num_iters_batch-2))
 
@@ -166,8 +211,8 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
 	 error('number of shifts in this batch ' .. num_iters_batch .. ' does not match the expected number ' .. max_num_shifts)
       end
       for i = 0,max_num_shifts - 1 do
-	 local narrowed_left = final_shrink_output:narrow(1,1,max_num_shifts - i)
-	 local narrowed_right = final_shrink_output:narrow(1,1+i, max_num_shifts - i)
+	 local narrowed_left = selected_shrink_output:narrow(1,1,max_num_shifts - i)
+	 local narrowed_right = selected_shrink_output:narrow(1,1+i, max_num_shifts - i)
 	 local diff_tensor = torch.add(narrowed_left, -1, narrowed_right):pow(2):sum(2):select(2,1):sqrt()
 	 accumulated_distance_per_shift[i+1] = accumulated_distance_per_shift[i+1] + diff_tensor:sum()
 	 num_samples_per_shift[i+1] = num_samples_per_shift[i+1] + diff_tensor:size(1)
@@ -187,12 +232,15 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
 
       gnuplot.pngfigure(opt.log_directory .. '/scat_invariance.png') 
       -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
-      gnuplot.plot(angle_between_encoder_and_decoder, torch.cdiv(torch.cdiv(num_iters_conditionally_activated, num_iters_condition_satisfied), 
-								 torch.div(num_iters_activated, num_iters_processed)))
+      local invariance = torch.cdiv(torch.cdiv(num_iters_conditionally_activated, num_iters_condition_satisfied), 
+				    torch.div(num_iters_activated, num_iters_processed))
+      gnuplot.plot(angle_between_encoder_and_decoder, invariance)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('invariance')
       gnuplot.plotflush()
 
+      local invariance_sorted, sorted_indices_invariance = invariance:sort(true)
+      plot_sorted_filters(encoding_filter, decoding_filter, sorted_indices_invariance, opt)
       
       gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_2.png') 
       -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
@@ -369,8 +417,12 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
 	 image.savePNG(paths.concat(opt.log_directory, file_name), image_out)
       end
 
-      make_figure(#part_indices, function(x) return part_indices[x] end, 'shrink_dictionary_part.png')
-      make_figure(#categorical_indices, function(x) return categorical_indices[x] end, 'shrink_dictionary_categorical.png')
+      if #part_indices > 0 then
+	 make_figure(#part_indices, function(x) return part_indices[x] end, 'shrink_dictionary_part.png')
+      else print('WARNING: NO PART UNITS DETECTED') end
+      if #categorical_indices > 0 then
+	 make_figure(#categorical_indices, function(x) return categorical_indices[x] end, 'shrink_dictionary_categorical.png')
+      else print('WARNING: NO CATEGORICAL UNITS DETECTED') end
       make_figure(hidden_layer_size, function(x) return x end, 'shrink_dictionary.png')
    end
 
@@ -1083,6 +1135,7 @@ end
 
 
 
+
 -- plot the decoding dictionaries of the top n largest magnitude connections to each unit, scaled by the connection weight.  This gives a sense of how each unit's activation is computed based from the other units.  If restrictions is a table, it is organized like {(rows of fig contain connections from common: source, destination), (restrict source to: any, part, categorical), (restrict dest to: any, part, categorical)}
 function plot_most_categorical_filters(encoding_filter, decoding_filter, classification_filter, data, opt)
    local average_digits = torch.Tensor(data:nClass(), data:dataSize()):zero()
@@ -1124,14 +1177,11 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
    local total_max_output = math.max(max_decoding, max_average_digits)
 
    local image_edge_length, image_edge_center = math.floor(math.sqrt(decoding_filter:size(1))), math.floor(math.sqrt(decoding_filter:size(1))/2)
-   local num_plain_sorted_filters = 60 -- 20 most categorical, 20 evenly distributed, 20 least categorical
 
    -- sort each row (i.e., along the columns) of the explaining_away_mag_filter, and extract the permutation induced
    local categoricalness_of_all_units_classification = torch.Tensor(decoding_filter:size(2))
    local categoricalness_of_all_units_enc_dec = torch.Tensor(decoding_filter:size(2))
    local most_categorical_filters = torch.Tensor(data:nClass(), num_sorted_connections, decoding_filter:size(1))
-   local selected_filters_decoding_enc_dec = torch.Tensor(num_plain_sorted_filters, decoding_filter:size(1))
-   local selected_filters_encoding_enc_dec = torch.Tensor(num_plain_sorted_filters, decoding_filter:size(1))
    local max_enc_dec_alignment = math.abs(categoricalness_enc_dec_alignment(1))
    for i = 1,decoding_filter:size(2) do
       categoricalness_of_all_units_classification[i] = categoricalness_classification(i)
@@ -1140,6 +1190,8 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
    end
    local categoricalness_sorted, sorted_indices = categoricalness_of_all_units_classification:sort(true)
    local categoricalness_enc_dec_sorted, sorted_indices_enc_dec = categoricalness_of_all_units_enc_dec:sort(true)
+
+   plot_sorted_filters(encoding_filter, decoding_filter, sorted_indices_enc_dec, opt)
 
    -- select filters that contribute most to classifications for each digit class
    for i = 1,data:nClass() do
@@ -1161,25 +1213,6 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
 	 current_index = current_index + 1
       end
    end
-
-   -- select filters that are most, least, and of distributed categoricalness
-   for i = 1,num_plain_sorted_filters/3 do
-      selected_filters_decoding_enc_dec[{i, {}}]:copy(decoding_filter:select(2,sorted_indices_enc_dec[i]))
-      selected_filters_encoding_enc_dec[{i, {}}]:copy(encoding_filter:select(1,sorted_indices_enc_dec[i]))
-      local index_from_end_filters = decoding_filter:size(2) - i + 1
-      local index_from_end_figure = num_plain_sorted_filters - i + 1
-      selected_filters_decoding_enc_dec[{index_from_end_figure, {}}]:copy(decoding_filter:select(2,sorted_indices_enc_dec[index_from_end_filters]))
-      selected_filters_encoding_enc_dec[{index_from_end_figure, {}}]:copy(encoding_filter:select(1,sorted_indices_enc_dec[index_from_end_filters]))
-      local index_from_middle_filters = math.ceil(num_plain_sorted_filters/3 + (i/(1 + num_plain_sorted_filters/3)) * (decoding_filter:size(2) - 2*num_plain_sorted_filters/3))
-      local index_from_middle_figure = num_plain_sorted_filters/3 + i
-      selected_filters_decoding_enc_dec[{index_from_middle_figure, {}}]:copy(decoding_filter:select(2,sorted_indices_enc_dec[index_from_middle_filters]))
-      selected_filters_encoding_enc_dec[{index_from_middle_figure, {}}]:copy(encoding_filter:select(1,sorted_indices_enc_dec[index_from_middle_filters]))
-   end
-	 
-   --save_filter(model.layers[1].module_list.encoding_feature_extraction_dictionary.weight:t():narrow(2,90,40), 'selected_encoding_fe_dict', opt.log_directory, 20)
-   save_filter(selected_filters_decoding_enc_dec:t(), 'sorted_decoding_fe_dict', opt.log_directory, 20)
-   save_filter(selected_filters_encoding_enc_dec:t(), 'sorted_encoding_fe_dict', opt.log_directory, 20)
-
 
    -- the image must be bounded between 0 and 1 to be passed into image.savePNG()
    average_digits:mul(-1)
