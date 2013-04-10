@@ -31,7 +31,7 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 1 --50 --50 --20 --50
+local parameter_save_interval = 50 --50 --20 --50
 local classification_scale_factor = 0 -- DEBUG ONLY!!! 1 --0.3 --1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -41,7 +41,7 @@ if optimization_algorithm == 'ASGD' then
    print('using ASGD learning rate decay ' .. desired_learning_rate_decay)
 end
 local always_track_criteria_outputs = true -- slows things down a little, but gives extra diagnostic information
-local num_epochs_no_classification = 0 --100
+local num_epochs_no_classification = 100
 local delay_entropy_regularization = true -- only apply the entropy loss function after num_epochs_no_classification
 local force_initial_learning_rate_decay = false -- force the initial learning rate decay to be equivalent to that after default_pretraining_num_epochs; this happens by default if num_epochs_no_classification <= 0, but must be ensure manually if we're restarting a previously pretrained network with a new entropy-based or weighted-L1 regularizer, lest the pretrained structure be lost due to large initial parameter updates
 local num_epochs_gentle_pretraining = -1 -- negative values disable; positive values scale up the learning rate by fast_pretraining_scale_factor after the specified number of epochs
@@ -189,7 +189,8 @@ local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_
 local model = build_recpool_net(layer_size, layered_lambdas, classification_scale_factor, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors, recpool_config_prefs, data) -- last argument is num_ista_iterations
 
 -- option array for RecPoolTrainer
-local default_pretraining_minibatches = default_pretraining_num_epochs * data_set_spec:train_set_size() / math.max(1, desired_minibatch_size)
+-- must use data:nExample() rather than data_set_spec:train_set_size since the latter does not include the number of views of windowed datasets.  This may be dangerous if we try to train on something other than the training dataset!
+local default_pretraining_minibatches = default_pretraining_num_epochs * data:nExample() / math.max(1, desired_minibatch_size) 
 opt = {log_directory = params.log_directory, -- subdirectory in which to save/log experiments
    visualize = false, -- visualize input data and weights during training
    plot = false, -- live plot

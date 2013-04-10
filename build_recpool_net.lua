@@ -37,6 +37,7 @@ USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for 
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with the entropy of the L1-normalized hidden unit activation, pluse the original L1
+LOW_PASS_FILTERED_ENTROPY = false
 ELASTIC_NET_LOSS = 0.25 --0.25 --true
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
@@ -1391,26 +1392,27 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 
    -- the entirety of feature_extraction_sparsifying_module is used as the criterion, so it's safe to modify it using standard nn modules without disrupting learning or unit testing, so long as it properly returns a scalar.  The input is a tensor, rather than a table
    local pooling_sparsifying_module, mask_sparsifying_module
-   local function feature_extraction_sparsifying_module_factory(lambda_scale_factor)  
+   local function feature_extraction_sparsifying_module_factory(lambda_scale_factor, disable_pure_L1)
+      local pure_L1_switch = ((disable_pure_L1 and 0) or 1)
       if use_lagrange_multiplier_for_L1_regularizer then
 	 --return nn.ParameterizedL1Cost(layer_size[2], lambda_scale_factor * lambdas.ista_L1_lambda, lagrange_multiplier_targets.feature_extraction_target, lagrange_multiplier_learning_rate_scaling_factors.feature_extraction_scaling_factor, RUN_JACOBIAN_TEST) 
-	 return nn.L1CriterionModule(nn.L1Cost(), lambda_scale_factor * lambdas.ista_L1_lambda) 
+	 return nn.L1CriterionModule(nn.L1Cost(), lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda) 
       elseif USE_HETEROGENEOUS_L1_SCALING_FACTOR then -- Use two different values for L1 on disjoint subsets of the hidden units
-	 return build_heterogeneous_L1_criterion(layer_size, 0.5 * lambda_scale_factor * lambdas.ista_L1_lambda, 
-						 lambda_scale_factor * lambdas.ista_L1_lambda) 
+	 return build_heterogeneous_L1_criterion(layer_size, 0.5 * lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda, 
+						 lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda) 
       elseif USE_L1_OVER_L2_NORM then 
 	 -- first is pure L1, second is L1 over L2
-	 return build_L1_over_L2_criterion(0.75 * lambda_scale_factor * lambdas.ista_L1_lambda, 
+	 return build_L1_over_L2_criterion(0.75 * lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda, 
 					   0.25 * lambda_scale_factor * lambdas.ista_L1_lambda) 
       elseif USE_PROB_WEIGHTED_L1 then 
 	 -- -2 seems to be too strong; -1 may be about right
 	 return build_weighted_L1_criterion(WEIGHTED_L1_ENTROPY_SCALING * lambda_scale_factor, 
-					    WEIGHTED_L1_PURE_L1_SCALING * lambda_scale_factor * lambdas.ista_L1_lambda)
+					    WEIGHTED_L1_PURE_L1_SCALING * lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda)
       elseif USE_HARD_ENTROPY then
 	 return build_hard_entropy_criterion(WEIGHTED_L1_ENTROPY_SCALING * lambda_scale_factor, 
-					    WEIGHTED_L1_PURE_L1_SCALING * lambda_scale_factor * lambdas.ista_L1_lambda)
+					    WEIGHTED_L1_PURE_L1_SCALING * lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda)
       else
-	 return nn.L1CriterionModule(nn.L1Cost(), lambda_scale_factor * lambdas.ista_L1_lambda) -- NORMAL VERSION
+	 return nn.L1CriterionModule(nn.L1Cost(), lambda_scale_factor * pure_L1_switch * lambdas.ista_L1_lambda) -- NORMAL VERSION
 	 
 	 -- EXPERIMENTAL VERSION - use either \sum_i (1 - |z_i| / (\sum_j |z_j|)) * |z_i| if the last argument < 1; or \sum_i (1 - a*|z_i|/(\sum_j |z_j|))^n * |z_i|, where a is the last argument, if the last argument is >= 1
 	 --feature_extraction_sparsifying_module_factory = function() return nn.L1CriterionModule(nn.L1Cost(), lambdas.ista_L1_lambda, nil, nil, 1) end -- EXPERIMENTAL VERSION 
@@ -1538,9 +1540,22 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 this_layer:add(ista_sparsifying_loss_seq)
 	 
 	 -- input and output are the subject of the shrink operation z [1], the transformed input W*x [2], the original input x [3]
+	 if LOW_PASS_FILTERED_ENTROPY then
+	    local low_pass_sparsifying_module = feature_extraction_sparsifying_module_factory(1 / recpool_config_prefs.num_loss_function_ista_iterations, true) -- criteria must be distinct for each copy, since it is saved in the criteria_list for jacobian testing; last argument disables L1 component of the loss function
+	    local low_pass_seq = nn.Sequential()
+	    low_pass_seq:add(nn.LowPass(0.01, RUN_JACOBIAN_TEST))
+	    low_pass_seq:add(low_pass_sparsifying_module)
+	    local low_pass_sparsifying_loss = build_sparsifying_loss(low_pass_seq, criteria_list, false)
+	    if low_pass_sparsifying_module.reset_entropy_scale_factor then -- only add to entropy_crit_list if there is an entropy_scale_factor to reset
+	       table.insert(entropy_crit_list, low_pass_sparsifying_module)
+	    end
+	    this_layer:add(low_pass_sparsifying_loss)
+	 end	    
 
+	 -- input and output are the subject of the shrink operation z [1], the transformed input W*x [2], the original input x [3]
 	 if ELASTIC_NET_LOSS then
-	    local L2_elastic_net_loss = build_sparsifying_loss(nn.L1CriterionModule(nn.L2Cost(ELASTIC_NET_LOSS * lambdas.ista_L1_lambda / recpool_config_prefs.num_loss_function_ista_iterations, 1, false)), 
+	    local L2_elastic_net_loss = build_sparsifying_loss(nn.L1CriterionModule(nn.L2Cost(ELASTIC_NET_LOSS * lambdas.ista_L1_lambda / recpool_config_prefs.num_loss_function_ista_iterations, 1,
+											      false)), 
 							       criteria_list, false)
 	    this_layer:add(L2_elastic_net_loss)
 	 end

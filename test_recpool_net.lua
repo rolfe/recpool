@@ -308,6 +308,34 @@ function rec_pool_test.AppendConstant()
    mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
 end
 
+function rec_pool_test.LowPass()
+   local random_mixing_factor = math.random()
+   local module = nn.LowPass(random_mixing_factor)
+   local input = torch.rand(10,20)
+   local accum = input:clone()
+   for i = 1,20 do
+      local out = module:forward(input)
+      local err = out:dist(accum:mul(1-random_mixing_factor):add(random_mixing_factor, input))
+      mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+
+      input = torch.rand(10,20)
+   end
+
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local ink = math.random(5,10)
+   local input = torch.Tensor(ink, inj, ini):zero()
+
+   local module = nn.LowPass(random_mixing_factor, true)
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+end
+
 
 function rec_pool_test.MultiplicativeFilter()
    local input = torch.rand(10,20)
