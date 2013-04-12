@@ -31,7 +31,7 @@ local desired_test_minibatch_size = 50
 local quick_train_learning_rate = 5e-3 --20e-3 --10e-3 --2e-3 --math.max(1, desired_minibatch_size) * 2e-3 --25e-3 --(1/6)*2e-3 --2e-3 --5e-3
 local full_train_learning_rate = 5e-3 --5e-3 --5e-3 --math.max(1, desired_minibatch_size) * 2e-3 --10e-3
 local RESET_CLASSIFICATION_DICTIONARY = false
-local parameter_save_interval = 50 --50 --20 --50
+local parameter_save_interval = 50 --20 --50
 local classification_scale_factor = 0 -- DEBUG ONLY!!! 1 --0.3 --1
 
 local optimization_algorithm = 'SGD' -- 'SGD', 'ASGD'
@@ -342,11 +342,11 @@ for i = 1,num_epochs_no_classification do
    end
 
    trainer:train(data, trainer_run_type)
+   print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
    --print('iterations so far: ' .. trainer.config.evalCounter)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list)
    end
-   print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 end
 
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
@@ -408,10 +408,10 @@ for i = 1+num_epochs_no_classification,num_epochs+num_epochs_no_classification d
    end
 
    trainer:train(data, trainer_run_type)
+   print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
    if (i < 30) or (i % 10 == 1) then
       plot_filters(opt, i, model.filter_list)
    end
-   print('Effective learning rate decay is ' .. trainer.config.evalCounter * trainer.config.learningRateDecay)
 
    if (receptive_field_builder and (params.run_type == 'receptive_fields')) then 
       receptive_field_builder:plot_receptive_fields(opt, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 

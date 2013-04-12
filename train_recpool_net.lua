@@ -313,12 +313,15 @@ function RecPoolTrainer:train(train_data, epoch_type)
          optim.lbfgs(self.feval, self.flattened_parameters, self.config)
 	 
 	 elseif self.opt.optimization == 'SGD' then
-	    self.config = self.config or {evalCounter = self.opt.init_eval_counter or 0,
-					  learningRate = self.opt.learning_rate,
-					  weightDecay = self.opt.weight_decay,
-					  L1weightDecay = self.opt.L1_weight_decay,
-					  momentum = self.opt.momentum,
-					  learningRateDecay = self.opt.learning_rate_decay} -- 5e-7
+	    if not(self.config) then
+	       self.config = {evalCounter = self.opt.init_eval_counter or 0,
+			      learningRate = self.opt.learning_rate,
+			      weightDecay = self.opt.weight_decay,
+			      L1weightDecay = self.opt.L1_weight_decay,
+			      momentum = self.opt.momentum,
+			      learningRateDecay = self.opt.learning_rate_decay} -- 5e-7
+	       print('Initializing effective learning rate decay to ' .. self.config.evalCounter * self.config.learningRateDecay)
+	    end
 	    self.config.learningRate = self.opt.learning_rate -- make sure that the sgd learning rate reflects any resets
 	    optim.sgd_decayed_weight_decay(self.feval, self.flattened_parameters, self.config)
 	    

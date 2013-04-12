@@ -629,10 +629,11 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('angle between recurrent input and ista ideal')
       gnuplot.plotflush()
 
-      gnuplot.figure() -- percentage of inputs for which the unit is activated at some point, but the first activation occurs after the first iteration; versus the magnitude of the recurrent connections; categorical units turn on later, since they have poorly structured encoder inputs but strong connections to part-units.
+      gnuplot.pngfigure(opt.log_directory .. '/scat_prob_of_late_activation.png') -- percentage of inputs for which the unit is activated at some point, but the first activation occurs after the first iteration; versus the magnitude of the recurrent connections; categorical units turn on later, since they have poorly structured encoder inputs but strong connections to part-units.
       gnuplot.plot(angle_between_encoder_and_decoder, percentage_late_activation)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('prob of late activation')
+      gnuplot.plotflush()
 
       gnuplot.pngfigure(opt.log_directory .. '/scat_prob_of_second_iter_activation.png') -- percentage of inputs for which the unit is activated at some point, but the first activation occurs at the second iteration; versus the magnitude of the recurrent connections; categorical units turn on later, since they have poorly structured encoder inputs but strong connections to part-units.
       gnuplot.plot(angle_between_encoder_and_decoder, percentage_second_iter_activation)
