@@ -37,8 +37,8 @@ USE_HETEROGENEOUS_L1_SCALING_FACTOR = false -- use a smaller L1 coefficient for 
 USE_L1_OVER_L2_NORM = false -- replace the L1 sparsifying norm on each layer with L1/L2; only the L1 norm need be subject to a scaling factor
 USE_PROB_WEIGHTED_L1 = true -- replace the L1 sparsifying norm on each layer with L1/L2 weighted by softmax(L1/L2), plus the original L1; this is an approximation to the entropy-of-softmax regularizer
 USE_HARD_ENTROPY = false -- replace the L1 sparsifying norm on each layer with the entropy of the L1-normalized hidden unit activation, pluse the original L1
-LOW_PASS_FILTERED_ENTROPY = false
-ELASTIC_NET_LOSS = 1 --0.25 --true
+LOW_PASS_FILTERED_ENTROPY = false --true
+ELASTIC_NET_LOSS = 0.25 --true
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.35 -- FOR 2d SPIRAL ONLY!!!
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1.0 --0.5 --1.5 --8 -- FOR 2d SPIRAL ONLY!!!
 
@@ -76,7 +76,7 @@ ELASTIC_NET_LOSS = 1 --0.25 --true
 local cifar_scaling = 0.5 --0.1 --0.5 
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1 --0.25 --0.15 -- softmax entropy
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2 --1 --0.25 --0.15 -- softmax entropy
 
 
 -- for 12x12 Berkeley with 400 hidden units, hard entropy
@@ -112,7 +112,7 @@ L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) --
 -- for MNIST with 400 hidden units, *with* L2 norm
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.875 --0.875 -- for MNIST
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
---WEIGHTED_L1_ENTROPY_SCALING = 0.75 --0.2 -- general case
+--WEIGHTED_L1_ENTROPY_SCALING = 0.5 --0.5 --0.2 -- general case
 --L2_RECONSTRUCTION_SCALING_FACTOR = 1
 USE_L2_NORM_FOR_WEIGHTED_L1 = true
 APPEND_CONSTANT_VALUES = {0.1}
@@ -1541,7 +1541,10 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 	 
 	 -- input and output are the subject of the shrink operation z [1], the transformed input W*x [2], the original input x [3]
 	 if LOW_PASS_FILTERED_ENTROPY then
-	    local low_pass_sparsifying_module = feature_extraction_sparsifying_module_factory(1 / recpool_config_prefs.num_loss_function_ista_iterations, true) -- criteria must be distinct for each copy, since it is saved in the criteria_list for jacobian testing; last argument disables L1 component of the loss function
+	    print('WARNING: using low-pass filtered entropy!  This does not seem to reduce the number of categorical-units!')
+	    io.read()
+
+	    local low_pass_sparsifying_module = feature_extraction_sparsifying_module_factory(100 * 1 / recpool_config_prefs.num_loss_function_ista_iterations, true) -- criteria must be distinct for each copy, since it is saved in the criteria_list for jacobian testing; last argument disables L1 component of the loss function
 	    local low_pass_seq = nn.Sequential()
 	    low_pass_seq:add(nn.LowPass(0.01, RUN_JACOBIAN_TEST))
 	    low_pass_seq:add(low_pass_sparsifying_module)

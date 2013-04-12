@@ -311,29 +311,62 @@ end
 function rec_pool_test.LowPass()
    local random_mixing_factor = math.random()
    local module = nn.LowPass(random_mixing_factor)
-   local input = torch.rand(10,20)
-   local accum = input:clone()
+   local num_rows = 5
+   local num_cols = 10
+   local input, accum
+   
    for i = 1,20 do
-      local out = module:forward(input)
-      local err = out:dist(accum:mul(1-random_mixing_factor):add(random_mixing_factor, input))
-      mytester:asserteq(err, 0, torch.typename(module) .. ' - forward err ')
+      --print('iter ' .. i)
+      input = torch.rand(num_rows,num_cols)
+      
+      if i == 1 then -- initialize accum to something sensible for the first iteration
+	 accum = input:sum(1):div(input:size(1))
+      end
 
-      input = torch.rand(10,20)
+      local expanded_accum = torch.mul(accum, 1-random_mixing_factor):expandAs(input) 
+      local predicted_output = torch.add(expanded_accum, random_mixing_factor, input)
+
+      accum:mul(1-random_mixing_factor)
+      --print('TEST before accum update ', accum)
+      --print('TEST adding ', torch.mul(input:sum(1), random_mixing_factor/num_rows))
+      accum:add(random_mixing_factor/num_rows, input:sum(1))
+
+      --print('TEST end iter accum ', accum)
+
+      local out = module:forward(input)
+      local err = out:dist(predicted_output)
+      --print('diff is ' .. err)
+      mytester:assertlt(err, 1e-10, torch.typename(module) .. ' - forward err ')
+      --io.read()
    end
 
+
+   -- one dimension
    local ini = math.random(5,10)
-   local inj = math.random(5,10)
-   local ink = math.random(5,10)
-   local input = torch.Tensor(ink, inj, ini):zero()
+   local input = torch.Tensor(ini):zero()
 
    local module = nn.LowPass(random_mixing_factor, true)
 
    local err = jac.testJacobian(module, input)
-   mytester:assertlt(err, precision, 'error on state ')
+   mytester:assertlt(err, precision, 'error on state (1D) ')
 
    local ferr, berr = jac.testIO(module, input)
-   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err ')
-   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err ')
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err (1D) ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err (1D) ')
+
+   -- two dimensions
+   local ini = math.random(5,10)
+   local inj = math.random(5,10)
+   local input = torch.Tensor(inj, ini):zero()
+
+   local module = nn.LowPass(random_mixing_factor, true)
+
+   local err = jac.testJacobian(module, input)
+   mytester:assertlt(err, precision, 'error on state (2D) ')
+
+   local ferr, berr = jac.testIO(module, input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err (2D) ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err (2D) ')
 end
 
 

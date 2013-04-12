@@ -750,6 +750,12 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('average final value of unit when activated')
       gnuplot.plotflush()
 
+      gnuplot.pngfigure(opt.log_directory .. '/scat_average_final_value_when_activation_recurrent_connection.png') 
+      gnuplot.plot(angle_between_recurrent_input_and_ISTA_ideal, average_value_when_activated)
+      gnuplot.xlabel('angle between recurrent and ISTA ideal')
+      gnuplot.ylabel('average final value of unit when activated')
+      gnuplot.plotflush()
+
       gnuplot.pngfigure(opt.log_directory .. '/scat_class_dict_mag_versus_final_activation.png')
       gnuplot.plot(norm_classification_connection, average_value_when_activated)
       gnuplot.xlabel('classification dictionary column magnitude')

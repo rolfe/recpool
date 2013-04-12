@@ -328,6 +328,7 @@ end
 -- consider increasing learning rate when classification loss is disabled; otherwise, new features in the feature_extraction_dictionaries are discovered very slowly
 model:reset_classification_lambda(0) -- SPARSIFYING LAMBDAS SHOULD REALLY BE TURNED UP WHEN THE CLASSIFICATION CRITERION IS DISABLED
 if delay_entropy_regularization then
+   print('Turning entropy regularization off')
    model:reset_entropy_scale_factor(0)
 end
 
@@ -351,6 +352,7 @@ end
 -- reset lambdas to be closer to pure top-down fine-tuning and continue training
 model:reset_classification_lambda(classification_scale_factor) -- 0.2 seems to strike an even balance between reconstruction and classification
 if delay_entropy_regularization then
+   print('Turning entropy regularization back on')
    model:reset_entropy_scale_factor(1)
 end
 if ((opt.weight_decay > 0) or (opt.L1_weight_decay > 0)) and (RESET_CLASSIFICATION_DICTIONARY or (num_epochs_no_classification > 0)) then
