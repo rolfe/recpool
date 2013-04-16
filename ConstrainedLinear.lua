@@ -15,7 +15,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
    self.RUN_JACOBIAN_TEST = RUN_JACOBIAN_TEST
    
    local defined_constraints = {'normalized_columns', 'normalized_columns_pooling', 'no_bias', 'non_negative', 'normalized_rows', 'normalized_rows_pooling', 'threshold_normalized_rows', 
-				'bounded_elements', 'non_negative_diag', 'squared_weight_matrix'}
+				'bounded_elements', 'non_negative_diag', 'squared_weight_matrix', 'filter_weight_matrix'}
    for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
       self[defined_constraints[i]] = false
    end
@@ -48,7 +48,7 @@ function ConstrainedLinear:__init(input_size, output_size, desired_constraints, 
       end
    end
    
-   self:repair(true)
+   self:repair(true, nil, true)
 
    if disable_normalized_updates then -- when debugging, disable constraints after initialization
       for i = 1,#defined_constraints do -- set all constraints to false by default; this potentially allows us to do checking later, to ensure that constraints are not undefined
@@ -62,6 +62,46 @@ end
 function ConstrainedLinear:reset_learning_scale_factor(new_scale_factor)
    self.learning_scale_factor = self.learning_scale_factor_scale_factor * new_scale_factor
 end
+
+function ConstrainedLinear:get_weight_filter_matrix()
+   return self.current_weight_filter_matrix
+end
+
+function ConstrainedLinear:set_weight_filter_matrix(new_filter_matrix)
+   if self.weight:dim() ~= new_filter_matrix:dim() then
+      error('dimension of new filter matrix does not match dimension of weight matrix')
+   end
+   for i = 1,self.weight:dim() do
+      if self.weight:size(i) ~= new_filter_matrix:size(i) then
+	 error('the size of dimension' .. i .. ' of the new filter matrix does not match that of the weight matrix')
+      end
+   end
+   self.current_weight_filter_matrix = torch.Tensor():resizeAs(new_filter_matrix):copy(new_filter_matrix)
+end
+
+function ConstrainedLinear:initialize_local_connection_weight_filter_matrix(connection_width)
+   if (self.weight:dim() ~= 2) or (self.weight:size(1) ~= self.weight:size(2)) or (self.weight:size(1) ~= math.pow(math.floor(math.sqrt(self.weight:size(1))), 2)) then
+      print('weight matrix subject to local connection constraint is of size', self.weight:size())
+      error('weight matrix subject to local connection constraint is not 2d with side length equal to the square of an integer')
+   end
+
+   self.current_weight_filter_matrix = torch.Tensor():resizeAs(self.weight):zero()
+
+   local side_length = math.floor(math.sqrt(self.weight:size(1)))
+   for i = 0,side_length-1 do
+      for j = 0,side_length-1 do
+	 for a = -connection_width,connection_width do
+	    for b = -connection_width,connection_width do
+	       if (i+a >= 0) and (i+a < side_length) and (j+b >= 0) and (j+b < side_length) then
+		  self.current_weight_filter_matrix[{1 + (i+a) + side_length*(j+b), 1 + i + side_length*j}] = 1 
+	       end
+	    end
+	 end
+      end
+   end
+end									    
+											    
+		  
 
 function ConstrainedLinear:percentage_zeros_per_column(percentage)
    for i = 1,self.weight:size(2) do
@@ -236,7 +276,17 @@ local function do_threshold_normalize_rows(m)
    end
 end
 
-function ConstrainedLinear:repair(full_normalization, desired_norm_value) -- after any sort of update or initialization, enforce the desired constraints
+function ConstrainedLinear:repair(full_normalization, desired_norm_value, ignore_uninitialized_weight_filter_matrix) -- after any sort of update or initialization, enforce the desired constraints
+   if self.filter_weight_matrix then
+      if self.current_weight_filter_matrix then
+	 self.weight:cmul(self.current_weight_filter_matrix)
+      elseif not(ignore_uninitialized_weight_filter_matrix) then -- repair is called by __init(), at which point the current_weight_matrix should not be expected to be set
+	 error('weight filter matrix was not set')
+      end
+   end
+   
+   self.repair_already_called_once = true
+
    if self.non_negative then
       --self.weight[torch.lt(self.weight,0)] = 0 -- WARNING: THIS IS UNNECESSARILY INEFFICIENT, since a new tensor is created on each call; reimplement this in C
       self.weight:maxZero()

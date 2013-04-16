@@ -21,6 +21,7 @@ NORMALIZE_ROWS_OF_CLASS_DICT = true
 BOUND_ROWS_OF_CLASS_DICT = false -- USE WITH soft_aggregate class criterion
 CLASS_DICT_BOUND = 5 --2 --5
 CLASS_DICT_GRAD_SCALING = 0.2
+LOCAL_CONNECTIONS_ONLY_EXPLAINING_AWAY_MATRIX = 7 -- filter the explaining_away weight matrix with a matrix that contains entries in the set {0,1} that only allows local connections between units
 NO_BIAS_ON_EXPLAINING_AWAY = true -- bias on the explaining-away matrix is roughly equivalent to bias on the encoding_feature_extraction_dictionary
 NORMALIZE_ROWS_OF_EXPLAINING_AWAY = false
 BOUND_ELEMENTS_OF_EXPLAINING_AWAY = false -- EXPERIMENTAL CODE for use with UNSUPERVISED_CLASSIFICATION - keeps the diagonal elements of the explaining_away matrix from growing very large and alone inducing large activations for the categorical-units
@@ -83,7 +84,7 @@ ELASTIC_NET_LOSS = 0.25 --true
 local cifar_scaling = 0.5 --0.1 --0.5 
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1 --1 --0.25 --0.15 -- softmax entropy
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2 --1 --0.25 --0.15 -- softmax entropy
 
 
 -- for 12x12 Berkeley with 400 hidden units, hard entropy
@@ -161,7 +162,8 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
       explaining_away = base_explaining_away
    else
       explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], {no_bias = NO_BIAS_ON_EXPLAINING_AWAY, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY, 
-									    bounded_elements = BOUND_ELEMENTS_OF_EXPLAINING_AWAY}, 
+									    bounded_elements = BOUND_ELEMENTS_OF_EXPLAINING_AWAY, 
+									    filter_weight_matrix = LOCAL_CONNECTIONS_ONLY_EXPLAINING_AWAY_MATRIX}, 
 					     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 					     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/num_ista_iterations)
       -- If using Module:updateParameters, distinct gradients should be added to shared parameters; if the gradients are also shared, then the sum of all gradients is added to each copy of the shared parameters, and the gradient step is scaled by the number of copies.  However, if using the optim package, each set of shared parameters is represented only once, and the number of parameterGradients must match the number of parameters, so the gradients must be shared as well.
@@ -171,6 +173,10 @@ local function duplicate_linear_explaining_away(base_explaining_away, layer_size
 	 explaining_away:share(base_explaining_away, 'weight', 'bias')
       else
 	 error('unrecognized PARAMETER_UPDATE_METHOD ' .. PARAMETER_UPDATE_METHOD)
+      end
+
+      if LOCAL_CONNECTIONS_ONLY_EXPLAINING_AWAY_MATRIX then
+	 explaining_away:set_weight_filter_matrix(base_explaining_away:get_weight_filter_matrix())
       end
    end
 
@@ -1219,6 +1225,9 @@ local function initialize_parameters(encoding_feature_extraction_dictionary, bas
       error('Do not have initialization specified for ' .. recpool_config_prefs.num_ista_iterations .. ' ISTA iterations')
    end
 
+   if LOCAL_CONNECTIONS_ONLY_EXPLAINING_AWAY_MATRIX then
+      base_explaining_away:initialize_local_connection_weight_filter_matrix(LOCAL_CONNECTIONS_ONLY_EXPLAINING_AWAY_MATRIX)
+   end
    base_explaining_away.weight:copy(torch.mm(encoding_feature_extraction_dictionary.weight, base_decoding_feature_extraction_dictionary.weight)) -- the step constant should only be applied to explaining_away once, rather than twice; this depends upon the fact that encoding_feature_extraction_dictionary was just set to be the transpose of base_decoding_feature_extraction_dictionary
    if recpool_config_prefs.shrink_style == 'SoftPlus' then
       encoding_feature_extraction_dictionary.weight:mul(math.max(0.1, 10/(recpool_config_prefs.num_ista_iterations + 1)))
@@ -1346,7 +1355,8 @@ function build_recpool_net_layer(layer_id, layer_size, lambdas, lagrange_multipl
 								       ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/(recpool_config_prefs.num_ista_iterations + 1)) 
    local base_decoding_feature_extraction_dictionary = nn.ConstrainedLinear(layer_size[2],layer_size[1], {no_bias = true, normalized_columns = true}, RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE) 
    local base_explaining_away = nn.ConstrainedLinear(layer_size[2], layer_size[2], 
-						     {no_bias = NO_BIAS_ON_EXPLAINING_AWAY, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY, bounded_elements = BOUND_ELEMENTS_OF_EXPLAINING_AWAY}, 
+						     {no_bias = NO_BIAS_ON_EXPLAINING_AWAY, normalized_rows = NORMALIZE_ROWS_OF_EXPLAINING_AWAY, bounded_elements = BOUND_ELEMENTS_OF_EXPLAINING_AWAY,
+						     filter_weight_matrix = LOCAL_CONNECTIONS_ONLY_EXPLAINING_AWAY_MATRIX}, 
 						     RUN_JACOBIAN_TEST, DEBUG_RF_TRAINING_SCALE, nil, 
 						     ((USE_FULL_SCALE_FOR_REPEATED_ISTA_MODULES or RUN_JACOBIAN_TEST) and 1) or 1/recpool_config_prefs.num_ista_iterations) 
    local base_shrink, shrink_factory
