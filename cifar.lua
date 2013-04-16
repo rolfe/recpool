@@ -102,7 +102,8 @@ function berkeley_spec:invariance_params(minibatch_size)
    if minibatch_size % 2 ~= 1 then
       error('To compute invariance statistics, minibatch size must be odd, since shifts are made symmetrically around ???')
    end
-   return 50, {(minibatch_size -1 )/2, 2}, {1, 1}
+   return 50, {(minibatch_size -1 )/2, 1}, {1, 15} -- fast, rough plots
+   --return 300, {(minibatch_size -1 )/2, 9}, {1, 15} -- high-accuracy plots
 end
 
 

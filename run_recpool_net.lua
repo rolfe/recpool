@@ -178,6 +178,10 @@ data = data_set_spec:loadDataSet(data_set_options)
 data:normalizeStandard() -- use otherwise
 
 
+if params.run_type == 'invariance' then
+   print('data set size is ' .. data:nExample() .. ', minibatch size is ' .. desired_test_minibatch_size .. ', ratio is ' .. data:nExample() / desired_test_minibatch_size)
+end
+
 -- the code required to set the structural parameters of a network is messy, so it's been moved to a separate file
 local layer_size, layered_lambdas, layered_lagrange_multiplier_targets, layered_lagrange_multiplier_learning_rate_scaling_factors = 
    set_recpool_net_structural_params(recpool_config_prefs, data, params, L1_scaling)

@@ -83,7 +83,7 @@ ELASTIC_NET_LOSS = 0.25 --true
 local cifar_scaling = 0.5 --0.1 --0.5 
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2 --1 --0.25 --0.15 -- softmax entropy
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3 --1 --0.25 --0.15 -- softmax entropy
 
 
 -- for 12x12 Berkeley with 400 hidden units, hard entropy

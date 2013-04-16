@@ -2,13 +2,14 @@ require 'image'
 require 'gnuplot'
 
 --local part_thresh, cat_thresh = 0.5, 0.7 -- FOR PAPER (MNIST)
---local part_thresh, cat_thresh = 0.6, 0.9 -- Unsupervised MNIST with entropy loss
+--local part_thresh, cat_thresh = 0.7, 1.0 -- Unsupervised MNIST with entropy loss
 --local part_thresh, cat_thresh = 0.45, 0.5 -- ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
---local part_thresh, cat_thresh = 0.225, 0.275 -- CIFAR ENTROPY EXPERIMENTS
-local part_thresh, cat_thresh = 0.3, 0.6 -- CIFAR ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.35, 0.55 -- CIFAR ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.3, 0.6 -- CIFAR ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.1, 0.12 -- CIFAR ENTROPY EXPERIMENTS, sparse coding pretraining only
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -123,6 +124,8 @@ end
 -- for invariance statistics, use something like prob(h(x+1) > 0 | h(x) > 0) / (prob(h(x+1) > 0)) ; this is what Goodfellow et al. 2009 use, but with a threshold (non-zero) tuned so that each hidden unit is "active" a fixed percentage of the time.  We can separately accumulate the conditional and marginal probability that h(x+1) > 0, and then find the ratio at the end.  Plot this relative to the categoricalness of the unit.  
 
 function invariance_builder_factory(hidden_layer_size, max_num_shifts)
+   local num_conditional_activation_invariance_shifts = 40
+
    local invariance_builder = {}
    -- p(h(x+1) > 0) = num_iters_activated / num_iters_processed
    -- p(h(x+1) > 0 | h(x) > 0) = num_iters_conditionally_activated / num_iters_condition_satisfied
@@ -132,16 +135,25 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
    local num_iters_conditionally_activated = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
    local num_iters_condition_satisfied_2 = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0, not counting the last iter of a trajectory, since conditional activation is not possible
    local num_iters_conditionally_activated_2 = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
+   local num_iters_condition_satisfied_3 = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x) > 0, not counting the last iter of a trajectory, since conditional activation is not possible
+   local num_iters_conditionally_activated_3 = torch.Tensor(hidden_layer_size):zero() -- num iters that h(x+1) > 0 and (given that) h(x) > 0
+
+   local num_iters_condition_satisfied_all = torch.Tensor(num_conditional_activation_invariance_shifts, hidden_layer_size):zero()
+   local num_iters_conditionally_activated_all = torch.Tensor(num_conditional_activation_invariance_shifts, hidden_layer_size):zero()
+   local conditionally_activated_all = torch.Tensor()
 
    local shrink_sign = torch.Tensor()
    local shrink_sign_sum = torch.Tensor(1,hidden_layer_size)
    local conditionally_activated = torch.Tensor()
    local conditionally_activated_2 = torch.Tensor()
+   local conditionally_activated_3 = torch.Tensor()
 
    local accumulated_distance_per_shift = torch.Tensor(max_num_shifts):zero()
    local accumulated_distance_per_shift_part = torch.Tensor(max_num_shifts):zero()
    local accumulated_distance_per_shift_cat = torch.Tensor(max_num_shifts):zero()
    local num_samples_per_shift = torch.Tensor(max_num_shifts):zero()
+   local accumulated_magnitude, accumulated_magnitude_part, accumulated_magnitude_cat, num_samples_accumulated_magnitude = 0,0,0,0
+
 
    local angle_between_encoder_and_decoder, part_filter, cat_filter
 
@@ -169,6 +181,8 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       num_iters_conditionally_activated:zero()
       num_iters_condition_satisfied_2:zero()
       num_iters_conditionally_activated_2:zero()
+      num_iters_condition_satisfied_3:zero()
+      num_iters_conditionally_activated_3:zero()
    end
 
    function invariance_builder:accumulate_shrink_weighted_inputs(new_input, base_shrink, shrink_copies, new_target) -- name and arguments are fixed by receptive_field_builder for compatibility
@@ -176,6 +190,7 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       local final_shrink_output = shrink_copies[#shrink_copies].output
       local intermediate_shrink_output = shrink_copies[math.min(2, #shrink_copies)].output
       local selected_shrink_output = final_shrink_output --intermediate_shrink_output -- determines whether configuration invariance is calculated based upon the intermediate or final state
+      --local selected_shrink_output = intermediate_shrink_output -- determines whether configuration invariance is calculated based upon the intermediate or final state
 
       local num_iters_batch = selected_shrink_output:size(1)
       num_iters_processed = num_iters_processed + num_iters_batch
@@ -186,19 +201,22 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       --shrink_sign:sign()
       conditionally_activated:resize(shrink_sign:size(1) - 1, shrink_sign:size(2)):copy(shrink_sign:narrow(1,2,num_iters_batch-1))
       conditionally_activated_2:resize(shrink_sign:size(1) - 2, shrink_sign:size(2)):copy(shrink_sign:narrow(1,3,num_iters_batch-2))
+      conditionally_activated_3:resize(shrink_sign:size(1) - 3, shrink_sign:size(2)):copy(shrink_sign:narrow(1,4,num_iters_batch-3))
+      conditionally_activated_all:resize(shrink_sign:size(1), shrink_sign:size(2)):zero()
 
       shrink_sign_sum:sum(shrink_sign, 1) -- calculate num iters that h(x) > 0
       num_iters_activated:add(shrink_sign_sum:select(1,1))
 
+      -- shift-1 invariance
       local shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - 1) -- calculate num iters that h(x) > 0, not counting the last iter
       shrink_sign_sum:sum(shrink_sign_restricted, 1)
       num_iters_condition_satisfied:add(shrink_sign_sum:select(1,1)) 
-      
+
       conditionally_activated:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
       shrink_sign_sum:sum(conditionally_activated, 1)
       num_iters_conditionally_activated:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
 
-
+      -- shift-2 invariance
       shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - 2) -- calculate num iters that h(x) > 0, not counting the last iter
       shrink_sign_sum:sum(shrink_sign_restricted, 1)
       num_iters_condition_satisfied_2:add(shrink_sign_sum:select(1,1)) 
@@ -206,6 +224,29 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       conditionally_activated_2:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
       shrink_sign_sum:sum(conditionally_activated_2, 1)
       num_iters_conditionally_activated_2:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
+
+      -- shift-3 invariance
+      shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - 3) -- calculate num iters that h(x) > 0, not counting the last iter
+      shrink_sign_sum:sum(shrink_sign_restricted, 1)
+      num_iters_condition_satisfied_3:add(shrink_sign_sum:select(1,1)) 
+
+      conditionally_activated_3:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
+      shrink_sign_sum:sum(conditionally_activated_3, 1)
+      num_iters_conditionally_activated_3:add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
+
+      local conditionally_activated_i
+      for i = 1,num_conditional_activation_invariance_shifts do
+	 conditionally_activated_i = conditionally_activated_all:narrow(1, 1, shrink_sign:size(1) - i):copy(shrink_sign:narrow(1,i+1,num_iters_batch-i))
+
+	 shrink_sign_restricted = shrink_sign:narrow(1,1,num_iters_batch - i) -- calculate num iters that h(x) > 0, not counting the last iter
+	 shrink_sign_sum:sum(shrink_sign_restricted, 1)
+	 num_iters_condition_satisfied_all:select(1,i):add(shrink_sign_sum:select(1,1)) 
+	 
+	 conditionally_activated_i:zeroLtN2(shrink_sign_restricted, 0) -- sets h(x+1) = 0 if h(x) <= 0
+	 shrink_sign_sum:sum(conditionally_activated_i, 1)
+	 num_iters_conditionally_activated_all:select(1,i):add(shrink_sign_sum:select(1,1)) -- num iters that h(x+1) > 0 and h(x) > 0
+      end
+      
       
       if num_iters_batch ~= max_num_shifts then
 	 error('number of shifts in this batch ' .. num_iters_batch .. ' does not match the expected number ' .. max_num_shifts)
@@ -214,15 +255,21 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
 	 local narrowed_left = selected_shrink_output:narrow(1,1,max_num_shifts - i)
 	 local narrowed_right = selected_shrink_output:narrow(1,1+i, max_num_shifts - i)
 	 local diff_tensor = torch.add(narrowed_left, -1, narrowed_right):pow(2):sum(2):select(2,1):sqrt()
+	 --local diff_tensor = torch.add(narrowed_left:clone():sign(), -1, narrowed_right:clone():sign()):abs():sign():sum(2):select(2,1)
 	 accumulated_distance_per_shift[i+1] = accumulated_distance_per_shift[i+1] + diff_tensor:sum()
 	 num_samples_per_shift[i+1] = num_samples_per_shift[i+1] + diff_tensor:size(1)
-
+	 
 	 local diff_tensor_part = torch.add(narrowed_left, -1, narrowed_right):cmul(torch.expandAs(part_filter, narrowed_left)):pow(2):sum(2):select(2,1):sqrt()
+	 --local diff_tensor_part = torch.add(narrowed_left:clone():sign(), -1, narrowed_right:clone():sign()):cmul(torch.expandAs(part_filter, narrowed_left)):abs():sign():sum(2):select(2,1)
 	 accumulated_distance_per_shift_part[i+1] = accumulated_distance_per_shift_part[i+1] + diff_tensor_part:sum()
 	 local diff_tensor_cat = torch.add(narrowed_left, -1, narrowed_right):cmul(torch.expandAs(cat_filter, narrowed_left)):pow(2):sum(2):select(2,1):sqrt()
+	 --local diff_tensor_cat = torch.add(narrowed_left:clone():sign(), -1, narrowed_right:clone():sign()):cmul(torch.expandAs(cat_filter, narrowed_left)):abs():sign():sum(2):select(2,1)
 	 accumulated_distance_per_shift_cat[i+1] = accumulated_distance_per_shift_cat[i+1] + diff_tensor_cat:sum()
-
       end
+      num_samples_accumulated_magnitude = num_samples_accumulated_magnitude + selected_shrink_output:size(1)
+      accumulated_magnitude = accumulated_magnitude + selected_shrink_output:clone():pow(2):sum(2):select(2,1):sqrt():sum()
+      accumulated_magnitude_part = accumulated_magnitude_part + selected_shrink_output:clone():cmul(torch.expandAs(part_filter, selected_shrink_output)):pow(2):sum(2):select(2,1):sqrt():sum()
+      accumulated_magnitude_cat = accumulated_magnitude_cat + selected_shrink_output:clone():cmul(torch.expandAs(cat_filter, selected_shrink_output)):pow(2):sum(2):select(2,1):sqrt():sum()
    end
 
    function invariance_builder:plot_invariance_scatterplot(opt, encoding_filter, decoding_filter)
@@ -250,20 +297,58 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       gnuplot.ylabel('invariance span 2')
       gnuplot.plotflush()
 
-      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_rep_diff.png') 
+
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_3.png') 
+      -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
+      gnuplot.plot(angle_between_encoder_and_decoder, torch.cdiv(torch.cdiv(num_iters_conditionally_activated_3, num_iters_condition_satisfied_3), 
+								 torch.div(num_iters_activated, num_iters_processed)))
+      gnuplot.xlabel('angle between encoder and decoder')
+      gnuplot.ylabel('invariance span 3')
+      gnuplot.plotflush()
+
+
+      local progressive_linspace = torch.linspace(1,num_conditional_activation_invariance_shifts,num_conditional_activation_invariance_shifts)
+      local fraction_iters_activated = torch.Tensor(1,hidden_layer_size):copy(torch.div(num_iters_activated, num_iters_processed)) 
+      local complete_invariance = torch.cdiv(torch.cdiv(num_iters_conditionally_activated_all, num_iters_condition_satisfied_all), 
+					 fraction_iters_activated:expandAs(num_iters_conditionally_activated_all))
+      local progressive_invariance_part = torch.cmul(complete_invariance, torch.expandAs(part_filter, complete_invariance)):sum(2):select(2,1):div(part_filter:sum())
+      local progressive_invariance_cat = torch.cmul(complete_invariance, torch.expandAs(cat_filter, complete_invariance)):sum(2):select(2,1):div(cat_filter:sum())
+      local progressive_invariance_full = complete_invariance:mean(2):select(2,1)
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_progressive.png') 
+      -- y axis is [p(h(x+1) > 0 | h(x) > 0)] / p(h(x) > 0)
+      --print('sizes are', progressive_invariance_full:size(), progressive_invariance_part:size(), progressive_invariance_cat:size(), progressive_linspace:size())
+      gnuplot.plot({'full', progressive_linspace, progressive_invariance_full},
+		   {'part', progressive_linspace, progressive_invariance_part},
+		   {'cat', progressive_linspace, progressive_invariance_cat})
+      gnuplot.xlabel('shift interval')
+      gnuplot.ylabel('average invariance')
+      gnuplot.plotflush()
+
+
       local linspace = torch.linspace(0,max_num_shifts-1,max_num_shifts)
       local avg_distance_per_shift = torch.cdiv(accumulated_distance_per_shift, num_samples_per_shift)
       local avg_distance_per_shift_part = torch.cdiv(accumulated_distance_per_shift_part, num_samples_per_shift)
       local avg_distance_per_shift_cat = torch.cdiv(accumulated_distance_per_shift_cat, num_samples_per_shift)
       local baseline_interval = 30
       local baseline_offset = 20
-      gnuplot.plot({'full', linspace, avg_distance_per_shift:div(avg_distance_per_shift:narrow(1,baseline_offset,baseline_interval):mean())}, 
-		   {'part', linspace, avg_distance_per_shift_part:div(avg_distance_per_shift_part:narrow(1,baseline_offset,baseline_interval):mean())},
-		   {'cat', linspace, avg_distance_per_shift_cat:div(avg_distance_per_shift_cat:narrow(1,baseline_offset,baseline_interval):mean())})
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_rep_diff_avg_over_diff.png') 
+      gnuplot.plot({'full', linspace, torch.div(avg_distance_per_shift, avg_distance_per_shift:narrow(1,baseline_offset,baseline_interval):mean())}, 
+		   {'part', linspace, torch.div(avg_distance_per_shift_part, avg_distance_per_shift_part:narrow(1,baseline_offset,baseline_interval):mean())},
+		   {'cat', linspace, torch.div(avg_distance_per_shift_cat, avg_distance_per_shift_cat:narrow(1,baseline_offset,baseline_interval):mean())})
       gnuplot.xlabel('shift magnitude')
       gnuplot.ylabel('average z difference')
       gnuplot.plotflush()
 
+      local avg_accumulated_magnitude = accumulated_magnitude / num_samples_accumulated_magnitude
+      local avg_accumulated_magnitude_part = accumulated_magnitude_part / num_samples_accumulated_magnitude
+      local avg_accumulated_magnitude_cat = accumulated_magnitude_cat / num_samples_accumulated_magnitude
+      gnuplot.pngfigure(opt.log_directory .. '/scat_invariance_rep_diff_absolute_avg.png') 
+      gnuplot.plot({'full', linspace, torch.div(avg_distance_per_shift, avg_accumulated_magnitude)}, 
+		   {'part', linspace, torch.div(avg_distance_per_shift_part, avg_accumulated_magnitude_part)},
+		   {'cat', linspace, torch.div(avg_distance_per_shift_cat, avg_accumulated_magnitude_cat)})
+      gnuplot.xlabel('shift magnitude')
+      gnuplot.ylabel('average z difference')
+      gnuplot.plotflush()
    end
 
    return invariance_builder
@@ -641,10 +726,12 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
       gnuplot.ylabel('prob of second iter activation')
       gnuplot.plotflush()
 
-      gnuplot.figure() -- percentage of inputs for which the unit is activated at the end
+      gnuplot.pngfigure(opt.log_directory .. '/scat_prob_active_at_end.png') -- percentage of inputs for which the unit is activated at the end
       gnuplot.plot(angle_between_encoder_and_decoder, percentage_activated_at_end)
       gnuplot.xlabel('angle between encoder and decoder')
       gnuplot.ylabel('prob activated at end')
+      gnuplot.plotflush()
+
 
       gnuplot.figure() -- histogram of recurrent connections; categorical units have larger recurrent connections
       gnuplot.hist(norm_vec, 50)
