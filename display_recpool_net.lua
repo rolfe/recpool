@@ -7,9 +7,10 @@ require 'gnuplot'
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
-local part_thresh, cat_thresh = 0.35, 0.55 -- CIFAR ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.4, 0.5 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.3, 0.6 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.1, 0.12 -- CIFAR ENTROPY EXPERIMENTS, sparse coding pretraining only
+--local part_thresh, cat_thresh = 0.49, 0.5 -- MNIST, sparse coding pretraining only
 
 local function plot_training_error(t)
    gnuplot.pngfigure(params.rundir .. '/error.png')
@@ -937,12 +938,13 @@ function receptive_field_builder_factory(nExamples, input_size, hidden_layer_siz
    end
    
    function receptive_field_builder:quick_diagnostic_plots(opt)
-      for i = 1,1 do
-	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400)
+      for i = 1,shrink_val_tensor:size(2) do
+	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400, nil, nil, nil, 1)
 	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400, 1, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
-				       model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size)
+				       model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 2) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size)
 	 plot_hidden_unit_trajectories(shrink_val_tensor:select(2,i), opt, 400, -1, model.layers[1].module_list.encoding_feature_extraction_dictionary.weight, 
-				       model.layers[1].module_list.decoding_feature_extraction_dictionary.weight) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, 
+				       model.layers[1].module_list.decoding_feature_extraction_dictionary.weight, 3) -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, 
+	 io.read()
       end
    end
 
@@ -1346,7 +1348,7 @@ function plot_most_categorical_filters(encoding_filter, decoding_filter, classif
 end
 
 
-function plot_hidden_unit_trajectories(activation_tensor, opt, num_trajectories, only_plot_parts, encoding_filter, decoding_filter)
+function plot_hidden_unit_trajectories(activation_tensor, opt, num_trajectories, only_plot_categoricals, encoding_filter, decoding_filter, figure_id)
    -- shrink_val_tensor = torch.Tensor(total_num_shrink_copies, nExamples, hidden_layer_size)
 
    local function categoricalness_enc_dec_alignment(i)
@@ -1364,12 +1366,17 @@ function plot_hidden_unit_trajectories(activation_tensor, opt, num_trajectories,
    local x = torch.linspace(1,activation_tensor:size(1),activation_tensor:size(1))
    local i = 1
    while (#plot_args < num_trajectories) and (i <= activation_tensor:size(2)) do
-      if not(only_plot_parts) or (categoricalness_enc_dec_alignment(i) == only_plot_parts) then
+      if not(only_plot_categoricals) or (categoricalness_enc_dec_alignment(i) == only_plot_categoricals) then
 	 plot_args[#plot_args + 1] = {x, activation_tensor:select(2,i), '-'}
       end
       i = i+1
    end
-   gnuplot.figure()
+   gnuplot.figure(figure_id)
+   if only_plot_categoricals == 1 then
+      gnuplot.title('categorical units')
+   elseif only_plot_categoricals == -1 then
+      gnuplot.title('part units')
+   end
    gnuplot.plot(unpack(plot_args))
 end
 

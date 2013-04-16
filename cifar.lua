@@ -492,7 +492,7 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
    end
 
    -- normalizing each window separately corresponds to something like local contrast normalization, since the L2 norm of the hidden units must be roughly proportional to the L2 norm of the input, given the constraint on the decoding matrix columns and the L2 reconstruction loss.  However, this implies that the network should amplify the structure in windows that are basically flat and featureless.  As a result, it will devote more energy to representing "textures" and noise, rather than objects.  Since MNIST digits are canonical objects, if we want to see corresponding development of categorical- and part-units, we should probably avoid amplifying the noise in featureless windows.  
-   function dataset:findMaxL2Norm()
+   function dataset:findAvgL2Norm()
       local max_l2_norm = 0
       print('finding max L2 norm in dataset')
       for i = 1,self:nExample() do -- if windowed, iterated over all windows
@@ -505,8 +505,8 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
    function dataset:normalizeStandard() -- standard normalization
       dataset:sphere()
       --dataset:useDynamicNormalizeL2()
-      local max_L2_norm = dataset:findMaxL2Norm()
-      dataset:useDynamicNormalizeL2(max_L2_norm) -- this is equivalent to directly scaling the inputs.  However, it results in the variance per pixel being a value other than one
+      local avg_L2_norm = dataset:findAvgL2Norm()
+      dataset:useDynamicNormalizeL2(avg_L2_norm) -- this is equivalent to directly scaling the inputs.  However, it results in the variance per pixel being a value other than one
    end
       
 
@@ -637,7 +637,6 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 					final_output_val = output_data_element
 				     end
 
-				     --print('norm is ' .. final_output_val:norm())
 				     if dataset.use_dynamic_normalize_L2 then
 					if dataset.dynamic_norm then
 					   final_output_val:div(dataset.dynamic_norm)
@@ -645,6 +644,7 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 					   final_output_val:div(final_output_val:norm())
 					end
 				     end
+				     --print('norm is ' .. final_output_val:norm())
 
 				     zero_mean = false
 				     if zero_mean then
@@ -712,8 +712,8 @@ function cd()
    local w_size = 16
    local dataset = cifar_spec:loadTrainSet(40000, 'recpool_net', 0, {w_size, w_size}, {3, 3})
    dataset:sphere()
-   local max_L2_norm = dataset:findMaxL2Norm()
-   dataset:useDynamicNormalizeL2(max_L2_norm)
+   local avg_L2_norm = dataset:findAvgL2Norm()
+   dataset:useDynamicNormalizeL2(avg_L2_norm)
 
    local test_images = torch.Tensor(256, dataset:dataSize())
    for i = 1,256 do
@@ -742,8 +742,8 @@ function bd()
 
    dataset:sphere()
    dataset:useDynamicNormalizeL2()
-   --local max_L2_norm = dataset:findMaxL2Norm()
-   --dataset:useDynamicNormalizeL2(max_L2_norm)
+   --local avg_L2_norm = dataset:findAvgL2Norm()
+   --dataset:useDynamicNormalizeL2(avg_L2_norm)
 
    test_images = torch.Tensor(256, dataset:dataSize())
    for i = 1,256 do
