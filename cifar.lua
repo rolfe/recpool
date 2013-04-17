@@ -639,7 +639,8 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 
 				     if dataset.use_dynamic_normalize_L2 then
 					if dataset.dynamic_norm then
-					   final_output_val:div(dataset.dynamic_norm)
+					   final_output_val:div(math.max(dataset.dynamic_norm, final_output_val:norm()))
+					   --final_output_val:div(dataset.dynamic_norm)
 					else
 					   final_output_val:div(final_output_val:norm())
 					end
@@ -741,9 +742,9 @@ function bd()
    image.display{image=torch.reshape(test_images[{ {1,256} }], 256,3,ow_size,ow_size), nrow=19, legend='Sequential samples from the original data'}
 
    dataset:sphere()
-   dataset:useDynamicNormalizeL2()
-   --local avg_L2_norm = dataset:findAvgL2Norm()
-   --dataset:useDynamicNormalizeL2(avg_L2_norm)
+   --dataset:useDynamicNormalizeL2()
+   local avg_L2_norm = dataset:findAvgL2Norm()
+   dataset:useDynamicNormalizeL2(avg_L2_norm)
 
    test_images = torch.Tensor(256, dataset:dataSize())
    for i = 1,256 do

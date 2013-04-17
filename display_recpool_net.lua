@@ -7,7 +7,7 @@ require 'gnuplot'
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
-local part_thresh, cat_thresh = 0.4, 0.5 -- CIFAR ENTROPY EXPERIMENTS
+local part_thresh, cat_thresh = 0.45, 0.451 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.3, 0.6 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.1, 0.12 -- CIFAR ENTROPY EXPERIMENTS, sparse coding pretraining only
 --local part_thresh, cat_thresh = 0.49, 0.5 -- MNIST, sparse coding pretraining only
