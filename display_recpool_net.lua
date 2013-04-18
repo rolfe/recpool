@@ -7,9 +7,11 @@ require 'gnuplot'
 --local part_thresh, cat_thresh = 0.25, 0.3 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.2, 0.3 --0.275 -- CIFAR ENTROPY EXPERIMENTS 8x8
 --local part_thresh, cat_thresh = 0.39, 0.4 -- CIFAR ENTROPY EXPERIMENTS 12x12 with increased softmax scaling
-local part_thresh, cat_thresh = 0.45, 0.451 -- CIFAR ENTROPY EXPERIMENTS
+--local part_thresh, cat_thresh = 0.45, 0.451 -- CIFAR ENTROPY EXPERIMENTS, after pretraining when a continuum exists, conservative definition of categorical-units
+--local part_thresh, cat_thresh = 0.35, 0.351 -- CIFAR ENTROPY EXPERIMENTS, after pretraining when a continuum exists, liberal definition of categorical-units
 --local part_thresh, cat_thresh = 0.3, 0.6 -- CIFAR ENTROPY EXPERIMENTS
 --local part_thresh, cat_thresh = 0.1, 0.12 -- CIFAR ENTROPY EXPERIMENTS, sparse coding pretraining only
+local part_thresh, cat_thresh = 0.2, 0.21 -- CIFAR ENTROPY EXPERIMENTS, sparse coding pretraining only
 --local part_thresh, cat_thresh = 0.49, 0.5 -- MNIST, sparse coding pretraining only
 
 local function plot_training_error(t)
@@ -326,6 +328,7 @@ function invariance_builder_factory(hidden_layer_size, max_num_shifts)
       gnuplot.plotflush()
 
 
+      -- if we wanted to be careful, the baseline should really be calculated based upon the difference between the codes of patches drawn from *different* images, rather than shifts along the same image; there are long-range correlations in the statistics within individual images.  However, this does not change the shape of the invariance curve; it just shifts it vertically.  Any similarity that is preserved over a shift of considerably more than the window is probably not very relevant.
       local linspace = torch.linspace(0,max_num_shifts-1,max_num_shifts)
       local avg_distance_per_shift = torch.cdiv(accumulated_distance_per_shift, num_samples_per_shift)
       local avg_distance_per_shift_part = torch.cdiv(accumulated_distance_per_shift_part, num_samples_per_shift)
