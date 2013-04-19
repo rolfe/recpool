@@ -73,7 +73,7 @@ ELASTIC_NET_LOSS = 0.25 --true
 --WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.15 --2.0 -- 2.5 is too large.  Part-units are strongly pulled towards being pseudo-categorical, although a continuum remains even with continued training.  In contrast, initial performance is great, and exhibits a clear dichotomy between part- and categorical-units.
 
 
--- for 12x12 Berkeley with 400 hidden units, no L1 norm!
+-- for 12x12 Berkeley with 400 hidden units, no L2 norm!
 --local cifar_scaling = 0.5 --0.1 --0.5 
 --WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
 --WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
@@ -81,10 +81,18 @@ ELASTIC_NET_LOSS = 0.25 --true
 
 
 -- for 12x12 Berkeley with 400 hidden units, *with* L2 norm, adjusted to yield pooling-like behavior as in MNIST
-local cifar_scaling = 0.5 --0.1 --0.5 
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25
-WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 0.5 --2 --1 --0.25 --0.15 -- softmax entropy
+--local cifar_scaling = 0.5 --0.1 --0.5 
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 * 1 --5 -- 10 is too large, even without any entropy
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2 * 0.1 --2 --1 --0.25 --0.15 -- softmax entropy
+
+-- for 12x12 Berkeley with 400 hidden units, input divided by average L2 norm and then bounded at L2 norm = 1, *with* L2 norm in entropy calculation
+-- (0.5, 0.875 * 2.0, 5, 0.2)
+local cifar_scaling = 0.5 
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.0 -- keep in mind that the largest inputs are smaller with normalization relative to their former values, so they are smaller relative to the appended constant
+WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 4 --2
+
 
 
 -- for 12x12 Berkeley with 400 hidden units, hard entropy

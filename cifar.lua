@@ -639,8 +639,12 @@ local function loadFlatDataset(desired_data_set_name, max_load, alternative_acce
 
 				     if dataset.use_dynamic_normalize_L2 then
 					if dataset.dynamic_norm then
-					   final_output_val:div(math.max(dataset.dynamic_norm, final_output_val:norm()))
+					   --final_output_val:div(math.max(dataset.dynamic_norm, final_output_val:norm()))
+					   local c = 1
+					   final_output_val:mul((1+c) / (dataset.dynamic_norm + c*final_output_val:norm()))
+					   --final_output_val:div((1/1.5) * math.max(dataset.dynamic_norm, final_output_val:norm()))
 					   --final_output_val:div(dataset.dynamic_norm)
+					   --final_output_val:div(final_output_val:norm())
 					else
 					   final_output_val:div(final_output_val:norm())
 					end
