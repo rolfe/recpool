@@ -91,7 +91,7 @@ ELASTIC_NET_LOSS = 0.25 --true
 local cifar_scaling = 0.5 
 WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.0 -- keep in mind that the largest inputs are smaller with normalization relative to their former values, so they are smaller relative to the appended constant
 WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 4 --2
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3 --2
 
 
 
