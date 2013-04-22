@@ -705,6 +705,37 @@ function rec_pool_test.NormalizeTensorL12D()
 end
 
 
+function rec_pool_test.SumWithinBatch()
+   local ini = math.random(10,20)
+   local input = torch.Tensor(ini):zero()
+   local module = nn.SumWithinBatch()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (1D) ')
+   local err = jac.testJacobian(module,input)
+   mytester:assertlt(err,precision, 'error on state (1D, non-table) ')
+
+   --local ferr,berr = jac.testIOTable(module,input)
+   local ferr,berr = jac.testIO(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err (1D) ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err (1D) ')
+
+   local ini = math.random(10,20)
+   local inj = math.random(10,20)
+   local input = torch.Tensor(inj,ini):zero()
+   local module = nn.SumWithinBatch()
+
+   local err = jac.testJacobianTable(module,input)
+   mytester:assertlt(err,precision, 'error on state (2D) ')
+   local err = jac.testJacobian(module,input)
+   mytester:assertlt(err,precision, 'error on state (2D, non-table) ')
+
+   --local ferr,berr = jac.testIOTable(module,input)
+   local ferr,berr = jac.testIO(module,input)
+   mytester:asserteq(ferr, 0, torch.typename(module) .. ' - i/o forward err (2D) ')
+   mytester:asserteq(berr, 0, torch.typename(module) .. ' - i/o backward err (2D) ')
+end
+
 
 function rec_pool_test.L2Cost()
    print(' testing L2Cost!!!')

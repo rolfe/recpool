@@ -75,23 +75,23 @@ ELASTIC_NET_LOSS = 0.25 --true
 
 -- for 12x12 Berkeley with 400 hidden units, no L2 norm!
 --local cifar_scaling = 0.5 --0.1 --0.5 
---WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 2.5
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25 --2.5
 --WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
---WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1 --1 --0.25 --0.15 -- softmax entropy
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 1.5 --1 --1 --0.25 --0.15 -- softmax entropy
 
 
 -- for 12x12 Berkeley with 400 hidden units, *with* L2 norm, adjusted to yield pooling-like behavior as in MNIST
---local cifar_scaling = 0.5 --0.1 --0.5 
---WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25
---WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 * 1 --5 -- 10 is too large, even without any entropy
---WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2 * 0.1 --2 --1 --0.25 --0.15 -- softmax entropy
+local cifar_scaling = 0.5 --0.1 --0.5 
+WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.25
+WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 --5 -- 10 is too large, even without any entropy
+WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 2 --2 --2 --1 --0.25 --0.15 -- softmax entropy
 
 -- for 12x12 Berkeley with 400 hidden units, input divided by average L2 norm and then bounded at L2 norm = 1, *with* L2 norm in entropy calculation
 -- (0.5, 0.875 * 2.0, 5, 0.2)
-local cifar_scaling = 0.5 
-WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.0 -- keep in mind that the largest inputs are smaller with normalization relative to their former values, so they are smaller relative to the appended constant
-WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 
-WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3 --2
+--local cifar_scaling = 0.5 
+--WEIGHTED_L1_SOFTMAX_SCALING = 0.875 * 1.0 -- keep in mind that the largest inputs are smaller with normalization relative to their former values, so they are smaller relative to the appended constant
+--WEIGHTED_L1_PURE_L1_SCALING = cifar_scaling * 5 
+--WEIGHTED_L1_ENTROPY_SCALING = cifar_scaling * 3 --2
 
 
 
@@ -130,8 +130,15 @@ L2_RECONSTRUCTION_SCALING_FACTOR = cifar_scaling * 0.25 * ((28*28) / (12*12)) --
 --WEIGHTED_L1_PURE_L1_SCALING = 1.5 --1 --1.5 --1.2 -- for MNIST
 --WEIGHTED_L1_ENTROPY_SCALING = 0.5 --0.2 -- general case
 --L2_RECONSTRUCTION_SCALING_FACTOR = 1
+
+--USE_L2_NORM_FOR_WEIGHTED_L1 = false --true
+--APPEND_CONSTANT_VALUES = nil --{0.1}
+
 USE_L2_NORM_FOR_WEIGHTED_L1 = true
-APPEND_CONSTANT_VALUES = {0.1}
+APPEND_CONSTANT_VALUES = {0.1, 0.1}
+
+--USE_L2_NORM_FOR_WEIGHTED_L1 = true
+--APPEND_CONSTANT_VALUES = {0.1}
 
 
 
@@ -386,6 +393,7 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    local use_true_entropy_loss = true
    local only_apply_scaling_to_softmax = false -- if true, the hidden representation is not uniformly scaled after being subject to L2 normalization but before the entropy or weighted-L1 loss is calculated; rather only the softmax branch is scaled
    local use_l2_norm = USE_L2_NORM_FOR_WEIGHTED_L1 -- fix the L2 norm equal to 1 before calculating the entropy loss
+   local use_log_entropy = true -- use log entropy rather than entropy itself; this ensures that high-entropy codes are not subject to a much greater regularization than low-entropy codes
 
    local narrow_entropy = false
    local append_constant_values = APPEND_CONSTANT_VALUES --{0.1}
@@ -440,10 +448,17 @@ local function build_weighted_L1_criterion(weighted_L1_lambda, pure_L1_lambda)
    weight_normed_input_seq:add(nn.SelectTable{1,2})
    weight_normed_input_seq:add(nn.SafeCMulTable())
    -- multiply by -1, since the entropy is -p*log(p)
-   weight_normed_input_seq:add(nn.MulConstant(nil, -1 * weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
+   if use_log_entropy then
+      weight_normed_input_seq:add(nn.MulConstant(nil, -1))
+      weight_normed_input_seq:add(nn.SumWithinBatch())
+      weight_normed_input_seq:add(nn.Log())
+      weight_normed_input_seq:add(nn.MulConstant(nil, weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
+   else
+      weight_normed_input_seq:add(nn.MulConstant(nil, -1 * weighted_L1_lambda)) -- this should match the scaling on the logistic classifier, rather than the normal sparsifying L1 regularizer
+   end
    local entropy_loss_scaling = nn.MulConstant(nil, 1)
    weight_normed_input_seq:add(entropy_loss_scaling)
-   if narrow_entropy or append_constant_values then
+   if narrow_entropy or append_constant_values or use_log_entropy then
       weight_normed_input_seq:add(nn.SumCriterionModule()) -- EXPERIMENTAL CODE -- returns a number
       weight_normed_input_seq:add(nn.IdentityTensor()) -- EXPERIMENTAL CODE -- wrap in tensor
    end
